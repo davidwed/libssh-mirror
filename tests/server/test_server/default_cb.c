@@ -768,6 +768,9 @@ void default_handle_session_cb(ssh_event event, ssh_session session,
         goto end;
     }
 
+    sdata.server_state = (void *)state;
+    cdata.server_state = (void *)state;
+
     #ifdef WITH_PCAP
     set_pcap(&sdata, session, state->pcap_file);
     #endif
