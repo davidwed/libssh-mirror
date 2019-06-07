@@ -571,13 +571,19 @@ int ssh_fallback_group(uint32_t pmax,
     *generator = NULL;
 
     if (pmax < 3072) {
-        *modulus = ssh_dh_group14;
+        bignum_dup(ssh_dh_group14, modulus);
     } else if (pmax < 6144) {
-        *modulus = ssh_dh_group16;
+        bignum_dup(ssh_dh_group16, modulus);
     } else {
-        *modulus = ssh_dh_group18;
+        bignum_dup(ssh_dh_group18, modulus);
     }
-    *generator = ssh_dh_generator;
+    bignum_dup(ssh_dh_generator, generator);
+
+    if ((*modulus == NULL) || (*generator == NULL)) {
+        bignum_safe_free((*modulus));
+        bignum_safe_free((*generator));
+        return SSH_ERROR;
+    }
 
     return SSH_OK;
 }
