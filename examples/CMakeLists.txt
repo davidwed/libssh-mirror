@@ -63,6 +63,10 @@ if (UNIX AND NOT WIN32)
         target_compile_options(samplesshd-kbdint PRIVATE ${DEFAULT_C_COMPILE_FLAGS})
         target_link_libraries(samplesshd-kbdint ${LIBSSH_SHARED_LIBRARY} ${ARGP_LIBRARY})
 
+        add_executable(keygen2 keygen2.c ${examples_SRCS})
+        target_compile_options(keygen2 PRIVATE ${DEFAULT_C_COMPILE_FLAGS})
+        target_link_libraries(keygen2 ${LIBSSH_SHARED_LIBRARY})
+
     endif()
 endif (UNIX AND NOT WIN32)
 
