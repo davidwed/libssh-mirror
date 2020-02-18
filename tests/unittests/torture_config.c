@@ -22,6 +22,7 @@ extern LIBSSH_THREAD int ssh_log_level;
 #define LIBSSH_TESTCONFIG10 "libssh_testconfig10.tmp"
 #define LIBSSH_TESTCONFIG11 "libssh_testconfig11.tmp"
 #define LIBSSH_TESTCONFIG12 "libssh_testconfig12.tmp"
+#define LIBSSH_TESTCONFIG13 "libssh_testconfig13.tmp"
 #define LIBSSH_TESTCONFIGGLOB "libssh_testc*[36].tmp"
 #define LIBSSH_TEST_PUBKEYACCEPTEDKEYTYPES "libssh_test_PubkeyAcceptedKeyTypes.tmp"
 
@@ -31,6 +32,7 @@ extern LIBSSH_THREAD int ssh_log_level;
 #define KEXALGORITHMS "ecdh-sha2-nistp521,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha1"
 #define HOSTKEYALGORITHMS "ssh-ed25519,ecdsa-sha2-nistp521,ssh-rsa"
 #define PUBKEYACCEPTEDTYPES "rsa-sha2-512,ssh-rsa,ecdsa-sha2-nistp521"
+#define CIPHERS "aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc"
 #define MACS "hmac-sha1,hmac-sha2-256,hmac-sha2-512,hmac-sha1-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com"
 #define USER_KNOWN_HOSTS "%d/my_known_hosts"
 #define GLOBAL_KNOWN_HOSTS "/etc/ssh/my_ssh_known_hosts"
@@ -55,6 +57,7 @@ static int setup_config_files(void **state)
     unlink(LIBSSH_TESTCONFIG10);
     unlink(LIBSSH_TESTCONFIG11);
     unlink(LIBSSH_TESTCONFIG12);
+    unlink(LIBSSH_TESTCONFIG13);
     unlink(LIBSSH_TEST_PUBKEYACCEPTEDKEYTYPES);
 
     torture_write_file(LIBSSH_TESTCONFIG1,
@@ -186,6 +189,14 @@ static int setup_config_files(void **state)
                        "\tRekeyLimit default 9600\n"
                        "");
 
+    /* no options override */
+    torture_write_file(LIBSSH_TESTCONFIG13,
+                       "KexAlgorithms "KEXALGORITHMS"\n"
+                       "HostKeyAlgorithms "HOSTKEYALGORITHMS"\n"
+                       "Ciphers "CIPHERS"\n"
+                       "StrictHostkeyChecking no\n"
+                       "UserKnownHostsFile "USER_KNOWN_HOSTS"\n");
+
     torture_write_file(LIBSSH_TEST_PUBKEYACCEPTEDKEYTYPES,
                        "PubkeyAcceptedKeyTypes "PUBKEYACCEPTEDTYPES"\n");
 
@@ -213,6 +224,7 @@ static int teardown(void **state)
     unlink(LIBSSH_TESTCONFIG10);
     unlink(LIBSSH_TESTCONFIG11);
     unlink(LIBSSH_TESTCONFIG12);
+    unlink(LIBSSH_TESTCONFIG13);
     unlink(LIBSSH_TEST_PUBKEYACCEPTEDKEYTYPES);
 
     ssh_free(*state);
@@ -1155,6 +1167,56 @@ static void torture_config_match_pattern(void **state)
 
 }
 
+/* check that loading config files with the prevent_override flag set
+ * really does not override previously set options
+ */
+static void torture_config_nooverride(void **state) {
+    ssh_session session = *state;
+    int ret = 0, bTrue = 1;
+    char *fips_algos = NULL;
+    const char *hostkeys = ssh_fips_mode()?"rsa-sha2-512":"ssh-rsa";
+
+    /* set some options that are expected to remain unchanged */
+    ret = ssh_options_set(session, SSH_OPTIONS_HOSTKEYS, hostkeys);
+    assert_true(ret == 0);
+    ret = ssh_options_set(session, SSH_OPTIONS_CIPHERS_C_S, "aes128-ctr");
+    assert_true(ret == 0);
+    ret = ssh_options_set(session, SSH_OPTIONS_CIPHERS_S_C, "aes128-ctr");
+    assert_true(ret == 0);
+    ret = ssh_options_set(session, SSH_OPTIONS_STRICTHOSTKEYCHECK, &bTrue);
+    assert_true(ret == 0);
+    ret = ssh_options_set(session, SSH_OPTIONS_KNOWNHOSTS, "/my/custom/known_hosts");
+    assert_true(ret == 0);
+    assert_null(session->opts.wanted_methods[SSH_KEX]);
+
+    /* load config file which sets the same options */
+    session->opts.prevent_override = true;
+    ret = ssh_config_parse_file(session, LIBSSH_TESTCONFIG13);
+    session->opts.prevent_override = false;
+    assert_true(ret == 0);
+
+    /* verify that options are unchanged except kex algos */
+    if (ssh_fips_mode()) {
+        fips_algos = ssh_keep_fips_algos(SSH_KEX, KEXALGORITHMS);
+        assert_non_null(fips_algos);
+        assert_non_null(session->opts.wanted_methods[SSH_KEX]);
+        assert_string_equal(session->opts.wanted_methods[SSH_KEX], fips_algos);
+        SAFE_FREE(fips_algos);
+    } else {
+        assert_non_null(session->opts.wanted_methods[SSH_KEX]);
+        assert_string_equal(session->opts.wanted_methods[SSH_KEX], KEXALGORITHMS);
+    }
+    assert_non_null(session->opts.wanted_methods[SSH_HOSTKEYS]);
+    assert_string_equal(session->opts.wanted_methods[SSH_HOSTKEYS], hostkeys);
+    assert_non_null(session->opts.wanted_methods[SSH_CRYPT_C_S]);
+    assert_string_equal(session->opts.wanted_methods[SSH_CRYPT_C_S], "aes128-ctr");
+    assert_non_null(session->opts.wanted_methods[SSH_CRYPT_C_S]);
+    assert_string_equal(session->opts.wanted_methods[SSH_CRYPT_C_S], "aes128-ctr");
+    assert_true(session->opts.StrictHostKeyChecking > 0);
+    assert_non_null(session->opts.knownhosts);
+    assert_string_equal(session->opts.knownhosts, "/my/custom/known_hosts");
+}
+
 
 int torture_run_tests(void) {
     int rc;
@@ -1172,6 +1234,7 @@ int torture_run_tests(void) {
         cmocka_unit_test(torture_config_parser_get_cmd),
         cmocka_unit_test(torture_config_parser_get_token),
         cmocka_unit_test(torture_config_match_pattern),
+        cmocka_unit_test(torture_config_nooverride),
     };
 
 
