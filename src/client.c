@@ -495,6 +495,12 @@ static int ssh_connect_termination(void *user){
 /**
  * @brief Connect to the ssh server.
  *
+ * Unless ssh_options_parse_config() has been called before or
+ * automatic config file parsing has been disabled via
+ * ssh_options_set(..., SSH_OPTIONS_PROCESS_CONFIG, ...),
+ * options from user-specific and system-wide configuration files
+ * are automatically loaded. Previously set options are not overwritten.
+ *
  * @param[in]  session  The ssh session to connect.
  *
  * @returns             SSH_OK on success, SSH_ERROR on error.
