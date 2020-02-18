@@ -1422,16 +1422,24 @@ int ssh_options_getopt(ssh_session session, int *argcptr, char **argv)
 }
 
 /**
- * @brief Parse the ssh config file.
+ * @brief Parse an OpenSSH config file.
  *
- * This should be the last call of all options, it may overwrite options which
- * are already set. It requires that the host name is already set with
- * ssh_options_set_host().
+ * Reads options from a file in OpenSSH's configuration format.
+ * Calling this function overrides options previously set by
+ * ssh_options_set() if the corresponding option is set in the
+ * configuration file. If an option exists multiple times in the same
+ * configuration file or if multiple configuration files are parsed,
+ * the first obtained value will be used.
+ *
+ * The host name should be set with ssh_options_set_host() before
+ * calling this function. Otherwise, host-specific configuration
+ * options are not considered.
  *
  * @param  session      SSH session handle
  *
  * @param  filename     The options file to use, if NULL the default
- *                      ~/.ssh/config will be used.
+ *                      user (~/.ssh/config) and system-wide (/etc/ssh/ssh_config)
+ *                      file will be used, with user options being priorized.
  *
  * @return 0 on success, < 0 on error.
  *
