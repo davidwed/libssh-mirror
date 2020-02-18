@@ -229,7 +229,9 @@ struct ssh_session_struct {
         int flags;
         int nodelay;
         bool config_processed;
+        bool prevent_override;
         uint8_t options_seen[SOC_MAX];
+        uint8_t options_isset[SSH_OPTIONS_MAX];
         uint64_t rekey_data;
         uint32_t rekey_time;
     } opts;

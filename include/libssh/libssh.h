@@ -419,6 +419,8 @@ enum ssh_options_e {
   SSH_OPTIONS_PROCESS_CONFIG,
   SSH_OPTIONS_REKEY_DATA,
   SSH_OPTIONS_REKEY_TIME,
+
+  SSH_OPTIONS_MAX /* Not an actual option, keep this one last in the list */
 };
 
 enum {
