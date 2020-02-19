@@ -42,8 +42,7 @@ extern LIBSSH_THREAD int ssh_log_level;
 
 static int setup_config_files(void **state)
 {
-    ssh_session session;
-    int verbosity;
+    (void)state;
 
     unlink(LIBSSH_TESTCONFIG1);
     unlink(LIBSSH_TESTCONFIG2);
@@ -200,18 +199,13 @@ static int setup_config_files(void **state)
     torture_write_file(LIBSSH_TEST_PUBKEYACCEPTEDKEYTYPES,
                        "PubkeyAcceptedKeyTypes "PUBKEYACCEPTEDTYPES"\n");
 
-    session = ssh_new();
-
-    verbosity = torture_libssh_verbosity();
-    ssh_options_set(session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
-
-    *state = session;
-
     return 0;
 }
 
 static int teardown(void **state)
 {
+    (void)state;
+
     unlink(LIBSSH_TESTCONFIG1);
     unlink(LIBSSH_TESTCONFIG2);
     unlink(LIBSSH_TESTCONFIG3);
@@ -227,7 +221,29 @@ static int teardown(void **state)
     unlink(LIBSSH_TESTCONFIG13);
     unlink(LIBSSH_TEST_PUBKEYACCEPTEDKEYTYPES);
 
+    return 0;
+}
+
+static int session_setup(void **state)
+{
+    ssh_session session;
+    int verbosity;
+
+    session = ssh_new();
+
+    verbosity = torture_libssh_verbosity();
+    ssh_options_set(session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
+
+    *state = session;
+    assert_non_null(*state);
+
+    return 0;
+}
+
+static int session_teardown(void **state)
+{
     ssh_free(*state);
+    *state = NULL;
 
     return 0;
 }
@@ -1221,20 +1237,20 @@ static void torture_config_nooverride(void **state) {
 int torture_run_tests(void) {
     int rc;
     struct CMUnitTest tests[] = {
-        cmocka_unit_test(torture_config_from_file),
-        cmocka_unit_test(torture_config_double_ports),
-        cmocka_unit_test(torture_config_glob),
-        cmocka_unit_test(torture_config_new),
-        cmocka_unit_test(torture_config_auth_methods),
-        cmocka_unit_test(torture_config_unknown),
-        cmocka_unit_test(torture_config_match),
-        cmocka_unit_test(torture_config_proxyjump),
-        cmocka_unit_test(torture_config_rekey),
-        cmocka_unit_test(torture_config_pubkeyacceptedkeytypes),
-        cmocka_unit_test(torture_config_parser_get_cmd),
-        cmocka_unit_test(torture_config_parser_get_token),
-        cmocka_unit_test(torture_config_match_pattern),
-        cmocka_unit_test(torture_config_nooverride),
+        cmocka_unit_test_setup_teardown(torture_config_from_file, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_double_ports, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_glob, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_new, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_auth_methods, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_unknown, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_match, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_proxyjump, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_rekey, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_pubkeyacceptedkeytypes, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_parser_get_cmd, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_parser_get_token, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_match_pattern, session_setup, session_teardown),
+        cmocka_unit_test_setup_teardown(torture_config_nooverride, session_setup, session_teardown),
     };
 
 
