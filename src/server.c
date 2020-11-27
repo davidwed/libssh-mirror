@@ -247,6 +247,90 @@ error:
     return -1;
 }
 
+static int ssh_server_send_hostkeys_add_key_to_buffer(ssh_key key, ssh_buffer buf)
+{
+    ssh_key pubkey = NULL;
+    ssh_string pubkey_blob = NULL;
+    int rc;
+    rc = ssh_pki_export_privkey_to_pubkey(key, &pubkey);
+    if (rc != SSH_OK) {
+        return rc;
+    }
+    rc = ssh_pki_export_pubkey_blob(pubkey, &pubkey_blob);
+    ssh_key_free(pubkey);
+    if (rc != SSH_OK) {
+        return rc;
+    }
+    rc = ssh_buffer_add_ssh_string(buf, pubkey_blob);
+    ssh_string_free(pubkey_blob);
+    return rc;
+}
+
+int ssh_server_send_hostkeys(ssh_session session)
+{
+    int rc;
+    struct ssh_iterator *it = NULL;
+
+    /* Host keys can only be sent if session is authenticated */
+    if (!(session->flags & SSH_SESSION_FLAG_AUTHENTICATED)) {
+        return SSH_ERROR;
+    }
+
+    SSH_LOG(SSH_LOG_PROTOCOL, "Sending host keys update");
+
+    rc = ssh_buffer_pack(session->out_buffer,
+        "bsb",
+        SSH2_MSG_GLOBAL_REQUEST,
+        "hostkeys-00@openssh.com",
+        0);
+    if (rc != SSH_OK) {
+        goto error;
+    }
+
+    if (session->srv.dsa_key) {
+        rc = ssh_server_send_hostkeys_add_key_to_buffer(session->srv.dsa_key, session->out_buffer);
+        if (rc != SSH_OK) {
+            goto error;
+        }
+    }
+    if (session->srv.rsa_key) {
+        rc = ssh_server_send_hostkeys_add_key_to_buffer(session->srv.rsa_key, session->out_buffer);
+        if (rc != SSH_OK) {
+            goto error;
+        }
+    }
+    if (session->srv.ecdsa_key) {
+        rc = ssh_server_send_hostkeys_add_key_to_buffer(session->srv.ecdsa_key, session->out_buffer);
+        if (rc != SSH_OK) {
+            goto error;
+        }
+    }
+    if (session->srv.ed25519_key) {
+        rc = ssh_server_send_hostkeys_add_key_to_buffer(session->srv.ed25519_key, session->out_buffer);
+        if (rc != SSH_OK) {
+            goto error;
+        }
+    }
+
+    for (it = ssh_list_get_iterator(session->srv.additional_host_keys); it != NULL; it = it->next) {
+        rc = ssh_server_send_hostkeys_add_key_to_buffer((ssh_key)it->data, session->out_buffer);
+        if (rc != SSH_OK) {
+            goto error;
+        }
+    }
+
+    rc = ssh_packet_send(session);
+    if (rc != SSH_OK) {
+        goto error;
+    }
+
+    return SSH_OK;
+error:
+    ssh_buffer_reinit(session->out_buffer);
+
+    return rc;
+}
+
 SSH_PACKET_CALLBACK(ssh_packet_kexdh_init){
   (void)packet;
   (void)type;

@@ -189,6 +189,11 @@ struct ssh_session_struct {
         /* The type of host key wanted by client */
         enum ssh_keytypes_e hostkey;
         enum ssh_digest_e hostkey_digest;
+
+        /* list of additional server host keys that are sent for
+         * host key rotation. Separate list so that new
+         * host keys of the same type can also be added. */
+        struct ssh_list *additional_host_keys;
     } srv;
 
     /* auths accepted by server */

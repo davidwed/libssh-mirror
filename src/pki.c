@@ -2723,6 +2723,95 @@ end:
 
     return sig_blob;
 }
+
+ssh_string
+ssh_srv_pki_do_prove_hostkey(ssh_session session,
+                             const ssh_key privkey, const ssh_key pubkey)
+{
+    struct ssh_crypto_struct *crypto = NULL;
+
+    ssh_signature sig = NULL;
+    ssh_string session_id = NULL, pubkey_blob = NULL, sig_blob = NULL;
+
+    ssh_buffer sign_input = NULL;
+    enum ssh_digest_e digest = SSH_DIGEST_AUTO;
+
+    int rc;
+
+    digest = ssh_key_type_to_hash(session, privkey->type);
+
+    if (session == NULL || privkey == NULL || !ssh_key_is_private(privkey)) {
+        return NULL;
+    }
+
+    crypto = ssh_packet_get_current_crypto(session, SSH_DIRECTION_BOTH);
+
+    if (crypto == NULL) {
+        ssh_set_error(session, SSH_FATAL, "No crypto found");
+        return NULL;
+    }
+
+    if (crypto->session_id == NULL){
+        ssh_set_error(session, SSH_FATAL, "Missing session_id");
+        return NULL;
+    }
+
+    /* Get the session ID */
+    session_id = ssh_string_new(crypto->digest_len);
+    if (session_id == NULL) {
+        return NULL;
+    }
+    rc = ssh_string_fill(session_id, crypto->session_id, crypto->digest_len);
+    if (rc < 0) {
+        goto end;
+    }
+
+    /* Fill the input */
+    sign_input = ssh_buffer_new();
+    if (sign_input == NULL) {
+        goto end;
+    }
+    ssh_buffer_set_secure(sign_input);
+
+    rc = ssh_pki_export_pubkey_blob(pubkey, &pubkey_blob);
+
+    if (rc != SSH_OK) {
+        goto end;
+    }
+
+    rc = ssh_buffer_pack(sign_input,
+                         "sSS",
+                         "hostkeys-prove-00@openssh.com",
+                         session_id,
+                         pubkey_blob);
+    if (rc != SSH_OK) {
+        goto end;
+    }
+
+    /* Generate the signature */
+    sig = pki_do_sign(privkey,
+                      ssh_buffer_get(sign_input),
+                      ssh_buffer_get_len(sign_input),
+                      digest);
+    if (sig == NULL) {
+        goto end;
+    }
+
+    /* Convert the signature to blob */
+    rc = ssh_pki_export_signature_blob(sig, &sig_blob);
+    if (rc < 0) {
+        sig_blob = NULL;
+    }
+
+end:
+    ssh_signature_free(sig);
+    SSH_BUFFER_FREE(sign_input);
+    SSH_STRING_FREE(pubkey_blob);
+    SSH_STRING_FREE(session_id);
+
+    return sig_blob;
+}
+
 #endif /* WITH_SERVER */
 
 /**

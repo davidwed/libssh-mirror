@@ -448,3 +448,9 @@ LIBSSH_4_8_1    # Released
         ssh_session_get_known_hosts_entry;
         ssh_threads_get_default;
 } LIBSSH_4_8_0;
+
+LIBSSH_4_8_2    # Unreleased
+{
+    global:
+        ssh_server_send_hostkeys;
+} LIBSSH_4_8_0;

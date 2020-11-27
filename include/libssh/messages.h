@@ -52,6 +52,7 @@ struct ssh_global_request {
     uint8_t want_reply;
     char *bind_address;
     uint16_t bind_port;
+    struct ssh_list *received_host_keys;
 };
 
 struct ssh_channel_request {

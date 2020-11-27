@@ -193,6 +193,7 @@ void ssh_free(ssh_session session)
   int i;
   struct ssh_iterator *it = NULL;
   struct ssh_buffer_struct *b = NULL;
+  ssh_key key = NULL;
 
   if (session == NULL) {
     return;
@@ -254,6 +255,12 @@ void ssh_free(ssh_session session)
   session->srv.ecdsa_key = NULL;
   ssh_key_free(session->srv.ed25519_key);
   session->srv.ed25519_key = NULL;
+
+  while((key = ssh_list_pop_head(ssh_key, session->srv.additional_host_keys)) != NULL) {
+      ssh_key_free(key);
+  }
+  ssh_list_free(session->srv.additional_host_keys);
+  session->srv.additional_host_keys = NULL;
 
   if (session->ssh_message_list) {
       ssh_message msg;
