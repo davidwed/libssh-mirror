@@ -69,18 +69,19 @@ int auth_pubkey_cb(UNUSED_PARAM(ssh_session session),
 
     switch(signature_state) {
     case SSH_PUBLICKEY_STATE_NONE:
+        break;
     case SSH_PUBLICKEY_STATE_VALID:
+        /* TODO */
+        /* Check wheter the user and public key are in authorized keys list */
+
+        /* Authenticated */
+        printf("Authenticated\n");
+        sdata->authenticated = 1;
         break;
     default:
         goto denied;
     }
 
-    /* TODO */
-    /* Check wheter the user and public key are in authorized keys list */
-
-    /* Authenticated */
-    printf("Authenticated\n");
-    sdata->authenticated = 1;
     sdata->auth_attempts = 0;
     return SSH_AUTH_SUCCESS;
 
@@ -882,7 +883,7 @@ void default_handle_session_cb(ssh_event event,
     ssh_event_add_session(event, session);
 
     n = 0;
-    while (sdata.authenticated == 0 || sdata.channel == NULL) {
+    while (sdata.authenticated == 0) {
         /* If the user has used up all attempts, or if he hasn't been able to
          * authenticate in 10 seconds (n * 100ms), disconnect. */
         if (sdata.auth_attempts >= state->max_tries || n >= 100) {
@@ -894,6 +895,13 @@ void default_handle_session_cb(ssh_event event,
             return;
         }
         n++;
+    }
+
+    while (sdata.channel == NULL) {
+        if (ssh_event_dopoll(event, 100) == SSH_ERROR) {
+            fprintf(stderr, "do_poll error: %s\n", ssh_get_error(session));
+            return;
+        }
     }
 
     /* TODO check return values */
