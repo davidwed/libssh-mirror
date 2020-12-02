@@ -367,6 +367,20 @@ static int client(ssh_session session)
     if (auth != SSH_AUTH_SUCCESS) {
         return -1;
     }
+
+    /* Wait up to one second for host keys. This means
+     * a small delay when connecting to servers not supporting
+     * the host keys extension. This is optional so can also
+     * be removed if there's no need for host key rotation handling
+     */
+    state = ssh_message_request_hostkeys_prove(session, 1000);
+    if (state != SSH_OK) {
+        return -1;
+    }
+
+    /* Update any known hosts received with hostkeys */
+    ssh_session_update_known_hosts(session);
+
     if (cmds[0] == NULL) {
         shell(session);
     } else {
