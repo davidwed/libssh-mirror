@@ -897,6 +897,12 @@ void default_handle_session_cb(ssh_event event,
         n++;
     }
 
+    rc = ssh_server_send_hostkeys(session);
+    if (rc != SSH_OK) {
+        fprintf(stderr, "failed to send host keys: %i\n", rc);
+        return;
+    }
+
     while (sdata.channel == NULL) {
         if (ssh_event_dopoll(event, 100) == SSH_ERROR) {
             fprintf(stderr, "do_poll error: %s\n", ssh_get_error(session));
