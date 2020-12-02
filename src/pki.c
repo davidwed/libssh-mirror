@@ -2814,6 +2814,62 @@ end:
 
 #endif /* WITH_SERVER */
 
+int ssh_pki_do_verify_prove_hostkey(ssh_session session, const ssh_key pubkey, const ssh_string signature)
+{
+    ssh_string session_id = NULL, pubkey_blob = NULL;
+    ssh_signature sig = NULL;
+    ssh_buffer sign_input = NULL;
+    struct ssh_crypto_struct *crypto = NULL;
+    int ret = SSH_ERROR;
+
+    crypto = ssh_packet_get_current_crypto(session, SSH_DIRECTION_BOTH);
+    if (crypto == NULL) {
+        goto out;
+    }
+
+    session_id = ssh_string_new(crypto->digest_len);
+    if (session_id == NULL) {
+        goto out;
+    }
+
+    ret = ssh_string_fill(session_id, crypto->session_id, crypto->digest_len);
+    if (ret < 0) {
+        goto out;
+    }
+
+    sign_input = ssh_buffer_new();
+    if (sign_input == NULL) {
+        ret = SSH_ERROR;
+        goto out;
+    }
+
+    ret = ssh_pki_export_pubkey_blob(pubkey, &pubkey_blob);
+    if (ret != SSH_OK) {
+        goto out;
+    }
+
+    ret = ssh_buffer_pack(sign_input, "sSS",
+            "hostkeys-prove-00@openssh.com",
+            session_id,
+            pubkey_blob);
+    if(ret != SSH_OK) {
+        goto out;
+    }
+
+    ret = ssh_pki_import_signature_blob(signature, pubkey, &sig);
+    if (ret != SSH_OK) {
+        goto out;
+    }
+    ret = pki_verify_data_signature(sig, pubkey, ssh_buffer_get(sign_input), ssh_buffer_get_len(sign_input));
+
+out:
+    ssh_signature_free(sig);
+    ssh_buffer_free(sign_input);
+    ssh_string_free(pubkey_blob);
+    ssh_string_free(session_id);
+    return ret;
+}
+
 /**
  * @}
  */

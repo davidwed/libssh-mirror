@@ -293,6 +293,21 @@ void ssh_free(ssh_session session)
       ssh_list_free(session->opts.identity);
   }
 
+    while((key = ssh_list_pop_head(ssh_key, session->opts.received_host_keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(session->opts.received_host_keys);
+
+    while((key = ssh_list_pop_head(ssh_key, session->opts.sent_host_keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(session->opts.sent_host_keys);
+
+    while((key = ssh_list_pop_head(ssh_key, session->opts.verified_host_keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(session->opts.verified_host_keys);
+
     while ((b = ssh_list_pop_head(struct ssh_buffer_struct *,
                                   session->out_queue)) != NULL) {
         SSH_BUFFER_FREE(b);

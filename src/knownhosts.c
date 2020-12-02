@@ -876,33 +876,13 @@ enum ssh_known_hosts_e ssh_session_has_known_hosts_entry(ssh_session session)
     return SSH_KNOWN_HOSTS_OK;
 }
 
-/**
- * @brief Export the current session information to a known_hosts string.
- *
- * This exports the current information of a session which is connected so a
- * ssh server into an entry line which can be added to a known_hosts file.
- *
- * @param[in]  session  The session with information to export.
- *
- * @param[in]  pentry_string A pointer to a string to store the alloocated
- *                           line of the entry. The user must free it using
- *                           ssh_string_free_char().
- *
- * @return SSH_OK on succcess, SSH_ERROR otherwise.
- */
-int ssh_session_export_known_hosts_entry(ssh_session session,
-                                         char **pentry_string)
+
+static int ssh_key_export_known_hosts_entry(ssh_session session, ssh_key key, char **pentry_string)
 {
-    ssh_key server_pubkey = NULL;
-    char *host = NULL;
     char entry_buf[4096] = {0};
     char *b64_key = NULL;
-    int rc;
-
-    if (pentry_string == NULL) {
-        ssh_set_error_invalid(session);
-        return SSH_ERROR;
-    }
+    int rc = SSH_ERROR;
+    char *host = NULL;
 
     if (session->opts.host == NULL) {
         ssh_set_error(session, SSH_FATAL,
@@ -922,14 +902,7 @@ int ssh_session_export_known_hosts_entry(ssh_session session,
         return SSH_ERROR;
     }
 
-    server_pubkey = ssh_dh_get_current_server_publickey(session);
-    if (server_pubkey == NULL){
-        ssh_set_error(session, SSH_FATAL, "No public key present");
-        SAFE_FREE(host);
-        return SSH_ERROR;
-    }
-
-    rc = ssh_pki_export_pubkey_base64(server_pubkey, &b64_key);
+    rc = ssh_pki_export_pubkey_base64(key, &b64_key);
     if (rc < 0) {
         SAFE_FREE(host);
         return SSH_ERROR;
@@ -938,11 +911,11 @@ int ssh_session_export_known_hosts_entry(ssh_session session,
     snprintf(entry_buf, sizeof(entry_buf),
                 "%s %s %s\n",
                 host,
-                server_pubkey->type_c,
+                key->type_c,
                 b64_key);
 
-    SAFE_FREE(host);
     SAFE_FREE(b64_key);
+    SAFE_FREE(host);
 
     *pentry_string = strdup(entry_buf);
     if (*pentry_string == NULL) {
@@ -950,6 +923,80 @@ int ssh_session_export_known_hosts_entry(ssh_session session,
     }
 
     return SSH_OK;
+}
+
+/**
+ * @brief Export the current session information to a known_hosts string.
+ *
+ * This exports the current information of a session which is connected so a
+ * ssh server into an entry line which can be added to a known_hosts file.
+ *
+ * @param[in]  session  The session with information to export.
+ *
+ * @param[in]  pentry_string A pointer to a string to store the alloocated
+ *                           line of the entry. The user must free it using
+ *                           ssh_string_free_char().
+ *
+ * @return SSH_OK on succcess, SSH_ERROR otherwise.
+ */
+int ssh_session_export_known_hosts_entry(ssh_session session,
+                                         char **pentry_string)
+{
+    ssh_key server_pubkey = NULL;
+    int rc;
+
+    if (pentry_string == NULL) {
+        ssh_set_error_invalid(session);
+        return SSH_ERROR;
+    }
+
+    server_pubkey = ssh_dh_get_current_server_publickey(session);
+    if (server_pubkey == NULL){
+        ssh_set_error(session, SSH_FATAL, "No public key present");
+        return SSH_ERROR;
+    }
+
+    rc = ssh_key_export_known_hosts_entry(session, server_pubkey, pentry_string);
+    if (rc != SSH_OK) {
+        return SSH_ERROR;
+    }
+
+    return SSH_OK;
+}
+
+static int ssh_session_update_known_hosts_write(ssh_session session, ssh_key pubkey, FILE *fp)
+{
+    enum ssh_known_hosts_e known = SSH_KNOWN_HOSTS_ERROR;
+    int rc = SSH_ERROR;
+    char *entry = NULL;
+    size_t len, nwritten = 0;
+
+    known = ssh_session_known_hosts_entry_exists(session, pubkey);
+    switch (known) {
+    case SSH_KNOWN_HOSTS_OK:
+        return SSH_OK;
+    case SSH_KNOWN_HOSTS_CHANGED:
+    case SSH_KNOWN_HOSTS_OTHER:
+    case SSH_KNOWN_HOSTS_UNKNOWN:
+        break;
+    case SSH_KNOWN_HOSTS_NOT_FOUND:
+    case SSH_KNOWN_HOSTS_ERROR:
+        return SSH_ERROR;
+    }
+
+    rc = ssh_key_export_known_hosts_entry(session, pubkey, &entry);
+    if (rc != SSH_OK) {
+        return rc;
+    }
+
+    len = strlen(entry);
+    nwritten = fwrite(entry, sizeof(char), len, fp);
+    SAFE_FREE(entry);
+    if (nwritten != len || ferror(fp)) {
+        return SSH_ERROR;
+    } else {
+        return SSH_OK;
+    }
 }
 
 /**
@@ -966,11 +1013,10 @@ int ssh_session_export_known_hosts_entry(ssh_session session,
 int ssh_session_update_known_hosts(ssh_session session)
 {
     FILE *fp = NULL;
-    char *entry = NULL;
     char *dir = NULL;
-    size_t nwritten;
-    size_t len;
+    ssh_key pubkey = NULL;
     int rc;
+    struct ssh_iterator *it = NULL;
 
     if (session->opts.knownhosts == NULL) {
         rc = ssh_options_apply(session);
@@ -978,6 +1024,12 @@ int ssh_session_update_known_hosts(ssh_session session)
             ssh_set_error(session, SSH_FATAL, "Can't find a known_hosts file");
             return SSH_ERROR;
         }
+    }
+
+    pubkey = ssh_dh_get_current_server_publickey(session);
+    if (pubkey == NULL){
+        ssh_set_error(session, SSH_FATAL, "No public key present");
+        return SSH_ERROR;
     }
 
     errno = 0;
@@ -1017,21 +1069,23 @@ int ssh_session_update_known_hosts(ssh_session session)
         }
     }
 
-    rc = ssh_session_export_known_hosts_entry(session, &entry);
+    rc = ssh_session_update_known_hosts_write(session, pubkey, fp);
     if (rc != SSH_OK) {
         fclose(fp);
         return rc;
     }
 
-    len = strlen(entry);
-    nwritten = fwrite(entry, sizeof(char), len, fp);
-    SAFE_FREE(entry);
-    if (nwritten != len || ferror(fp)) {
-        ssh_set_error(session, SSH_FATAL,
-                      "Couldn't append to known_hosts file %s: %s",
-                      session->opts.knownhosts, strerror(errno));
-        fclose(fp);
-        return SSH_ERROR;
+    /* If we've received additional verified host keys, also
+     * write those to the known hosts file. */
+    if (session->opts.verified_host_keys != NULL) {
+        for (it = ssh_list_get_iterator(session->opts.verified_host_keys); it != NULL; it = it->next) {
+            pubkey = (ssh_key)it->data;
+            rc = ssh_session_update_known_hosts_write(session, pubkey, fp);
+            if (rc != SSH_OK) {
+                fclose(fp);
+                return rc;
+            }
+        }
     }
 
     fclose(fp);
@@ -1123,7 +1177,7 @@ ssh_known_hosts_check_server_key(const char *hosts_entry,
  *          SSH_KNOWN_HOSTS_NOT_FOUND: The known host file does not exist. The
  *                                     host is thus unknown. File will be
  *                                     created if host key is accepted.\n
- *          SSH_KNOWN_HOSTS_ERROR:     There had been an eror checking the host.
+ *          SSH_KNOWN_HOSTS_ERROR:     There had been an error checking the host.
  *
  * @see ssh_knownhosts_entry_free()
  */
@@ -1256,6 +1310,58 @@ ssh_session_get_known_hosts_entry_file(ssh_session session,
 enum ssh_known_hosts_e ssh_session_is_known_server(ssh_session session)
 {
     return ssh_session_get_known_hosts_entry(session, NULL);
+}
+
+/**
+ * @brief Check if key is known for the current session
+ *
+ * This checks if the given ssh_key is known as a public key for the host
+ * defined for the current session. This is useful for key rotation so
+ * we can check if a key is already known before requesting a signature
+ * for it.
+ *
+ * @param[in]  session  The session to check against
+ *
+ * @param[in]  key      The ssh_key representing a public to verify if we know it.
+ *
+ * @returns SSH_KNOWN_HOSTS_OK:        The server is known and has not changed.
+ *          SSH_KNOWN_HOSTS_CHANGED:   The server key has changed. This happens
+ *                                     for a new key. This means rotation needs
+ *                                     to request a signature for this key.
+ *          SSH_KNOWN_HOSTS_OTHER:     The server gave use a key of a type while
+ *                                     we had an other type recorded. This means
+ *                                     rotation needs to request a signature for
+ *                                     this key.
+ *          SSH_KNOWN_HOSTS_UNKNOWN:   The server is unknown. This means rotation
+ *                                     needs to request a signature for this key.
+ *          SSH_KNOWN_HOSTS_NOT_FOUND: The known host file does not exist. This
+ *                                     only happens when no host key is found.
+ *                                     Should be treated as an error.
+ *          SSH_KNOWN_HOSTS_ERROR:     There had been an eror checking the host.
+ */
+enum ssh_known_hosts_e ssh_session_known_hosts_entry_exists(ssh_session session, ssh_key key)
+{
+    enum ssh_known_hosts_e found = SSH_KNOWN_HOSTS_ERROR;
+    char *host_port = ssh_session_get_host_port(session);
+    if (host_port == NULL) {
+        return SSH_KNOWN_HOSTS_ERROR;
+    }
+
+    found = ssh_known_hosts_check_server_key(host_port,
+                                             session->opts.knownhosts,
+                                             key,
+                                             NULL);
+    if (found == SSH_KNOWN_HOSTS_OK) {
+        goto done;
+    }
+
+    found = ssh_known_hosts_check_server_key(host_port,
+                                             session->opts.global_knownhosts,
+                                             key,
+                                             NULL);
+done:
+    SAFE_FREE(host_port);
+    return found;
 }
 
 /** @} */

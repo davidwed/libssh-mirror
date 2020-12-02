@@ -169,6 +169,9 @@ ssh_string ssh_srv_pki_do_sign_sessionid(ssh_session session,
 ssh_string ssh_srv_pki_do_prove_hostkey(ssh_session session,
                                         const ssh_key privkey,
                                         const ssh_key pubkey);
+int ssh_pki_do_verify_prove_hostkey(ssh_session session,
+                                    const ssh_key pubkey,
+                                    const ssh_string signature);
 
 /* Temporary functions, to be removed after migration to ssh_key */
 ssh_public_key ssh_pki_convert_key_to_publickey(const ssh_key key);

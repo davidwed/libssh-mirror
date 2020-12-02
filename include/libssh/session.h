@@ -237,6 +237,9 @@ struct ssh_session_struct {
         uint8_t options_seen[SOC_MAX];
         uint64_t rekey_data;
         uint32_t rekey_time;
+        struct ssh_list *received_host_keys;
+        struct ssh_list *sent_host_keys;
+        struct ssh_list *verified_host_keys;
     } opts;
     /* counters */
     ssh_counter socket_counter;

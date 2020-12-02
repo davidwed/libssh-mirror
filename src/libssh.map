@@ -452,5 +452,6 @@ LIBSSH_4_8_1    # Released
 LIBSSH_4_8_2    # Unreleased
 {
     global:
+        ssh_message_request_hostkeys_prove;
         ssh_server_send_hostkeys;
 } LIBSSH_4_8_0;
