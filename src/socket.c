@@ -50,6 +50,7 @@ struct sockaddr_un {
 #endif /* _MSC_VER */
 #else /* _WIN32 */
 #include <fcntl.h>
+#include <spawn.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -885,20 +886,14 @@ int ssh_socket_connect(ssh_socket s,
  * @param in input file descriptor
  * @param out output file descriptor
  */
-void
+pid_t
 ssh_execute_command(const char *command, socket_t in, socket_t out)
 {
     const char *shell = NULL;
     const char *args[] = {NULL/*shell*/, "-c", command, NULL};
-    int devnull;
+    posix_spawn_file_actions_t file_actions;
+    pid_t pid;
     int rc;
-
-    /* Prepare /dev/null socket for the stderr redirection */
-    devnull = open("/dev/null", O_WRONLY);
-    if (devnull == -1) {
-        SSH_LOG(SSH_LOG_TRACE, "Failed to open /dev/null");
-        exit(1);
-    }
 
     /*
      * By default, use the current users shell. This could fail with some
@@ -912,21 +907,27 @@ ssh_execute_command(const char *command, socket_t in, socket_t out)
     }
     args[0] = shell;
 
+    posix_spawn_file_actions_init(&file_actions);
+
     /* redirect in and out to stdin, stdout */
-    dup2(in, 0);
-    dup2(out, 1);
+    posix_spawn_file_actions_adddup2(&file_actions, in, 0);
+    posix_spawn_file_actions_adddup2(&file_actions, out, 1);
     /* Ignore anything on the stderr */
-    dup2(devnull, STDERR_FILENO);
-    close(in);
-    close(out);
-    rc = execv(args[0], (char * const *)args);
-    if (rc < 0) {
+    posix_spawn_file_actions_addopen(&file_actions, 2, "/dev/null", O_WRONLY, 0);
+
+    /* Spawn child process to execute the command */
+    rc = posix_spawnp(&pid, args[0], &file_actions, NULL, (char *const *)args, NULL);
+    posix_spawn_file_actions_destroy(&file_actions);
+    if (rc > 0) {
         char err_msg[SSH_ERRNO_MSG_MAX] = {0};
 
         SSH_LOG(SSH_LOG_WARN, "Failed to execute command %s: %s",
-                command, ssh_strerror(errno, err_msg, SSH_ERRNO_MSG_MAX));
+                command, ssh_strerror(rc, err_msg, SSH_ERRNO_MSG_MAX));
+        pid = (pid_t)-1;
+        errno = rc;
     }
-    exit(1);
+
+    return pid;
 }
 
 /**
@@ -943,7 +944,6 @@ int
 ssh_socket_connect_proxycommand(ssh_socket s, const char *command)
 {
     socket_t pair[2];
-    int pid;
     int rc;
 
     if (s->state != SSH_SOCKET_NONE) {
@@ -956,12 +956,7 @@ ssh_socket_connect_proxycommand(ssh_socket s, const char *command)
     }
 
     SSH_LOG(SSH_LOG_DEBUG, "Executing proxycommand '%s'", command);
-    pid = fork();
-    if (pid == 0) {
-        ssh_execute_command(command, pair[0], pair[0]);
-        /* Does not return */
-    }
-    s->proxy_pid = pid;
+    s->proxy_pid = ssh_execute_command(command, pair[0], pair[0]);
     close(pair[0]);
     SSH_LOG(SSH_LOG_DEBUG, "ProxyCommand connection pipe: [%d,%d]",pair[0],pair[1]);
     ssh_socket_set_fd(s, pair[1]);
