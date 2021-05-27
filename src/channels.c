@@ -47,6 +47,7 @@
 #include "libssh/session.h"
 #include "libssh/misc.h"
 #include "libssh/messages.h"
+#include "libssh/pki.h"
 #if WITH_SERVER
 #include "libssh/server.h"
 #endif
@@ -2207,20 +2208,87 @@ int ssh_channel_request_auth_agent(ssh_channel channel) {
  * request.
  */
 SSH_PACKET_CALLBACK(ssh_request_success){
-  (void)type;
-  (void)user;
-  (void)packet;
+    int rc = SSH_ERROR;
+    ssh_key key = NULL;
+    ssh_string signature = NULL;
 
-  SSH_LOG(SSH_LOG_PACKET,
-      "Received SSH_REQUEST_SUCCESS");
-  if(session->global_req_state != SSH_CHANNEL_REQ_STATE_PENDING){
-    SSH_LOG(SSH_LOG_RARE, "SSH_REQUEST_SUCCESS received in incorrect state %d",
-        session->global_req_state);
-  } else {
-    session->global_req_state=SSH_CHANNEL_REQ_STATE_ACCEPTED;
-  }
+    (void)type;
+    (void)user;
 
-  return SSH_PACKET_USED;
+    SSH_LOG(SSH_LOG_PACKET,
+        "Received SSH_REQUEST_SUCCESS");
+
+    if(session->global_req_state != SSH_CHANNEL_REQ_STATE_PENDING) {
+        SSH_LOG(SSH_LOG_RARE, "SSH_REQUEST_SUCCESS received in incorrect state %d",
+                session->global_req_state);
+        return SSH_PACKET_USED;
+    }
+
+    /* We have pending host keys that we've received proof for */
+    if (session->client && session->opts.sent_host_keys) {
+        session->opts.verified_host_keys = ssh_list_new();
+        if (session->opts.verified_host_keys == NULL) {
+            ssh_set_error_oom(session);
+            goto error;
+        }
+
+        while(ssh_buffer_get_len(packet) > 0) {
+            signature = ssh_buffer_get_ssh_string(packet);
+            key = ssh_list_pop_head(ssh_key, session->opts.sent_host_keys);
+            if (signature == NULL) {
+                goto error;
+            }
+            if (key == NULL) {
+                ssh_string_free(signature);
+                goto error;
+            }
+
+            rc = ssh_pki_do_verify_prove_hostkey(session, key, signature);
+            if (rc == SSH_OK) {
+                ssh_list_append(session->opts.verified_host_keys, key);
+            } else {
+                ssh_key_free(key);
+                SSH_LOG(SSH_LOG_RARE,
+                        "SSH_REQUEST_SUCCESS received invalid host key proof");
+                ssh_set_error(session, SSH_REQUEST_DENIED,
+                        "Received invalid host key proof");
+                goto error;
+            }
+            ssh_string_free(signature);
+        }
+
+        /* If we haven't been able to process all entries, treat
+         * this as an error and ignore it all.
+         */
+        rc = ssh_list_count(session->opts.sent_host_keys);
+        if (rc != 0) {
+            SSH_LOG(SSH_LOG_RARE,
+                    "SSH_REQUEST_SUCCESS did not process all host key proofs: %d",
+                    rc);
+            goto error;
+        }
+
+        ssh_list_free(session->opts.sent_host_keys);
+        session->opts.sent_host_keys = NULL;
+    }
+    session->global_req_state = SSH_CHANNEL_REQ_STATE_ACCEPTED;
+    return SSH_PACKET_USED;
+
+error:
+    /* Cleanup any pending data for host keys */
+    while((key = ssh_list_pop_head(ssh_key, session->opts.sent_host_keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(session->opts.sent_host_keys);
+    session->opts.sent_host_keys = NULL;
+
+    while((key = ssh_list_pop_head(ssh_key, session->opts.verified_host_keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(session->opts.verified_host_keys);
+    session->opts.verified_host_keys = NULL;
+
+    return SSH_PACKET_USED;
 }
 
 /**
@@ -2230,6 +2298,7 @@ SSH_PACKET_CALLBACK(ssh_request_success){
  * request.
  */
 SSH_PACKET_CALLBACK(ssh_request_denied){
+  ssh_key key = NULL;
   (void)type;
   (void)user;
   (void)packet;
@@ -2239,10 +2308,17 @@ SSH_PACKET_CALLBACK(ssh_request_denied){
   if(session->global_req_state != SSH_CHANNEL_REQ_STATE_PENDING){
     SSH_LOG(SSH_LOG_RARE, "SSH_REQUEST_DENIED received in incorrect state %d",
         session->global_req_state);
-  } else {
-    session->global_req_state=SSH_CHANNEL_REQ_STATE_DENIED;
+    return SSH_PACKET_USED;
   }
 
+  if (session->opts.sent_host_keys) {
+      while((key = ssh_list_pop_head(ssh_key, session->opts.sent_host_keys)) != NULL) {
+          ssh_key_free(key);
+      }
+      ssh_list_free(session->opts.sent_host_keys);
+      session->opts.sent_host_keys = NULL;
+  }
+  session->global_req_state = SSH_CHANNEL_REQ_STATE_DENIED;
   return SSH_PACKET_USED;
 
 }

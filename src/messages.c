@@ -41,6 +41,7 @@
 #include "libssh/misc.h"
 #include "libssh/pki.h"
 #include "libssh/dh.h"
+#include "libssh/knownhosts.h"
 #include "libssh/messages.h"
 #ifdef WITH_SERVER
 #include "libssh/server.h"
@@ -97,11 +98,313 @@ static int ssh_message_reply_default(ssh_message msg) {
 
 #endif
 
+static int ssh_message_global_request_hostkeys_add_key_to_buffer(ssh_key pubkey,
+    ssh_buffer buf)
+{
+    ssh_string pubkey_blob = NULL;
+    int rc;
+    rc = ssh_pki_export_pubkey_blob(pubkey, &pubkey_blob);
+    if (rc != SSH_OK) {
+        return rc;
+    }
+    rc = ssh_buffer_add_ssh_string(buf, pubkey_blob);
+    ssh_string_free(pubkey_blob);
+    return rc;
+}
+
+static int ssh_message_global_request_reply_success_keepalive(ssh_message msg)
+{
+    int rc;
+    SSH_LOG(SSH_LOG_FUNCTIONS, "Sending keepalive reply");
+
+    if (msg->global_request.want_reply) {
+        rc = ssh_buffer_add_u8(msg->session->out_buffer, SSH2_MSG_REQUEST_SUCCESS);
+        if (rc < 0) {
+            goto error;
+        }
+        return ssh_packet_send(msg->session);
+    }
+
+    return SSH_OK;
+error:
+    return SSH_ERROR;
+}
+
+/**
+ * @brief Send a request to prove receive host keys. The timeout defines
+ * the timeout to receive the incoming keys from the server. It only is
+ * triggered if no received host keys are found yet. A timeout of 0 means
+ * no waiting ever and the message will be a no-op if nothing is received
+ * yet.
+ *
+ * This will block until one event happens.
+ *
+ * @param[in] session   The session handle to use.
+ *
+ * @param[in] timeout   Set an upper limit on the time for which this function
+ *                      will block, in milliseconds. Specifying SSH_TIMEOUT_INFINITE
+ *                      (-1) means an infinite timeout.
+ *                      Specifying SSH_TIMEOUT_USER means to use the timeout
+ *                      specified in options. 0 means poll will return immediately.
+ *                      This parameter is passed to the poll() function.
+ *
+ * @return              SSH_OK on success, SSH_ERROR otherwise.
+ */
+int ssh_message_request_hostkeys_prove(ssh_session session, int wait_timeout)
+{
+    ssh_key key = NULL;
+    ssh_key server_key = NULL;
+    ssh_buffer buffer = NULL;
+    struct ssh_list *keys = NULL;
+    struct ssh_iterator *it = NULL;
+    int rc = SSH_ERROR;
+    enum ssh_known_hosts_e status = SSH_KNOWN_HOSTS_OK;
+
+    /* Host keys are received after authentication */
+    if (!(session->flags & SSH_SESSION_FLAG_AUTHENTICATED)) {
+        return SSH_ERROR;
+    }
+
+    if (session->opts.received_host_keys == NULL) {
+        rc = ssh_handle_packets(session, wait_timeout);
+        if (rc != SSH_OK) {
+            return rc;
+        }
+    }
+
+    if (session->opts.received_host_keys == NULL) {
+        SSH_LOG(SSH_LOG_PACKET,
+            "the server didn't send host keys!");
+        return SSH_ERROR;
+    }
+
+    server_key = ssh_dh_get_current_server_publickey(session);
+
+    if (server_key == NULL) {
+        SSH_LOG(SSH_LOG_WARN, "no server host key known");
+        return SSH_ERROR;
+    }
+
+    keys = ssh_list_new();
+    if (keys == NULL) {
+        ssh_set_error_oom(session);
+        return SSH_ERROR;
+    }
+
+    while((key = ssh_list_pop_head(ssh_key, session->opts.received_host_keys)) != NULL) {
+        /* Check if the key type is supported */
+        rc = ssh_key_algorithm_allowed(session, ssh_key_get_signature_algorithm(session, key->type));
+        if (!rc) {
+            /* Key type is not allowed, continue with the next */
+            ssh_key_free(key);
+            continue;
+        }
+
+        rc = ssh_key_cmp(server_key, key, SSH_KEY_CMP_PUBLIC);
+        if (rc == 0) {
+            /* Key is the same as the already known host key */
+            ssh_key_free(key);
+            continue;
+        }
+
+        status = ssh_session_known_hosts_entry_exists(session, key);
+
+        switch(status) {
+        case SSH_KNOWN_HOSTS_CHANGED:
+        case SSH_KNOWN_HOSTS_OTHER:
+        case SSH_KNOWN_HOSTS_UNKNOWN:
+            /* We need to request proof for this key */
+            ssh_list_append(keys, key);
+            continue;
+        case SSH_KNOWN_HOSTS_OK:
+            ssh_key_free(key);
+            /* Already known key, ignore it */
+            continue;
+        default:
+            ssh_key_free(key);
+            SSH_LOG(SSH_LOG_PACKET,
+              "invalid known host status, not continuing with prove request");
+            rc = SSH_ERROR;
+            goto done;
+        }
+    }
+
+    if (ssh_list_count(keys) == 0) {
+        SSH_LOG(SSH_LOG_PACKET,
+            "no host keys to prove");
+        rc = SSH_OK;
+        goto done;
+    }
+
+    buffer = ssh_buffer_new();
+    if (buffer == NULL) {
+        ssh_set_error_oom(session);
+        rc = SSH_ERROR;
+        goto done;
+    }
+
+    for (it = ssh_list_get_iterator(keys); it != NULL; it = it->next) {
+        key = (ssh_key)it->data;
+        rc = ssh_message_global_request_hostkeys_add_key_to_buffer(key, buffer);
+        if (rc != SSH_OK) {
+            goto done;
+        }
+    }
+
+    /* Created successful buffer to send, so track sent keys
+     * for parsing future incoming proof */
+    session->opts.sent_host_keys = keys;
+    keys = NULL;
+    rc = ssh_global_request(session, "hostkeys-prove-00@openssh.com", buffer, 1);
+done:
+    ssh_buffer_free(buffer);
+    while((key = ssh_list_pop_head(ssh_key, keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(keys);
+
+    /* Cleanup any pending entries that might still be there or if
+     * we know all the keys for example */
+    while((key = ssh_list_pop_head(ssh_key, session->opts.received_host_keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    /* Keep empty list as signal that we have processed this */
+    return rc;
+}
+
 #ifdef WITH_SERVER
+static int ssh_message_global_request_reply_success_hostkeys_prove(ssh_message msg,
+    struct ssh_list *signatures)
+{
+    struct ssh_iterator *it = NULL;
+    int rc;
+
+    SSH_LOG(SSH_LOG_FUNCTIONS, "Accepting a global request");
+
+    if (msg->global_request.type != SSH_GLOBAL_REQUEST_HOSTKEYS_PROVE_00) {
+        SSH_LOG(SSH_LOG_PACKET,
+                "Unexpected global request: expecting SSH_GLOBAL_REQUEST_HOSTKEYS_PROVE_00, got %d",
+                msg->global_request.type);
+        return SSH_OK;
+    }
+
+    if (!msg->global_request.want_reply) {
+        SSH_LOG(SSH_LOG_PACKET,
+                "the client doesn't want to receive proved hostkeys!");
+        return SSH_OK;
+    }
+
+    rc = ssh_buffer_add_u8(msg->session->out_buffer, SSH2_MSG_REQUEST_SUCCESS);
+
+    if (rc < 0) {
+        return SSH_ERROR;
+    }
+
+    for (it = ssh_list_get_iterator(signatures); it != NULL; it = it->next) {
+        rc = ssh_buffer_add_ssh_string(msg->session->out_buffer, (ssh_string)it->data);
+        if (rc != SSH_OK) {
+            return SSH_ERROR;
+        }
+    }
+
+    rc = ssh_packet_send(msg->session);
+    return rc;
+}
+
+static ssh_string ssh_message_prove_hostkey(ssh_message msg, ssh_key pubkey)
+{
+    struct ssh_iterator *it = NULL;
+    ssh_key privkey = NULL;
+
+    switch(pubkey->type) {
+        case SSH_KEYTYPE_DSS:
+        case SSH_KEYTYPE_DSS_CERT01:
+            privkey = msg->session->srv.dsa_key;
+            break;
+        case SSH_KEYTYPE_RSA:
+        case SSH_KEYTYPE_RSA_CERT01:
+            privkey = msg->session->srv.rsa_key;
+            break;
+        case SSH_KEYTYPE_ECDSA:
+        case SSH_KEYTYPE_ECDSA_P256:
+        case SSH_KEYTYPE_ECDSA_P384:
+        case SSH_KEYTYPE_ECDSA_P521:
+        case SSH_KEYTYPE_ECDSA_P256_CERT01:
+        case SSH_KEYTYPE_ECDSA_P384_CERT01:
+        case SSH_KEYTYPE_ECDSA_P521_CERT01:
+        case SSH_KEYTYPE_SK_ECDSA:
+        case SSH_KEYTYPE_SK_ECDSA_CERT01:
+            privkey = msg->session->srv.ecdsa_key;
+            break;
+        case SSH_KEYTYPE_ED25519:
+        case SSH_KEYTYPE_ED25519_CERT01:
+        case SSH_KEYTYPE_SK_ED25519:
+        case SSH_KEYTYPE_SK_ED25519_CERT01:
+            privkey = msg->session->srv.ed25519_key;
+            break;
+        default:
+            break;
+    }
+
+    if (privkey && ssh_key_cmp(privkey, pubkey, SSH_KEY_CMP_PUBLIC) != 0) {
+        privkey = NULL;
+    }
+
+    if (privkey == NULL) {
+        for (it = ssh_list_get_iterator(msg->session->srv.additional_host_keys);
+            it != NULL; it = it->next) {
+            if (ssh_key_cmp((ssh_key)it->data, pubkey, SSH_KEY_CMP_PUBLIC) == 0) {
+                privkey = (ssh_key)it->data;
+                break;
+            }
+        }
+    }
+
+    if (privkey == NULL) {
+        SSH_LOG(SSH_LOG_WARN, "Received a hostkey prove request for an unknown key");
+        return NULL;
+    }
+    return ssh_srv_pki_do_prove_hostkey(msg->session, privkey, pubkey);
+}
+
+static struct ssh_list *ssh_message_prove_hostkeys(ssh_message msg)
+{
+    ssh_string signature = NULL;
+    struct ssh_list *signatures = NULL;
+    struct ssh_iterator *it = NULL;
+
+    if (msg->global_request.received_host_keys == NULL) {
+        return NULL;
+    }
+    signatures = ssh_list_new();
+    if (signatures == NULL) {
+        return NULL;
+    }
+
+    for (it = ssh_list_get_iterator(msg->global_request.received_host_keys); it != NULL; it = it->next) {
+        signature = ssh_message_prove_hostkey(msg, (ssh_key)it->data);
+        if (signature != NULL) {
+            ssh_list_append(signatures, signature);
+        } else {
+            SSH_LOG(SSH_LOG_WARN, "Unable to prove public key ownership");
+            goto error;
+        }
+    }
+    return signatures;
+
+error:
+    while((signature = ssh_list_pop_head(ssh_string, signatures)) != NULL) {
+        ssh_string_free(signature);
+    }
+    ssh_list_free(signatures);
+    return NULL;
+}
 
 static int ssh_execute_server_request(ssh_session session, ssh_message msg)
 {
     ssh_channel channel = NULL;
+    struct ssh_list *signatures = NULL;
+    ssh_string sig = NULL;
     int rc;
 
     switch(msg->type) {
@@ -311,6 +614,20 @@ static int ssh_execute_server_request(ssh_session session, ssh_message msg)
 
             return SSH_AGAIN;
         case SSH_REQUEST_GLOBAL:
+            if (msg->global_request.type == SSH_GLOBAL_REQUEST_HOSTKEYS_PROVE_00) {
+                 signatures = ssh_message_prove_hostkeys(msg);
+                 if (signatures != NULL) {
+                      rc = ssh_message_global_request_reply_success_hostkeys_prove(msg, signatures);
+                      while((sig = ssh_list_pop_head(ssh_string, signatures)) != NULL) {
+                          ssh_string_free(sig);
+                      }
+                      ssh_list_free(signatures);
+                 } else {
+                      rc = ssh_message_reply_default(msg);
+                 }
+
+                 return rc;
+            }
             break;
     }
 
@@ -585,7 +902,10 @@ int ssh_message_subtype(ssh_message msg) {
  *
  * @param[in] msg       The message to release the memory.
  */
-void ssh_message_free(ssh_message msg){
+void ssh_message_free(ssh_message msg)
+{
+  ssh_key key = NULL;
+
   if (msg == NULL) {
     return;
   }
@@ -632,11 +952,15 @@ void ssh_message_free(ssh_message msg){
       }
       break;
     case SSH_REQUEST_SERVICE:
-      SAFE_FREE(msg->service_request.service);
-      break;
+        SAFE_FREE(msg->service_request.service);
+        break;
     case SSH_REQUEST_GLOBAL:
-      SAFE_FREE(msg->global_request.bind_address);
-      break;
+        SAFE_FREE(msg->global_request.bind_address);
+        while((key = ssh_list_pop_head(ssh_key, msg->global_request.received_host_keys)) != NULL) {
+            ssh_key_free(key);
+        }
+        ssh_list_free(msg->global_request.received_host_keys);
+        break;
   }
   ZERO_STRUCTP(msg);
   SAFE_FREE(msg);
@@ -1476,13 +1800,16 @@ int ssh_message_channel_request_reply_success(ssh_message msg) {
   return SSH_OK;
 }
 
-#ifdef WITH_SERVER
 SSH_PACKET_CALLBACK(ssh_packet_global_request){
     ssh_message msg = NULL;
-    char *request=NULL;
+    char *request = NULL;
+    struct ssh_list *keys = NULL;
     uint8_t want_reply;
     int rc = SSH_PACKET_USED;
+    ssh_string blob = NULL;
+    ssh_key key = NULL;
     int r;
+
     (void)user;
     (void)type;
     (void)packet;
@@ -1560,6 +1887,96 @@ SSH_PACKET_CALLBACK(ssh_packet_global_request){
             ssh_message_queue(session, msg);
             return rc;
         }
+    } else if (strcmp(request, "hostkeys-prove-00@openssh.com") == 0) {
+        /* Prove message is only received on the server side */
+        if (session->client) {
+            goto reply_with_failure;
+        }
+
+        keys = ssh_list_new();
+        if (keys == NULL) {
+            ssh_set_error_oom(session);
+            goto reply_with_failure;
+        }
+
+        while(ssh_buffer_get_len(packet) > 0) {
+            blob = ssh_buffer_get_ssh_string(packet);
+            if(blob == NULL) {
+                goto reply_with_failure;
+            }
+            rc = ssh_pki_import_pubkey_blob(blob, &key);
+            ssh_string_free(blob);
+            if(rc != SSH_OK) {
+                goto reply_with_failure;
+            }
+            ssh_list_append(keys, key);
+        }
+
+        msg->global_request.type = SSH_GLOBAL_REQUEST_HOSTKEYS_PROVE_00;
+        msg->global_request.want_reply = want_reply;
+        msg->global_request.received_host_keys = keys;
+        keys = NULL;
+
+        SSH_LOG(SSH_LOG_PROTOCOL, "Received SSH_MSG_GLOBAL_REQUEST %s %d, %zu keys",
+            request, want_reply, ssh_list_count(keys));
+
+        if(ssh_callbacks_exists(session->common.callbacks, global_request_function)) {
+            session->common.callbacks->global_request_function(session, msg,
+                session->common.callbacks->userdata);
+        } else {
+            SAFE_FREE(request);
+            ssh_message_queue(session, msg);
+            return rc;
+        }
+    } else if (strcmp(request, "hostkeys-00@openssh.com") == 0) {
+        /* Only clients can be informed of hostkeys */
+        if (!session->client) {
+            goto reply_with_failure;
+        }
+
+        if (session->opts.StrictHostKeyChecking == 0) {
+            goto reply_with_failure;
+        }
+
+        keys = ssh_list_new();
+        if (keys == NULL) {
+            ssh_set_error_oom(session);
+            goto reply_with_failure;
+        }
+
+        while(ssh_buffer_get_len(packet) > 0) {
+            blob = ssh_buffer_get_ssh_string(packet);
+            if(blob == NULL) {
+                goto reply_with_failure;
+            }
+            rc = ssh_pki_import_pubkey_blob(blob, &key);
+            ssh_string_free(blob);
+            if(rc != SSH_OK) {
+                goto reply_with_failure;
+            }
+
+            ssh_list_append(keys, key);
+        }
+
+        msg->global_request.type = SSH_GLOBAL_REQUEST_HOSTKEYS_00;
+        msg->global_request.want_reply = want_reply;
+        msg->session->opts.received_host_keys = keys;
+        keys = NULL;
+
+        SSH_LOG(SSH_LOG_PROTOCOL, "Received SSH_MSG_GLOBAL_REQUEST %s %d, %zu keys",
+            request, want_reply, ssh_list_count(keys));
+
+        if(ssh_callbacks_exists(session->common.callbacks, global_request_function)) {
+            session->common.callbacks->global_request_function(session, msg,
+                session->common.callbacks->userdata);
+        } else {
+            /* No reply here, just keep the message. If a reply is wanted
+             * client authors should call ssh_process_received_hostkeys
+             * if they want to process the received host keys. */
+            SAFE_FREE(request);
+            SSH_MESSAGE_FREE(msg);
+            return rc;
+        }
     } else if(strcmp(request, "keepalive@openssh.com") == 0) {
         msg->global_request.type = SSH_GLOBAL_REQUEST_KEEPALIVE;
         msg->global_request.want_reply = want_reply;
@@ -1567,11 +1984,11 @@ SSH_PACKET_CALLBACK(ssh_packet_global_request){
         if(ssh_callbacks_exists(session->common.callbacks, global_request_function)) {
             session->common.callbacks->global_request_function(session, msg, session->common.callbacks->userdata);
         } else {
-            ssh_message_global_request_reply_success(msg, 0);
+            ssh_message_global_request_reply_success_keepalive(msg);
         }
     } else {
-        SSH_LOG(SSH_LOG_PROTOCOL, "UNKNOWN SSH_MSG_GLOBAL_REQUEST %s, "
-                "want_reply = %d", request, want_reply);
+        SSH_LOG(SSH_LOG_PROTOCOL, "UNKNOWN SSH_MSG_GLOBAL_REQUEST client = %i, %s, "
+                "want_reply = %d", session->client, request, want_reply);
         goto reply_with_failure;
     }
 
@@ -1601,12 +2018,15 @@ reply_with_failure:
     /* Consume the message to avoid sending UNIMPLEMENTED later */
     rc = SSH_PACKET_USED;
 error:
+    while((key = ssh_list_pop_head(ssh_key, keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(keys);
+
     SAFE_FREE(msg);
     SAFE_FREE(request);
     SSH_LOG(SSH_LOG_WARNING, "Invalid SSH_MSG_GLOBAL_REQUEST packet");
     return rc;
 }
-
-#endif /* WITH_SERVER */
 
 /** @} */

@@ -29,4 +29,6 @@ ssh_session_get_known_hosts_entry_file(ssh_session session,
                                        const char *filename,
                                        struct ssh_knownhosts_entry **pentry);
 
+enum ssh_known_hosts_e ssh_session_known_hosts_entry_exists(ssh_session session, ssh_key key);
+
 #endif /* SSH_KNOWNHOSTS_H_ */

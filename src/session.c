@@ -193,6 +193,7 @@ void ssh_free(ssh_session session)
   int i;
   struct ssh_iterator *it = NULL;
   struct ssh_buffer_struct *b = NULL;
+  ssh_key key = NULL;
 
   if (session == NULL) {
     return;
@@ -255,6 +256,12 @@ void ssh_free(ssh_session session)
   ssh_key_free(session->srv.ed25519_key);
   session->srv.ed25519_key = NULL;
 
+  while((key = ssh_list_pop_head(ssh_key, session->srv.additional_host_keys)) != NULL) {
+      ssh_key_free(key);
+  }
+  ssh_list_free(session->srv.additional_host_keys);
+  session->srv.additional_host_keys = NULL;
+
   if (session->ssh_message_list) {
       ssh_message msg;
 
@@ -285,6 +292,21 @@ void ssh_free(ssh_session session)
       }
       ssh_list_free(session->opts.identity);
   }
+
+    while((key = ssh_list_pop_head(ssh_key, session->opts.received_host_keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(session->opts.received_host_keys);
+
+    while((key = ssh_list_pop_head(ssh_key, session->opts.sent_host_keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(session->opts.sent_host_keys);
+
+    while((key = ssh_list_pop_head(ssh_key, session->opts.verified_host_keys)) != NULL) {
+        ssh_key_free(key);
+    }
+    ssh_list_free(session->opts.verified_host_keys);
 
     while ((b = ssh_list_pop_head(struct ssh_buffer_struct *,
                                   session->out_queue)) != NULL) {

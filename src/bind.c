@@ -380,6 +380,7 @@ void ssh_bind_fd_toaccept(ssh_bind sshbind) {
 }
 
 void ssh_bind_free(ssh_bind sshbind){
+  ssh_key key = NULL;
   int i;
 
   if (sshbind == NULL) {
@@ -417,11 +418,18 @@ void ssh_bind_free(ssh_bind sshbind){
     }
   }
 
+  while((key = ssh_list_pop_head(ssh_key, sshbind->additional_host_keys)) != NULL) {
+      ssh_key_free(key);
+  }
+  ssh_list_free(sshbind->additional_host_keys);
+
   SAFE_FREE(sshbind);
 }
 
 int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd){
     int i, rc;
+    struct ssh_iterator *it = NULL;
+    ssh_key key = NULL;
 
     if (sshbind == NULL) {
         return SSH_ERROR;
@@ -542,6 +550,21 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd){
         if (session->srv.ed25519_key == NULL){
             ssh_set_error_oom(sshbind);
             return SSH_ERROR;
+        }
+    }
+    if (sshbind->additional_host_keys != NULL) {
+        session->srv.additional_host_keys = ssh_list_new();
+        if (session->srv.additional_host_keys == NULL) {
+            ssh_set_error_oom(sshbind);
+            return SSH_ERROR;
+        }
+        for (it = ssh_list_get_iterator(sshbind->additional_host_keys); it != NULL; it = it->next) {
+            key = ssh_key_dup((ssh_key)it->data);
+            if (key == NULL) {
+                ssh_set_error_oom(sshbind);
+                return SSH_ERROR;
+            }
+            ssh_list_append(session->srv.additional_host_keys, key);
         }
     }
 

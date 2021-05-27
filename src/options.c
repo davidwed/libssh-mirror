@@ -1557,9 +1557,11 @@ static int ssh_bind_set_algo(ssh_bind sshbind,
  *                        Set the path to an ssh host key, regardless
  *                        of type.  Only one key from per key type
  *                        (RSA, DSA, ECDSA) is allowed in an ssh_bind
- *                        at a time, and later calls to this function
- *                        with this option for the same key type will
- *                        override prior calls (const char *).
+ *                        at a time. Later calls to this function will
+ *                        override previous calls, but the previously
+ *                        configured key(s) will be retained for
+ *                        replies to hostkeys-00@openssh.com messages
+ *                        to allow for host keys rotation.
  *
  *                      - SSH_BIND_OPTIONS_BINDADDR:
  *                        Set the IP address to bind (const char *).
@@ -1719,9 +1721,9 @@ int ssh_bind_options_set(ssh_bind sshbind, enum ssh_bind_options_e type,
               bind_key_path_loc = &sshbind->rsakey;
               break;
           case SSH_KEYTYPE_ED25519:
-		  bind_key_loc = &sshbind->ed25519;
-		  bind_key_path_loc = &sshbind->ed25519key;
-		  break;
+              bind_key_loc = &sshbind->ed25519;
+              bind_key_path_loc = &sshbind->ed25519key;
+              break;
           default:
               ssh_set_error(sshbind,
                             SSH_FATAL,
@@ -1740,7 +1742,25 @@ int ssh_bind_options_set(ssh_bind sshbind, enum ssh_bind_options_e type,
               ssh_key_free(key);
               return -1;
           }
-          ssh_key_free(*bind_key_loc);
+
+          /* Remember existing key so this API can be used for key rotation.
+           * The key will be free'd once the bind is free'd as well. */
+          if (*bind_key_loc) {
+              if (sshbind->additional_host_keys == NULL) {
+                  sshbind->additional_host_keys = ssh_list_new();
+                  if (sshbind->additional_host_keys == NULL) {
+                      ssh_key_free(key);
+                      ssh_set_error_oom(sshbind);
+                      return -1;
+                  }
+              }
+              rc = ssh_list_append(sshbind->additional_host_keys, *bind_key_loc);
+              if (rc < 0) {
+                  ssh_key_free(key);
+                  ssh_set_error_oom(sshbind);
+                  return -1;
+              }
+          }
           *bind_key_loc = key;
       }
       break;

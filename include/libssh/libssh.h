@@ -194,7 +194,9 @@ enum ssh_global_requests_e {
 	SSH_GLOBAL_REQUEST_UNKNOWN=0,
 	SSH_GLOBAL_REQUEST_TCPIP_FORWARD,
 	SSH_GLOBAL_REQUEST_CANCEL_TCPIP_FORWARD,
-	SSH_GLOBAL_REQUEST_KEEPALIVE
+	SSH_GLOBAL_REQUEST_KEEPALIVE,
+	SSH_GLOBAL_REQUEST_HOSTKEYS_PROVE_00,
+	SSH_GLOBAL_REQUEST_HOSTKEYS_00
 };
 
 enum ssh_publickey_state_e {
@@ -599,6 +601,9 @@ SSH_DEPRECATED LIBSSH_API void ssh_log(ssh_session session,
 LIBSSH_API ssh_channel ssh_message_channel_request_open_reply_accept(ssh_message msg);
 LIBSSH_API int ssh_message_channel_request_open_reply_accept_channel(ssh_message msg, ssh_channel chan);
 LIBSSH_API int ssh_message_channel_request_reply_success(ssh_message msg);
+
+LIBSSH_API int ssh_message_request_hostkeys_prove(ssh_session session, int timeout);
+
 #define SSH_MESSAGE_FREE(x) \
     do { if ((x) != NULL) { ssh_message_free(x); (x) = NULL; } } while(0)
 LIBSSH_API void ssh_message_free(ssh_message msg);
