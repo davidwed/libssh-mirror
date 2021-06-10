@@ -206,7 +206,7 @@ socket_t ssh_connect_host_nonblocking(ssh_session session, const char *host,
             }
 #ifdef	IP_BIND_ADDRESS_NO_PORT
 	    {
-		    int on;
+		    int on = 1;
 		    setsockopt(s, SOL_IP, IP_BIND_ADDRESS_NO_PORT, &on, sizeof(on));
 	    }
 #endif
