@@ -207,7 +207,12 @@ socket_t ssh_connect_host_nonblocking(ssh_session session, const char *host,
                 s = -1;
                 break;
             }
-
+#ifdef	IP_BIND_ADDRESS_NO_PORT
+	    {
+		    int on = 1;
+		    setsockopt(s, SOL_IP, IP_BIND_ADDRESS_NO_PORT, &on, sizeof(on));
+	    }
+#endif
             for (bind_itr = bind_ai;
                  bind_itr != NULL;
                  bind_itr = bind_itr->ai_next)

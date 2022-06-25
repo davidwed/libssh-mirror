@@ -279,7 +279,7 @@ int ssh_bind_listen(ssh_bind sshbind) {
           return -1;
       }
 
-      if (listen(fd, 10) < 0) {
+      if (listen(fd, -1) < 0) {
           ssh_set_error(sshbind, SSH_FATAL,
                   "Listening to socket %d: %s",
                   fd, strerror(errno));
