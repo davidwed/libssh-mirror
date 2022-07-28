@@ -141,6 +141,7 @@ set(libssh_SRCS
   session.c
   scp.c
   socket.c
+  ssh-sk.c
   string.c
   threads.c
   wrapper.c

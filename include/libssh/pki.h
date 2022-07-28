@@ -92,6 +92,10 @@ struct ssh_key_struct {
     ssh_string sk_application;
     void *cert;
     enum ssh_keytypes_e cert_type;
+    uint8_t	sk_flags; //checkthisout
+    char	*sk_application1;
+    struct ssh_buffer_struct *sk_key_handle;
+    struct ssh_buffer_struct *sk_reserved;
 };
 
 struct ssh_signature_struct {

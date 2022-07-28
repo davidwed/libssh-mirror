@@ -6,6 +6,8 @@ set(libssh_HDRS
   ssh2.h
   legacy.h
   libsshpp.hpp
+  ssh-sk.h
+  sk-api.h
 )
 
 if (WITH_SFTP)
