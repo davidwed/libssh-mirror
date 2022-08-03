@@ -140,6 +140,7 @@ set(libssh_SRCS
   poll.c
   session.c
   scp.c
+  sk-usbhid.c
   socket.c
   ssh-sk.c
   string.c
