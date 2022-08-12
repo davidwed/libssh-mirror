@@ -17,8 +17,8 @@
  */
 
 //#include "libssh/includes.h"
-
-//#ifdef ENABLE_SK_INTERNAL
+#include "libssh/config.h"
+#ifdef HAVE_FIDO
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -81,7 +81,7 @@
 #ifndef SK_STANDALONE
 //# include "log.h"
 //# include "xmalloc.h"
-#include "config.h"
+//#include "config.h"
 # include "libssh/priv.h"
 # include "libssh/libssh.h"
 # include "libssh/libcrypto.h"
@@ -341,7 +341,7 @@ sha256_mem(const void *m, unsigned long mlen, u_char *d, size_t dlen)
 	if (!EVP_Digest(m, mlen, d, &mdlen, EVP_sha256(), NULL))
 		return -1;
 #else
-	ctx = sha256_init();    
+	ctx = sha256_init();
 	sha256_update(ctx, m, mlen);
 	sha256_final(d, ctx);
 #endif
@@ -350,7 +350,7 @@ sha256_mem(const void *m, unsigned long mlen, u_char *d, size_t dlen)
 #endif /* !HAVE_FIDO_ASSERT_SET_CLIENTDATA || !HAVE_FIDO_CRED_SET_CLIENTDATA */
 
 #ifndef HAVE_FIDO_CRED_SET_CLIENTDATA
-static int
+int
 fido_cred_set_clientdata(fido_cred_t *cred, const u_char *ptr, size_t len)
 {
 	uint8_t d[32];
@@ -371,7 +371,7 @@ fido_cred_set_clientdata(fido_cred_t *cred, const u_char *ptr, size_t len)
 #endif /* HAVE_FIDO_CRED_SET_CLIENTDATA */
 
 #ifndef HAVE_FIDO_ASSERT_SET_CLIENTDATA
-static int
+int
 fido_assert_set_clientdata(fido_assert_t *assert, const u_char *ptr, size_t len)
 {
 	uint8_t d[32];
@@ -1407,4 +1407,4 @@ sk_load_resident_keys(const char *pin, struct sk_option **options,
 	return ret;
 }
 
-//#endif /* ENABLE_SK_INTERNAL */
+#endif /* HAVE_FIDO */

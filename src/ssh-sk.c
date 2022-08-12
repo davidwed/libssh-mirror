@@ -18,9 +18,10 @@
 /* #define DEBUG_SK 1 */
 //extra includes
 //end extra includes
+#include "libssh/config.h"
 # define __attribute__(x)
-# define ENABLE_SK
-#ifdef ENABLE_SK
+//# define HAVE_FIDO
+#ifdef HAVE_FIDO
 #define SAFE_FREE(x) do { if ((x) != NULL) {free(x); x=NULL;} } while(0)
 #include <dlfcn.h>
 #include <stddef.h>
@@ -124,15 +125,15 @@ sshsk_open(const char *path)
 	}
 	/* Skip the rest if we're using the linked in middleware */
 	if (strcasecmp(ret->path, "internal") == 0) {
-#ifdef ENABLE_SK_INTERNAL
+// #ifdef ENABLE_SK_INTERNAL
 		ret->sk_enroll = ssh_sk_enroll;
 		ret->sk_sign = ssh_sk_sign;
 		ret->sk_load_resident_keys = ssh_sk_load_resident_keys;
 		return ret;
-#else
+// #else
 		fprintf(stderr, "internal security key support not enabled");
 		goto fail;
-#endif
+// #endif
 	}
 	if ((ret->dlhandle = dlopen(path, RTLD_NOW)) == NULL) {
 		fprintf(stderr, "Provider \"%s\" dlopen failed: %s", path, dlerror());
@@ -269,7 +270,7 @@ sshsk_ed25519_assemble(struct sk_enroll_response *resp, struct ssh_key_struct **
 		goto out;
 	}
 	if (key->type == SSH_KEYTYPE_SK_ED25519  && key == NULL) {
-		fprintf(stderr,"sshkey_new failed"); 
+		fprintf(stderr,"sshkey_new failed");
 		r = SSH_ERR_ALLOC_FAIL;
 		goto out;
 	}

@@ -19,6 +19,7 @@ option(SERVER_TESTING "Build with server tests; requires openssh and dropbear" O
 option(WITH_BENCHMARKS "Build benchmarks tools" OFF)
 option(WITH_EXAMPLES "Build examples" ON)
 option(WITH_NACL "Build with libnacl (curve25519)" ON)
+option(WITH_FIDO "Build with FIDO" ON)
 option(WITH_SYMBOL_VERSIONING "Build with symbol versioning" ON)
 option(WITH_ABI_BREAK "Allow ABI break" OFF)
 option(WITH_GEX "Enable DH Group exchange mechanisms" ON)

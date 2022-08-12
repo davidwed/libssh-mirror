@@ -273,6 +273,9 @@
 /* Define to 1 if you want to enable NaCl support */
 #cmakedefine WITH_NACL 1
 
+/* Define to 1 if you want to enable FIDO support */
+#cmakedefine WITH_FIDO 1
+
 /* Define to 1 if you want to enable PKCS #11 URI support */
 #cmakedefine WITH_PKCS11_URI 1
 
