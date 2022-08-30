@@ -1014,7 +1014,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
             e = NULL;
 
             if (key->type == SSH_KEYTYPE_SK_ECDSA &&
-                ssh_buffer_add_ssh_string(buffer, key->sk_application) < 0) {
+                ssh_buffer_add_data(buffer, key->sk_application, sizeof(key->sk_application)) < 0) {
                 goto fail;
             }
 
@@ -1026,7 +1026,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
                 goto fail;
             }
             if (key->type == SSH_KEYTYPE_SK_ED25519 &&
-                ssh_buffer_add_ssh_string(buffer, key->sk_application) < 0) {
+                ssh_buffer_add_data(buffer, key->sk_application, sizeof(key->sk_application)) < 0) {
                 goto fail;
             }
             break;
@@ -1393,6 +1393,10 @@ ssh_signature pki_do_sign_hash(const ssh_key privkey,
 {
     ssh_signature sig = NULL;
     int rc;
+    const char *sk_provider, *sk_pin;
+    u_char **sigp;
+    size_t *lenp;
+    u_int compat;
 
     sig = ssh_signature_new();
     if (sig == NULL) {
@@ -1445,6 +1449,17 @@ ssh_signature pki_do_sign_hash(const ssh_key privkey,
                 return NULL;
             }
             break;
+        case SSH_KEYTYPE_SK_ECDSA:
+        case SSH_KEYTYPE_SK_ED25519:
+#ifdef WITH_FIDO
+            rc = sshsk_sign(sk_provider, privkey, sigp, lenp, hash,
+		            hlen, compat, sk_pin);
+            if (rc != SSH_OK) {
+                ssh_signature_free(sig);
+                return NULL;
+            }
+		    break;
+#endif
         default:
             ssh_signature_free(sig);
             return NULL;

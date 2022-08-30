@@ -41,6 +41,8 @@
 #include "libssh/misc.h"
 #include "libssh/pki.h"
 #include "libssh/pki_priv.h"
+#include "libssh/ssh-sk.h"
+#include "libssh/sk-api.h"
 
 #define MAXLINESIZE 80
 #define RSA_HEADER_BEGIN "-----BEGIN RSA PRIVATE KEY-----"
@@ -1702,7 +1704,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
                 goto fail;
             }
             if (key->type == SSH_KEYTYPE_SK_ED25519 &&
-                ssh_buffer_add_ssh_string(buffer, key->sk_application) < 0) {
+                ssh_buffer_add_data(buffer, key->sk_application, sizeof(key->sk_application)) < 0) {
                 goto fail;
             }
             break;
@@ -1742,7 +1744,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
             e = NULL;
 
             if (key->type == SSH_KEYTYPE_SK_ECDSA &&
-                ssh_buffer_add_ssh_string(buffer, key->sk_application) < 0) {
+                ssh_buffer_add_data(buffer, key->sk_application, sizeof(key->sk_application)) < 0) {
                 goto fail;
             }
 
@@ -2146,6 +2148,10 @@ ssh_signature pki_do_sign_hash(const ssh_key privkey,
     ssh_signature sig;
     gcry_sexp_t sexp;
     gcry_error_t err;
+    const char *sk_provider, *sk_pin;
+    u_char **sigp;
+    size_t *lenp;
+    u_int compat;
 
     sig = ssh_signature_new();
     if (sig == NULL) {
@@ -2239,6 +2245,17 @@ ssh_signature pki_do_sign_hash(const ssh_key privkey,
                 return NULL;
             }
             break;
+#endif
+        case SSH_KEYTYPE_SK_ECDSA:
+        case SSH_KEYTYPE_SK_ED25519:
+#ifdef WITH_FIDO
+        err = sshsk_sign(sk_provider, privkey, sigp, lenp, hash,
+		        hlen, compat, sk_pin);
+            if (err != SSH_OK) {
+                ssh_signature_free(sig);
+                return NULL;
+            }
+		    break;
 #endif
         case SSH_KEYTYPE_RSA1:
         case SSH_KEYTYPE_UNKNOWN:

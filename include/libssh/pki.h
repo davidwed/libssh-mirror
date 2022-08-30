@@ -89,11 +89,10 @@ struct ssh_key_struct {
     ed25519_pubkey *ed25519_pubkey;
     ed25519_privkey *ed25519_privkey;
 #endif
-    ssh_string sk_application;
     void *cert;
     enum ssh_keytypes_e cert_type;
     uint8_t	sk_flags; //checkthisout
-    char	*sk_application1;
+    char *sk_application;
     struct ssh_buffer_struct *sk_key_handle;
     struct ssh_buffer_struct *sk_reserved;
 };

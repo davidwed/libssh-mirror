@@ -17,8 +17,8 @@
  */
 
 //#include "libssh/includes.h"
-#include "libssh/config.h"
-#ifdef HAVE_FIDO
+#include "config.h"
+#ifdef WITH_FIDO
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -39,18 +39,18 @@
  * This is strictly a larger hammer than necessary, but it reduces changes
  * with upstream.
  */
-#ifndef OPENSSL_HAS_ECC
-# undef WITH_OPENSSL
+#ifndef HAVE_OPENSSL_ECC
+# undef HAVE_OPENSSL
 #endif
 
-#ifdef WITH_OPENSSL
+#ifdef HAVE_OPENSSL
 #include <openssl/opensslv.h>
 #include <openssl/crypto.h>
 #include <openssl/bn.h>
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
 #include <openssl/evp.h>
-#endif /* WITH_OPENSSL */
+#endif /* HAVE_OPENSSL */
 
 #include <fido.h>
 #include <fido/credman.h>
@@ -160,7 +160,7 @@ skdebug(const char *func, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	vasprintf(&msg, fmt, ap);
+	vsprintf(msg, fmt, ap);
 	va_end(ap);
 	SSH_LOG(SSH_LOG_DEBUG,"%s: %s", func, msg);
 	free(msg);
@@ -168,7 +168,7 @@ skdebug(const char *func, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(stderr, "%s: ", func);
+	SSH_LOG(SSH_LOG_WARN, "%s: ", func);
 	vfprintf(stderr, fmt, ap);
 	fputc('\n', stderr);
 	va_end(ap);
@@ -328,7 +328,7 @@ sk_touch_poll(struct sk_usbhid **skv, size_t nsk, int *touch, size_t *idx)
 static int
 sha256_mem(const void *m, unsigned long mlen, u_char *d, size_t dlen)
 {
-#ifdef WITH_OPENSSL
+#ifdef HAVE_OPENSSL
 	u_int mdlen;
 #else
 	SHA256CTX ctx;
@@ -336,7 +336,7 @@ sha256_mem(const void *m, unsigned long mlen, u_char *d, size_t dlen)
 
 	if (dlen != 32)
 		return -1;
-#ifdef WITH_OPENSSL
+#ifdef HAVE_OPENSSL
 	mdlen = dlen;
 	if (!EVP_Digest(m, mlen, d, &mdlen, EVP_sha256(), NULL))
 		return -1;
@@ -599,7 +599,7 @@ sk_probe(const char *application, const uint8_t *key_handle,
 	return sk;
 }
 
-#ifdef WITH_OPENSSL
+#ifdef HAVE_OPENSSL
 /*
  * The key returned via fido_cred_pubkey_ptr() is in affine coordinates,
  * but the API expects a SEC1 octet string.
@@ -673,7 +673,7 @@ pack_public_key_ecdsa(const fido_cred_t *cred,
 	BN_clear_free(y);
 	return ret;
 }
-#endif /* WITH_OPENSSL */
+#endif /* HAVE_OPENSSL */
 
 static int
 pack_public_key_ed25519(const fido_cred_t *cred,
@@ -712,10 +712,10 @@ pack_public_key(uint32_t alg, const fido_cred_t *cred,
     struct sk_enroll_response *response)
 {
 	switch(alg) {
-#ifdef WITH_OPENSSL
+#ifdef HAVE_OPENSSL
 	case SSH_SK_ECDSA:
 		return pack_public_key_ecdsa(cred, response);
-#endif /* WITH_OPENSSL */
+#endif /* HAVE_OPENSSL */
 	case SSH_SK_ED25519:
 		return pack_public_key_ed25519(cred, response);
 	default:
@@ -805,11 +805,11 @@ sk_enroll(uint32_t alg, const uint8_t *challenge, size_t challenge_len,
 		goto out; /* error already logged */
 
 	switch(alg) {
-#ifdef WITH_OPENSSL
+#ifdef HAVE_OPENSSL
 	case SSH_SK_ECDSA:
 		cose_alg = COSE_ES256;
 		break;
-#endif /* WITH_OPENSSL */
+#endif /* HAVE_OPENSSL */
 	case SSH_SK_ED25519:
 		cose_alg = COSE_EDDSA;
 		break;
@@ -973,7 +973,7 @@ sk_enroll(uint32_t alg, const uint8_t *challenge, size_t challenge_len,
 	return ret;
 }
 
-#ifdef WITH_OPENSSL
+#ifdef HAVE_OPENSSL
 static int
 pack_sig_ecdsa(fido_assert_t *assert, struct sk_sign_response *response)
 {
@@ -1010,7 +1010,7 @@ pack_sig_ecdsa(fido_assert_t *assert, struct sk_sign_response *response)
 	}
 	return ret;
 }
-#endif /* WITH_OPENSSL */
+#endif /* HAVE_OPENSSL */
 
 static int
 pack_sig_ed25519(fido_assert_t *assert, struct sk_sign_response *response)
@@ -1045,10 +1045,10 @@ pack_sig(uint32_t  alg, fido_assert_t *assert,
     struct sk_sign_response *response)
 {
 	switch(alg) {
-#ifdef WITH_OPENSSL
+#ifdef HAVE_OPENSSL
 	case SSH_SK_ECDSA:
 		return pack_sig_ecdsa(assert, response);
-#endif /* WITH_OPENSSL */
+#endif /* HAVE_OPENSSL */
 	case SSH_SK_ED25519:
 		return pack_sig_ed25519(assert, response);
 	default:
@@ -1407,4 +1407,4 @@ sk_load_resident_keys(const char *pin, struct sk_option **options,
 	return ret;
 }
 
-#endif /* HAVE_FIDO */
+#endif /* WITH_FIDO */

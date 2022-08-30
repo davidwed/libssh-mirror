@@ -16,6 +16,9 @@ include_directories(${OPENSSL_INCLUDE_DIR}
                     ${CMAKE_CURRENT_SOURCE_DIR}
                     ${CMAKE_BINARY_DIR}/tests)
 
+set(SK_DUMMY_LIBRARY sk-dummy.c)                
+add_library(sk-dummy SHARED ${SK_DUMMY_LIBRARY})
+
 set(TORTURE_LINK_LIBRARIES
     ${CMOCKA_LIBRARY}
     ssh::static)
