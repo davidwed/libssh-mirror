@@ -156,7 +156,7 @@ static void
 skdebug(const char *func, const char *fmt, ...)
 {
 #if !defined(SK_STANDALONE)
-	char *msg;
+	char *msg = NULL;
 	va_list ap;
 
 	va_start(ap, fmt);
@@ -328,23 +328,15 @@ sk_touch_poll(struct sk_usbhid **skv, size_t nsk, int *touch, size_t *idx)
 static int
 sha256_mem(const void *m, unsigned long mlen, u_char *d, size_t dlen)
 {
-#ifdef HAVE_OPENSSL
-	u_int mdlen;
-#else
 	SHA256CTX ctx;
-#endif
 
 	if (dlen != 32)
 		return -1;
-#ifdef HAVE_OPENSSL
-	mdlen = dlen;
-	if (!EVP_Digest(m, mlen, d, &mdlen, EVP_sha256(), NULL))
-		return -1;
-#else
+
 	ctx = sha256_init();
 	sha256_update(ctx, m, mlen);
 	sha256_final(d, ctx);
-#endif
+
 	return 0;
 }
 #endif /* !HAVE_FIDO_ASSERT_SET_CLIENTDATA || !HAVE_FIDO_CRED_SET_CLIENTDATA */

@@ -885,6 +885,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
     ssh_string e = NULL;
     ssh_string n = NULL;
     ssh_string str = NULL;
+    ssh_string sk_application_str = ssh_string_from_char(key->sk_application);
 #if MBEDTLS_VERSION_MAJOR > 2
     mbedtls_mpi E;
     mbedtls_mpi N;
@@ -1014,7 +1015,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
             e = NULL;
 
             if (key->type == SSH_KEYTYPE_SK_ECDSA &&
-                ssh_buffer_add_data(buffer, key->sk_application, sizeof(key->sk_application)) < 0) {
+                ssh_buffer_add_ssh_string(buffer, sk_application_str) < 0) {
                 goto fail;
             }
 
@@ -1026,7 +1027,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
                 goto fail;
             }
             if (key->type == SSH_KEYTYPE_SK_ED25519 &&
-                ssh_buffer_add_data(buffer, key->sk_application, sizeof(key->sk_application)) < 0) {
+                ssh_buffer_add_ssh_string(buffer, sk_application_str) < 0) {
                 goto fail;
             }
             break;
@@ -1393,10 +1394,10 @@ ssh_signature pki_do_sign_hash(const ssh_key privkey,
 {
     ssh_signature sig = NULL;
     int rc;
-    const char *sk_provider, *sk_pin;
-    u_char **sigp;
-    size_t *lenp;
-    u_int compat;
+    const char *sk_provider = NULL, *sk_pin = NULL;
+    u_char **sigp= NULL;
+    size_t *lenp = 0;
+    u_int compat = 0;
 
     sig = ssh_signature_new();
     if (sig == NULL) {

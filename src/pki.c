@@ -713,9 +713,11 @@ int ssh_key_cmp(const ssh_key k1,
 
     if (k1->type == SSH_KEYTYPE_SK_ECDSA ||
         k1->type == SSH_KEYTYPE_SK_ED25519) {
-        if (strncmp((const char *) k1->sk_application,
-                (const char *) k2->sk_application,
-                sizeof(k2->sk_application)) != 0) {
+        ssh_string sk_application_str1 = ssh_string_from_char(k1->sk_application);
+        ssh_string sk_application_str2 = ssh_string_from_char(k2->sk_application);
+        if (strncmp(ssh_string_get_char(sk_application_str1),
+                ssh_string_get_char(sk_application_str2),
+                ssh_string_len(sk_application_str2)) != 0) {
             return 1;
         }
     }
@@ -2056,17 +2058,17 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
         case SSH_KEYTYPE_ED25519_CERT01:
             break;
         case SSH_KEYTYPE_SK_ECDSA:
-            rc = pki_key_generate_ecdsa(key, 256);
-            if (rc == SSH_ERROR) {
-                    goto error;
-            }
-            break;
+            // rc = pki_key_generate_ecdsa(key, 256);
+            // if (rc == SSH_ERROR) {
+            //         goto error;
+            // }
+            // break;
         case SSH_KEYTYPE_SK_ED25519:
-            rc = pki_key_generate_ed25519(key);
-            if (rc == SSH_ERROR) {
-                    goto error;
-            }
-            break;
+            // rc = pki_key_generate_ed25519(key);
+            // if (rc == SSH_ERROR) {
+            //         goto error;
+            // }
+            // break;
         case SSH_KEYTYPE_SK_ECDSA_CERT01:
         case SSH_KEYTYPE_SK_ED25519_CERT01:
         case SSH_KEYTYPE_RSA1:
