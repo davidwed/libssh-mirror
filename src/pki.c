@@ -1994,6 +1994,25 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
         ssh_key *pkey)
 {
     int rc;
+    // if (type == SSH_KEYTYPE_SK_ECDSA || type == SSH_KEYTYPE_SK_ED25519) {
+    char *sk_provider;
+    ssh_buffer challenge;
+    ssh_buffer attest;
+    char *sk_device;
+    char *sk_user;
+    char *passphrase;
+
+    sk_provider = strdup("internal");
+    sk_device = strdup("device");
+    sk_user = strdup("user");
+    passphrase = NULL;
+    //struct sk_enroll_response resp;
+    if (sk_provider == NULL) {
+        sk_provider = strdup("internal");
+    }
+    challenge = ssh_buffer_new();
+    attest = ssh_buffer_new();
+    //}
     ssh_key key = ssh_key_new();
 
     if (key == NULL) {
@@ -2004,6 +2023,10 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
     key->type_c = ssh_key_type_to_char(type);
     key->flags = SSH_KEY_FLAG_PRIVATE | SSH_KEY_FLAG_PUBLIC;
 
+    
+    key->sk_application = strdup("ssh:");
+    key->sk_flags = ~SSH_SK_USER_PRESENCE_REQD;
+    
     switch(type){
         case SSH_KEYTYPE_RSA:
             rc = pki_key_generate_rsa(key, parameter);
@@ -2058,17 +2081,19 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
         case SSH_KEYTYPE_ED25519_CERT01:
             break;
         case SSH_KEYTYPE_SK_ECDSA:
-            // rc = pki_key_generate_ecdsa(key, 256);
-            // if (rc == SSH_ERROR) {
-            //         goto error;
-            // }
-            // break;
         case SSH_KEYTYPE_SK_ED25519:
-            // rc = pki_key_generate_ed25519(key);
-            // if (rc == SSH_ERROR) {
-            //         goto error;
-            // }
-            // break;
+            //rc = pki_key_generate_ed25519(key);
+#ifdef WITH_FIDO            
+            rc = sshsk_enroll(type, sk_provider, sk_device,
+			    key->sk_application == NULL ? "ssh:" : key->sk_application,
+			    sk_user, key->sk_flags, passphrase, challenge,
+			    &key, attest);
+            
+            if (rc != 0) {
+                goto error;
+            }
+#endif            
+            break;
         case SSH_KEYTYPE_SK_ECDSA_CERT01:
         case SSH_KEYTYPE_SK_ED25519_CERT01:
         case SSH_KEYTYPE_RSA1:

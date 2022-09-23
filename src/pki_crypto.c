@@ -2378,11 +2378,14 @@ ssh_string pki_signature_to_blob(const ssh_signature sig)
             sig_blob = ssh_string_copy(sig->raw_sig);
             break;
         case SSH_KEYTYPE_ED25519:
+        case SSH_KEYTYPE_SK_ED25519:
             sig_blob = pki_ed25519_signature_to_blob(sig);
+            
             break;
         case SSH_KEYTYPE_ECDSA_P256:
         case SSH_KEYTYPE_ECDSA_P384:
         case SSH_KEYTYPE_ECDSA_P521:
+        case SSH_KEYTYPE_SK_ECDSA:
 #ifdef HAVE_OPENSSL_ECC
             sig_blob = pki_ecdsa_signature_to_blob(sig);
             break;

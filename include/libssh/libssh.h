@@ -842,6 +842,10 @@ LIBSSH_API int ssh_session_set_disconnect_message(ssh_session session, const cha
 LIBSSH_API int sshsk_sign(const char *provider_path, struct ssh_key_struct *key,
     u_char **sigp, size_t *lenp, const u_char *data, size_t datalen,
     u_int compat, const char *pin);
+LIBSSH_API int sshsk_enroll(int type, const char *provider_path, const char *device,
+    const char *application, const char *userid, uint8_t flags,
+    const char *pin, struct ssh_buffer_struct *challenge_buf,
+    struct ssh_key_struct **keyp, struct ssh_buffer_struct *attest);
 
 #ifndef LIBSSH_LEGACY_0_4
 #include "libssh/legacy.h"
