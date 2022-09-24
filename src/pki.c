@@ -2107,6 +2107,11 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
     return SSH_OK;
 error:
     ssh_key_free(key);
+    SAFE_FREE(passphrase);
+    SAFE_FREE(sk_user);
+    SAFE_FREE(sk_device);
+    SAFE_FREE(attest);
+    SAFE_FREE(challenge);
     return SSH_ERROR;
 }
 
