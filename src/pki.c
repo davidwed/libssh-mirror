@@ -2001,6 +2001,7 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
     char *sk_device;
     char *sk_user;
     char *passphrase;
+    ssh_key key;
 
     sk_provider = strdup("internal");
     sk_device = strdup("device");
@@ -2013,7 +2014,7 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
     challenge = ssh_buffer_new();
     attest = ssh_buffer_new();
     //}
-    ssh_key key = ssh_key_new();
+    key = ssh_key_new();
 
     if (key == NULL) {
         return SSH_ERROR;
