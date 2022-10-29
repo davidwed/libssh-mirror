@@ -3435,7 +3435,7 @@ ssh_signature pki_do_sign_hash(const ssh_key privkey,
                 ssh_signature_free(sig);
                 return NULL;
             }
-		    break;
+            break;
 #endif
         default:
             ssh_signature_free(sig);

@@ -24,9 +24,9 @@ struct ssh_buffer_struct;
 struct ssh_key_struct;
 struct sk_option;
 
-#if !defined(__GNUC__) || (__GNUC__ < 2)
-# define __attribute__(x)
-#endif /* !defined(__GNUC__) || (__GNUC__ < 2) */
+// #if !defined(__GNUC__) || (__GNUC__ < 2)
+// # define __attribute__(x)
+// #endif /* !defined(__GNUC__) || (__GNUC__ < 2) */
 
 /* Version of protocol expected from ssh-sk-helper */
 #define SSH_SK_HELPER_VERSION		5

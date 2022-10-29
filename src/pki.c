@@ -713,11 +713,9 @@ int ssh_key_cmp(const ssh_key k1,
 
     if (k1->type == SSH_KEYTYPE_SK_ECDSA ||
         k1->type == SSH_KEYTYPE_SK_ED25519) {
-        ssh_string sk_application_str1 = ssh_string_from_char(k1->sk_application);
-        ssh_string sk_application_str2 = ssh_string_from_char(k2->sk_application);
-        if (strncmp(ssh_string_get_char(sk_application_str1),
-                ssh_string_get_char(sk_application_str2),
-                ssh_string_len(sk_application_str2)) != 0) {
+        if (strncmp(k1->sk_application,
+                k2->sk_application,
+                strlen(k2->sk_application)) != 0) {
             return 1;
         }
     }
@@ -2613,7 +2611,7 @@ int ssh_pki_signature_verify(ssh_session session,
            return SSH_ERROR;
         }
         sha256_update(ctx, key->sk_application,
-               sizeof(key->sk_application));
+               strlen(key->sk_application));
         sha256_final(application_hash, ctx);
 
         ctx = sha256_init();
