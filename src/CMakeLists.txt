@@ -79,6 +79,18 @@ if (WITH_NACL AND NACL_FOUND)
   )
 endif (WITH_NACL AND NACL_FOUND)
 
+if (WITH_FIDO AND FIDO_FOUND)
+  set(LIBSSH_PRIVATE_INCLUDE_DIRS
+    ${LIBSSH_PRIVATE_INCLUDE_DIRS}
+    ${FIDO_INCLUDE_DIR}
+  )
+
+  set(LIBSSH_LINK_LIBRARIES
+    ${LIBSSH_LINK_LIBRARIES}
+    ${FIDO_LIBRARY} ${CMAKE_DL_LIBS}
+  )
+endif (WITH_FIDO AND FIDO_FOUND)
+
 if (MINGW AND Threads_FOUND)
   set(LIBSSH_LINK_LIBRARIES
     ${LIBSSH_LINK_LIBRARIES}
@@ -140,7 +152,9 @@ set(libssh_SRCS
   poll.c
   session.c
   scp.c
+  sk-usbhid.c
   socket.c
+  ssh-sk.c
   string.c
   threads.c
   wrapper.c

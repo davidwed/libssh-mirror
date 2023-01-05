@@ -57,6 +57,8 @@
 #include "libssh/pki.h"
 #include "libssh/pki_priv.h"
 #include "libssh/bignum.h"
+#include "libssh/ssh-sk.h"
+#include "libssh/sk-api.h"
 
 struct pem_get_password_struct {
     ssh_auth_callback fn;
@@ -1831,6 +1833,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
     ssh_string p = NULL;
     ssh_string g = NULL;
     ssh_string q = NULL;
+    ssh_string sk_application_str = ssh_string_from_char(key->sk_application);
     int rc;
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
     BIGNUM *bp = NULL, *bq = NULL, *bg = NULL, *bpub_key = NULL,
@@ -2038,7 +2041,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
                 goto fail;
             }
             if (key->type == SSH_KEYTYPE_SK_ED25519 &&
-                ssh_buffer_add_ssh_string(buffer, key->sk_application) < 0) {
+                ssh_buffer_add_ssh_string(buffer, sk_application_str) < 0) {
                 goto fail;
             }
             break;
@@ -2162,7 +2165,7 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
 #endif /* OPENSSL_VERSION_NUMBER */
 
             if (key->type == SSH_KEYTYPE_SK_ECDSA &&
-                ssh_buffer_add_ssh_string(buffer, key->sk_application) < 0) {
+                ssh_buffer_add_ssh_string(buffer, sk_application_str) < 0) {
                 goto fail;
             }
 
@@ -2400,11 +2403,14 @@ ssh_string pki_signature_to_blob(const ssh_signature sig)
             sig_blob = ssh_string_copy(sig->raw_sig);
             break;
         case SSH_KEYTYPE_ED25519:
+        case SSH_KEYTYPE_SK_ED25519:
             sig_blob = pki_ed25519_signature_to_blob(sig);
+            
             break;
         case SSH_KEYTYPE_ECDSA_P256:
         case SSH_KEYTYPE_ECDSA_P384:
         case SSH_KEYTYPE_ECDSA_P521:
+        case SSH_KEYTYPE_SK_ECDSA:
 #ifdef HAVE_OPENSSL_ECC
             sig_blob = pki_ecdsa_signature_to_blob(sig);
             break;
@@ -3364,6 +3370,10 @@ ssh_signature pki_do_sign_hash(const ssh_key privkey,
 {
     ssh_signature sig = NULL;
     int rc;
+    const char *sk_provider = NULL, *sk_pin = NULL;
+    u_char **sigp= NULL;
+    size_t *lenp = 0;
+    u_int compat = 0;
 
     sig = ssh_signature_new();
     if (sig == NULL) {
@@ -3382,6 +3392,17 @@ ssh_signature pki_do_sign_hash(const ssh_key privkey,
                 return NULL;
             }
             break;
+        case SSH_KEYTYPE_SK_ECDSA:
+        case SSH_KEYTYPE_SK_ED25519:
+#ifdef WITH_FIDO
+            rc = sshsk_sign(sk_provider, privkey, sigp, lenp, hash,
+		            hlen, compat, sk_pin);
+            if (rc != SSH_OK) {
+                ssh_signature_free(sig);
+                return NULL;
+            }
+            break;
+#endif
         default:
             ssh_signature_free(sig);
             return NULL;

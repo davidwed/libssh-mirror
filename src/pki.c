@@ -66,6 +66,8 @@
 #include "libssh/buffer.h"
 #include "libssh/misc.h"
 #include "libssh/agent.h"
+#include "libssh/ssh-sk.h"
+#include "libssh/sk-api.h"
 
 #ifndef MAX_LINE_SIZE
 #define MAX_LINE_SIZE 4096
@@ -183,8 +185,9 @@ void ssh_key_clean (ssh_key key)
         key->type == SSH_KEYTYPE_SK_ED25519 ||
         key->type == SSH_KEYTYPE_SK_ECDSA_CERT01 ||
         key->type == SSH_KEYTYPE_SK_ED25519_CERT01) {
-        ssh_string_burn(key->sk_application);
-        ssh_string_free(key->sk_application);
+        SAFE_FREE(key->sk_application);
+        ssh_buffer_free(key->sk_key_handle);
+        ssh_buffer_free(key->sk_reserved);
     }
     key->cert_type = SSH_KEYTYPE_UNKNOWN;
     key->flags = SSH_KEY_FLAG_EMPTY;
@@ -710,9 +713,9 @@ int ssh_key_cmp(const ssh_key k1,
 
     if (k1->type == SSH_KEYTYPE_SK_ECDSA ||
         k1->type == SSH_KEYTYPE_SK_ED25519) {
-        if (strncmp(ssh_string_get_char(k1->sk_application),
-                ssh_string_get_char(k2->sk_application),
-                ssh_string_len(k2->sk_application)) != 0) {
+        if (strncmp(k1->sk_application,
+                k2->sk_application,
+                strlen(k2->sk_application)) != 0) {
             return 1;
         }
     }
@@ -1448,7 +1451,8 @@ static int pki_import_pubkey_buffer(ssh_buffer buffer,
 
                 /* Unpack SK specific parameters */
                 if (type == SSH_KEYTYPE_SK_ECDSA) {
-                    ssh_string application = ssh_buffer_get_ssh_string(buffer);
+                    ssh_string application_string = ssh_buffer_get_ssh_string(buffer);
+                    char *application = ssh_string_to_char(application_string);
                     if (application == NULL) {
                         SSH_LOG(SSH_LOG_TRACE, "SK Unpack error");
                         goto fail;
@@ -1483,7 +1487,8 @@ static int pki_import_pubkey_buffer(ssh_buffer buffer,
             SSH_STRING_FREE(pubkey);
 
             if (type == SSH_KEYTYPE_SK_ED25519) {
-                ssh_string application = ssh_buffer_get_ssh_string(buffer);
+                ssh_string application_string = ssh_buffer_get_ssh_string(buffer);
+                char *application = ssh_string_to_char(application_string);
                 if (application == NULL) {
                     SSH_LOG(SSH_LOG_TRACE, "SK Unpack error");
                     goto fail;
@@ -1987,7 +1992,27 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
         ssh_key *pkey)
 {
     int rc;
-    ssh_key key = ssh_key_new();
+    // if (type == SSH_KEYTYPE_SK_ECDSA || type == SSH_KEYTYPE_SK_ED25519) {
+    char *sk_provider;
+    ssh_buffer challenge;
+    ssh_buffer attest;
+    char *sk_device;
+    char *sk_user;
+    char *passphrase;
+    ssh_key key;
+
+    sk_provider = strdup("internal");
+    sk_device = strdup("device");
+    sk_user = strdup("user");
+    passphrase = NULL;
+    //struct sk_enroll_response resp;
+    if (sk_provider == NULL) {
+        sk_provider = strdup("internal");
+    }
+    challenge = ssh_buffer_new();
+    attest = ssh_buffer_new();
+    //}
+    key = ssh_key_new();
 
     if (key == NULL) {
         return SSH_ERROR;
@@ -1997,6 +2022,10 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
     key->type_c = ssh_key_type_to_char(type);
     key->flags = SSH_KEY_FLAG_PRIVATE | SSH_KEY_FLAG_PUBLIC;
 
+    
+    key->sk_application = strdup("ssh:");
+    key->sk_flags = ~SSH_SK_USER_PRESENCE_REQD;
+    
     switch(type){
         case SSH_KEYTYPE_RSA:
             rc = pki_key_generate_rsa(key, parameter);
@@ -2049,9 +2078,22 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
         case SSH_KEYTYPE_ECDSA_P384_CERT01:
         case SSH_KEYTYPE_ECDSA_P521_CERT01:
         case SSH_KEYTYPE_ED25519_CERT01:
+            break;
         case SSH_KEYTYPE_SK_ECDSA:
-        case SSH_KEYTYPE_SK_ECDSA_CERT01:
         case SSH_KEYTYPE_SK_ED25519:
+            //rc = pki_key_generate_ed25519(key);
+#ifdef WITH_FIDO            
+            rc = sshsk_enroll(type, sk_provider, sk_device,
+			    key->sk_application == NULL ? "ssh:" : key->sk_application,
+			    sk_user, key->sk_flags, passphrase, challenge,
+			    &key, attest);
+            
+            if (rc != 0) {
+                goto error;
+            }
+#endif            
+            break;
+        case SSH_KEYTYPE_SK_ECDSA_CERT01:
         case SSH_KEYTYPE_SK_ED25519_CERT01:
         case SSH_KEYTYPE_RSA1:
         case SSH_KEYTYPE_UNKNOWN:
@@ -2063,6 +2105,11 @@ int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
     return SSH_OK;
 error:
     ssh_key_free(key);
+    SAFE_FREE(passphrase);
+    SAFE_FREE(sk_user);
+    SAFE_FREE(sk_device);
+    SAFE_FREE(attest);
+    SAFE_FREE(challenge);
     return SSH_ERROR;
 }
 
@@ -2563,8 +2610,8 @@ int ssh_pki_signature_verify(ssh_session session,
                     "Can not create SHA256CTX for application hash");
            return SSH_ERROR;
         }
-        sha256_update(ctx, ssh_string_data(key->sk_application),
-               ssh_string_len(key->sk_application));
+        sha256_update(ctx, key->sk_application,
+               strlen(key->sk_application));
         sha256_final(application_hash, ctx);
 
         ctx = sha256_init();
