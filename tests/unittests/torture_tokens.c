@@ -31,6 +31,47 @@
 #include "libssh/token.h"
 #include "libssh/priv.h"
 
+static void torture_wildcard_matching(UNUSED_PARAM(void **state))
+{
+    int match;
+
+    /* Match empty string */
+    match = wildcard_matching("", "");
+    assert_true(match);
+
+    match = wildcard_matching("", "*");
+    assert_true(match);
+
+    match = wildcard_matching("", "*****");
+    assert_true(match);
+
+    /*Match single char*/
+    match = wildcard_matching("a", "?*");
+    assert_true(match);
+
+    match = wildcard_matching("a", "*?*");
+    assert_true(match);
+
+    match = wildcard_matching("a", "*??*");
+    assert_false(match);
+
+    match = wildcard_matching("a", "??");
+    assert_false(match);
+
+    /*Match some patterns*/
+    match = wildcard_matching("aaa", "a*");
+    assert_true(match);
+
+    match = wildcard_matching("aaabbb", "a*b");
+    assert_true(match);
+
+    match = wildcard_matching("aaaabbb", "aaaa*");
+    assert_true(match);
+
+    match = wildcard_matching("aaaabbbb", "aaaaa*");
+    assert_false(match);
+}
+
 static void torture_find_matching(UNUSED_PARAM(void **state))
 {
     char *matching;
@@ -95,6 +136,23 @@ static void torture_find_all_matching(UNUSED_PARAM(void **state))
     /* No matching returns NULL */
     matching = ssh_find_all_matching("c,b,a", "d,e,f");
     assert_null(matching);
+
+    matching = ssh_find_all_matching("aaa,bbb,aaaa", "!b*,!aaa?,aaa?");
+    assert_null(matching);
+
+
+    /*wildcard matching*/
+    matching = ssh_find_all_matching("aaa,bbb,aaaa", "b*,!aaa?,a*");
+    assert_non_null(matching);
+    assert_string_equal(matching, "bbb,aaa");
+    SAFE_FREE(matching);
+
+    /*wildcard matching follows pattern preference followed by available list preference*/
+    matching = ssh_find_all_matching("aaaa,aa,bbbaa,bbb", "b*,!aaa?,a*");
+    assert_non_null(matching);
+    assert_string_equal(matching, "bbbaa,bbb,aa");
+    SAFE_FREE(matching);
+
 }
 
 static void tokenize_compare_expected(const char *chain, const char **expected,
@@ -333,6 +391,7 @@ int torture_run_tests(void)
     int rc;
     struct CMUnitTest tests[] = {
         cmocka_unit_test(torture_tokens_sanity),
+        cmocka_unit_test(torture_wildcard_matching),
         cmocka_unit_test(torture_find_matching),
         cmocka_unit_test(torture_find_all_matching),
         cmocka_unit_test(torture_remove_duplicate),
