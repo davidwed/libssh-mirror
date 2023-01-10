@@ -103,12 +103,21 @@ struct ssh_tokens_st *ssh_tokenize(const char *chain, char separator)
 
     /* Allocate tokens list */
     tokens->tokens = calloc(num_tokens + 1, sizeof(char *));
-    if (tokens->tokens == NULL) {
+    tokens->n_tokens = calloc(num_tokens + 1, sizeof(char *));
+
+    if (tokens->tokens == NULL || tokens->n_tokens == NULL) {
         goto error;
     }
 
     /* First token starts in the beginning of the chain */
-    tokens->tokens[0] = tokens->buffer;
+    int tok_count = 0;
+    int n_tok_count = 0;
+    if(tokens->buffer[0] == '!'){
+        tokens->n_tokens[n_tok_count++] = tokens->buffer;
+    }
+    else{
+        tokens->tokens[tok_count++] = tokens->buffer;
+    }
     c = tokens->buffer;
 
     for (i = 1; i < num_tokens; i++) {
@@ -126,7 +135,12 @@ struct ssh_tokens_st *ssh_tokenize(const char *chain, char separator)
 
         /* If we did not reach the end of the chain yet, set the next token */
         if (*c != '\0') {
-            tokens->tokens[i] = c;
+            if(*c == '!'){
+                tokens->n_tokens[n_tok_count++] = c;
+            }
+            else{
+                tokens->tokens[tok_count++] = c;
+            }
         } else {
             break;
         }
@@ -137,6 +151,63 @@ struct ssh_tokens_st *ssh_tokenize(const char *chain, char separator)
 error:
     ssh_tokens_free(tokens);
     return NULL;
+}
+
+/**
+ * @internal
+ *
+ * @brief given a string text and a pattern, checks if they match
+ *  pattern recognises the following characters :
+ *  ? => matches exactly one character
+ *  * => matches with zero or more characters in a row 
+ *  
+ *  Example : aes* would match with all the aes algorithms such as aes128-ctr, aes192-ctr etc.,
+ *            aes1??-ctr would match with aes128-ctr and aes192-ctr
+ *      
+ *
+ * @param[in] text      string to be matched            example : aes128-ctr
+ * @param[in] pattern   string to be matched against    example : aes*
+ *
+ * @return  0 if text matches pattern
+ *          1 if text does NOT match the pattern
+ */
+int wildcard_matching(const char * text, const char * pattern){
+    uint32_t str_len = strlen(text);
+    uint32_t pat_len = strlen(pattern);
+    uint8_t *dp = (uint8_t *)calloc(str_len + 1, sizeof(uint8_t));
+    // prev stores if the strings till pat_it - 1 and str_it - 1 have matched
+    uint8_t prev = 1, temp;
+    memset(dp, 0, (str_len + 1) * (sizeof(uint8_t)));
+    dp[0] = 1;
+    for (uint32_t pat_it = 1; pat_it < pat_len + 1; pat_it++)
+    {
+        if (pattern[pat_it - 1] != '*')
+            dp[0] = 0;
+        for (uint32_t str_it = 1; str_it < str_len + 1; str_it++)
+        {
+            temp = dp[str_it];
+            if (pattern[pat_it - 1] == '*')
+                dp[str_it] = dp[str_it - 1] || dp[str_it];
+            else if (pattern[pat_it - 1] == '?')
+                dp[str_it] = prev;
+            else if (pattern[pat_it - 1] == text[str_it - 1])
+                dp[str_it] = prev;
+            else
+                dp[str_it] = 0;
+            prev = temp;
+        }
+        prev = dp[0];
+    }
+
+    int match;
+    if (dp[str_len] != 0)
+        match = 1;
+    else
+        match = 0;
+
+    return match;
+
+    SAFE_FREE(dp);
 }
 
 /**
@@ -155,7 +226,7 @@ error:
 char *ssh_find_matching(const char *available_list,
                         const char *preferred_list)
 {
-    struct ssh_tokens_st *a_tok = NULL, *p_tok = NULL;
+    struct ssh_tokens_st *a_tok = NULL, *n_tok ,*p_tok = NULL;
 
     int i, j;
     char *ret = NULL;
@@ -197,17 +268,24 @@ out:
  * returns a list of all matching tokens ordered by preference.
  *
  * @param[in] available_list    The list of available tokens
- * @param[in] preferred_list    The list of tokens to search, ordered by
- * preference
+ * @param[in] preferred_list    The list of patterns to search and ignore.
+ *                              Tokens to search for are ordered by preference.
  *
+ * patterns to ignore should start with '!'
+ * 
+ * Example: 1.
+ *            !aes* => ignores all tokens which start with aes
+ *            !aes  => ignores only the token "aes" 
+ * 
+ * 
  * @return  A newly allocated string containing the list of all matching tokens;
  * NULL otherwise
  */
 char *ssh_find_all_matching(const char *available_list,
                             const char *preferred_list)
 {
-    struct ssh_tokens_st *a_tok = NULL, *p_tok = NULL;
-    int i, j;
+    struct ssh_tokens_st *a_tok = NULL, *p_tok = NULL, *n_tok = NULL;
+    int i, j, k;
     char *ret = NULL;
     size_t max, len, pos = 0;
     int match;
@@ -237,9 +315,14 @@ char *ssh_find_all_matching(const char *available_list,
 
     for (i = 0; p_tok->tokens[i] ; i++) {
         for (j = 0; a_tok->tokens[j]; j++) {
-            match = !strcmp(a_tok->tokens[j], p_tok->tokens[i]);
+            match = (wildcard_matching(a_tok->tokens[j], p_tok->tokens[i]) != 0);
+            for(k = 0; p_tok->n_tokens[k] && match == 1; k++){
+                if(wildcard_matching(a_tok->tokens[j],p_tok->n_tokens[k]+1) != 0){
+                    match = 0;
+                }
+            }
             if (match) {
-                if (pos != 0) {
+                if (pos != 0 ) {
                     ret[pos] = ',';
                     pos++;
                 }

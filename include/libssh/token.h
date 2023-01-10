@@ -29,6 +29,7 @@
 struct ssh_tokens_st {
     char *buffer;
     char **tokens;
+    char **n_tokens;
 };
 
 #ifdef __cplusplus
