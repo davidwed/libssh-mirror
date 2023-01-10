@@ -52,8 +52,15 @@ void ssh_tokens_free(struct ssh_tokens_st *tokens)
         }
     }
 
+    if (tokens->n_tokens != NULL) {
+        for (i = 0; tokens->n_tokens[i] != NULL; i++) {
+            explicit_bzero(tokens->n_tokens[i], strlen(tokens->n_tokens[i]));
+        }
+    }
+
     SAFE_FREE(tokens->buffer);
     SAFE_FREE(tokens->tokens);
+    SAFE_FREE(tokens->n_tokens);
     SAFE_FREE(tokens);
 }
 
@@ -136,7 +143,7 @@ struct ssh_tokens_st *ssh_tokenize(const char *chain, char separator)
         /* If we did not reach the end of the chain yet, set the next token */
         if (*c != '\0') {
             if(*c == '!'){
-                tokens->n_tokens[n_tok_count++] = c;
+                tokens->n_tokens[n_tok_count++] = c+1;
             }
             else{
                 tokens->tokens[tok_count++] = c;
@@ -172,25 +179,24 @@ error:
  *          1 if text does NOT match the pattern
  */
 int wildcard_matching(const char * text, const char * pattern){
-    uint32_t str_len = strlen(text);
-    uint32_t pat_len = strlen(pattern);
-    uint8_t *dp = (uint8_t *)calloc(str_len + 1, sizeof(uint8_t));
+    int str_len = strlen(text);
+    int pat_len = strlen(pattern);
+    int *dp = calloc(str_len + 1, sizeof(int));
     // prev stores if the strings till pat_it - 1 and str_it - 1 have matched
-    uint8_t prev = 1, temp;
-    memset(dp, 0, (str_len + 1) * (sizeof(uint8_t)));
+    int prev = 1, temp;
     dp[0] = 1;
-    for (uint32_t pat_it = 1; pat_it < pat_len + 1; pat_it++)
+    for (int pat_it = 0; pat_it < pat_len; pat_it++)
     {
-        if (pattern[pat_it - 1] != '*')
+        if (pattern[pat_it] != '*')
             dp[0] = 0;
-        for (uint32_t str_it = 1; str_it < str_len + 1; str_it++)
+        for (int str_it = 1; str_it < str_len + 1; str_it++)
         {
             temp = dp[str_it];
-            if (pattern[pat_it - 1] == '*')
+            if (pattern[pat_it] == '*')
                 dp[str_it] = dp[str_it - 1] || dp[str_it];
-            else if (pattern[pat_it - 1] == '?')
+            else if (pattern[pat_it] == '?')
                 dp[str_it] = prev;
-            else if (pattern[pat_it - 1] == text[str_it - 1])
+            else if (pattern[pat_it] == text[str_it - 1])
                 dp[str_it] = prev;
             else
                 dp[str_it] = 0;
@@ -315,14 +321,16 @@ char *ssh_find_all_matching(const char *available_list,
 
     for (i = 0; p_tok->tokens[i] ; i++) {
         for (j = 0; a_tok->tokens[j]; j++) {
-            match = (wildcard_matching(a_tok->tokens[j], p_tok->tokens[i]) != 0);
-            for(k = 0; p_tok->n_tokens[k] && match == 1; k++){
-                if(wildcard_matching(a_tok->tokens[j],p_tok->n_tokens[k]+1) != 0){
-                    match = 0;
+            match = (wildcard_matching(a_tok->tokens[j], p_tok->tokens[i]));
+            if(match){
+                for(k = 0; p_tok->n_tokens[k]; k++){
+                    if(wildcard_matching(a_tok->tokens[j],p_tok->n_tokens[k]) != 0){
+                        match = 0;
+                    }
                 }
             }
             if (match) {
-                if (pos != 0 ) {
+                if (pos != 0) {
                     ret[pos] = ',';
                     pos++;
                 }
