@@ -175,45 +175,47 @@ error:
  * @param[in] text      string to be matched            example : aes128-ctr
  * @param[in] pattern   string to be matched against    example : aes*
  *
- * @return  0 if text matches pattern
- *          1 if text does NOT match the pattern
+ * @return  1 if text matches pattern
+ *          0 if text does NOT match the pattern
  */
-int wildcard_matching(const char * text, const char * pattern){
-    int str_len = strlen(text);
-    int pat_len = strlen(pattern);
-    int *dp = calloc(str_len + 1, sizeof(int));
-    // prev stores if the strings till pat_it - 1 and str_it - 1 have matched
+bool wildcard_matching(const char * text, const char * pattern){
+    int match;
+    size_t str_len = strlen(text);
+    size_t pat_len = strlen(pattern);
+    bool *dp = calloc(str_len + 1, sizeof(bool));
+    // prev stores if the strings untill pat_it and str_it - 1 have matched
     int prev = 1, temp;
     dp[0] = 1;
-    for (int pat_it = 0; pat_it < pat_len; pat_it++)
-    {
-        if (pattern[pat_it] != '*')
+    for (int pat_it = 0; pat_it < pat_len; pat_it++) {
+        if (pattern[pat_it] != '*') {
             dp[0] = 0;
-        for (int str_it = 1; str_it < str_len + 1; str_it++)
-        {
+        }
+        for (int str_it = 1; str_it < str_len + 1; str_it++) {
             temp = dp[str_it];
-            if (pattern[pat_it] == '*')
+            if (pattern[pat_it] == '*') {
                 dp[str_it] = dp[str_it - 1] || dp[str_it];
-            else if (pattern[pat_it] == '?')
+            }
+            else if (pattern[pat_it] == '?' || pattern[pat_it] == text[str_it - 1]) {
                 dp[str_it] = prev;
-            else if (pattern[pat_it] == text[str_it - 1])
-                dp[str_it] = prev;
-            else
+            }
+            else {
                 dp[str_it] = 0;
+            }
             prev = temp;
         }
         prev = dp[0];
     }
 
-    int match;
-    if (dp[str_len] != 0)
-        match = 1;
-    else
-        match = 0;
-
-    return match;
+    if (dp[str_len] != 0) {
+        match = true;
+    }
+    else {
+        match = false;
+    }
 
     SAFE_FREE(dp);
+    
+    return match;
 }
 
 /**
@@ -294,7 +296,7 @@ char *ssh_find_all_matching(const char *available_list,
     int i, j, k;
     char *ret = NULL;
     size_t max, len, pos = 0;
-    int match;
+    bool match;
 
     if ((available_list == NULL) || (preferred_list == NULL)) {
         return NULL;
@@ -321,11 +323,12 @@ char *ssh_find_all_matching(const char *available_list,
 
     for (i = 0; p_tok->tokens[i] ; i++) {
         for (j = 0; a_tok->tokens[j]; j++) {
-            match = (wildcard_matching(a_tok->tokens[j], p_tok->tokens[i]));
-            if(match){
-                for(k = 0; p_tok->n_tokens[k]; k++){
-                    if(wildcard_matching(a_tok->tokens[j],p_tok->n_tokens[k]) != 0){
-                        match = 0;
+            match = wildcard_matching(a_tok->tokens[j], p_tok->tokens[i]);
+            if (match) {
+                for (k = 0; p_tok->n_tokens[k]; k++) {
+                    bool n_match = wildcard_matching(a_tok->tokens[j],p_tok->n_tokens[k]);
+                    if (n_match) {
+                        match = false;
                     }
                 }
             }

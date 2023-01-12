@@ -40,7 +40,7 @@ struct ssh_tokens_st *ssh_tokenize(const char *chain, char separator);
 
 void ssh_tokens_free(struct ssh_tokens_st *tokens);
 
-int wildcard_matching(const char * text, const char * pattern);
+bool wildcard_matching(const char * text, const char * pattern);
 
 char *ssh_find_matching(const char *available_d,
                         const char *preferred_d);
