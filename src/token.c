@@ -168,21 +168,27 @@ error:
  *  ? => matches exactly one character
  *  * => matches with zero or more characters in a row 
  *  
- *  Example : aes* would match with all the aes algorithms such as aes128-ctr, aes192-ctr etc.,
+ *  Example : aes* would match with all the aes algorithms 
+ *                                  such as aes128-ctr, aes192-ctr etc.,
  *            aes1??-ctr would match with aes128-ctr and aes192-ctr
  *      
  *
- * @param[in] text      string to be matched            example : aes128-ctr
- * @param[in] pattern   string to be matched against    example : aes*
+ * @param[in] text      string to be matched           example : aes128-ctr
+ * @param[in] pattern   string to be matched against   example : aes*
  *
  * @return  1 if text matches pattern
  *          0 if text does NOT match the pattern
+ *         -1 if some error occurs 
  */
-bool wildcard_matching(const char * text, const char * pattern){
+int wildcard_matching(const char * text, const char * pattern)
+{
     int match;
     size_t str_len = strlen(text);
     size_t pat_len = strlen(pattern);
     bool *dp = calloc(str_len + 1, sizeof(bool));
+    if (dp == NULL) {
+        return -1;
+    }
     // prev stores if the strings untill pat_it and str_it - 1 have matched
     int prev = 1, temp;
     dp[0] = 1;
@@ -195,7 +201,8 @@ bool wildcard_matching(const char * text, const char * pattern){
             if (pattern[pat_it] == '*') {
                 dp[str_it] = dp[str_it - 1] || dp[str_it];
             }
-            else if (pattern[pat_it] == '?' || pattern[pat_it] == text[str_it - 1]) {
+            else if (pattern[pat_it] == '?' 
+                            || pattern[pat_it] == text[str_it - 1]) {
                 dp[str_it] = prev;
             }
             else {
@@ -207,10 +214,10 @@ bool wildcard_matching(const char * text, const char * pattern){
     }
 
     if (dp[str_len] != 0) {
-        match = true;
+        match = 1;
     }
     else {
-        match = false;
+        match = 0;
     }
 
     SAFE_FREE(dp);
@@ -229,7 +236,8 @@ bool wildcard_matching(const char * text, const char * pattern){
  * @param[in] preferred_list    The list of tokens to search, ordered by
  * preference
  *
- * @return  A newly allocated copy of the token if found; NULL otherwise
+ * @return  A newly allocated copy of the token if found; 
+ *          NULL otherwise (no token found or error occurred)    
  */
 char *ssh_find_matching(const char *available_list,
                         const char *preferred_list)
@@ -324,9 +332,14 @@ char *ssh_find_all_matching(const char *available_list,
     for (i = 0; p_tok->tokens[i] ; i++) {
         for (j = 0; a_tok->tokens[j]; j++) {
             match = wildcard_matching(a_tok->tokens[j], p_tok->tokens[i]);
-            if (match) {
+            if (match == -1) {
+                // signifies error in wildcard_matching function
+                return NULL;
+            } 
+            else if (match) {
                 for (k = 0; p_tok->n_tokens[k]; k++) {
-                    bool n_match = wildcard_matching(a_tok->tokens[j],p_tok->n_tokens[k]);
+                    bool n_match = wildcard_matching(a_tok->tokens[j]
+                                                    ,p_tok->n_tokens[k]);
                     if (n_match) {
                         match = false;
                     }
