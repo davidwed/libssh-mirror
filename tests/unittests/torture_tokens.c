@@ -147,8 +147,10 @@ static void torture_find_all_matching(UNUSED_PARAM(void **state))
     assert_string_equal(matching, "bbb,aaa");
     SAFE_FREE(matching);
 
-    /*wildcard matching follows pattern preference 
-                                    followed by available list preference*/
+    /*
+      wildcard matching follows pattern preference 
+      followed by available list preference
+    */
     matching = ssh_find_all_matching("aaaa,aa,bbbaa,bbb", "b*,!aaa?,a*");
     assert_non_null(matching);
     assert_string_equal(matching, "bbbaa,bbb,aa");
