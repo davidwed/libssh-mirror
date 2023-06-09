@@ -27,6 +27,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <errno.h>
 
 #ifndef _WIN32
 #include <netinet/in.h>
@@ -1397,6 +1398,63 @@ int _ssh_buffer_unpack(struct ssh_buffer_struct *buffer,
     rc = ssh_buffer_unpack_va(buffer, format, argc, ap);
     va_end(ap);
     return rc;
+}
+
+/**
+ * @internal
+ *
+ * @brief Read data from a local file and append it to the tail
+ * of an ssh buffer.
+ *
+ * This function tries to read the number of bytes requested to read
+ * until those many bytes are read, eof is encountered or some
+ * failure occurs.
+ *
+ * @param[in] buffer    The ssh buffer in which the data read from the
+ *                      local file will be stored.
+ *
+ * @param[in] fd        The file descriptor of a local file from which
+ *                      data will be read.
+ *
+ * @param[in] len       Number of bytes to read.
+ *
+ * @returns             Number of bytes read on success,
+ *                      SSH_ERROR on error with errno set to indicate the error.
+ */
+int32_t ssh_buffer_file_read(struct ssh_buffer_struct *buffer,
+                             int fd,
+                             uint32_t len)
+{
+    int32_t bytes_read;
+    uint8_t *ptr = NULL;
+
+    if (buffer == NULL || fd < 0 || len == 0) {
+        errno = EINVAL;
+        return SSH_ERROR;
+    }
+
+    ptr = ssh_buffer_allocate(buffer, len);
+    if (ptr == NULL) {
+        return SSH_ERROR;
+    }
+
+    bytes_read = ssh_readn(fd, ptr, len);
+    if (bytes_read == SSH_ERROR) {
+        return SSH_ERROR;
+    }
+
+    /*
+     * Assuming a read of len bytes will occur, we passed len to
+     * ssh_buffer_allocate() and it incremented buffer->used by len.
+     *
+     * Since a short read can occur due to encountering eof, we need to update
+     * buffer->used correctly based on the actual number of bytes read into the
+     * buffer.
+     */
+    buffer->used = buffer->used - (len - bytes_read);
+    buffer_verify(buffer);
+
+    return bytes_read;
 }
 
 /** @} */
