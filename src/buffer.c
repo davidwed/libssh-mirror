@@ -1457,4 +1457,80 @@ int32_t ssh_buffer_file_read(struct ssh_buffer_struct *buffer,
     return bytes_read;
 }
 
+/**
+ * @internal
+ *
+ * @brief Write data at the head of an ssh buffer to a local file.
+ * The data written to the file is taken out of the ssh buffer and
+ * the buffer's read pointer is adjusted accordingly.
+ *
+ * This function tries to write the number of bytes requested to write
+ * until those many bytes are written or some failure occurs.
+ *
+ * @param[in] buffer    The ssh buffer storing the data which is to be written.
+ *
+ * @param[in] fd        The file descriptor of a local file to write to.
+ *
+ * @param[in] len       Number of bytes to write.
+ *
+ * @returns             Number of bytes written on success,
+ *                      SSH_ERROR on error with errno set to indicate the error.
+ *
+ * @warning             It is expected that if the user asks to
+ *                      write len bytes, then data of at least len
+ *                      bytes must be present in the ssh buffer. If
+ *                      the buffer contains less than len bytes of
+ *                      data, errno is set to EINVAL since the passed
+ *                      ssh buffer is invalid. (Besides this case errno
+ *                      is set to EINVAL when other arguments are invalid)
+ */
+int32_t ssh_buffer_file_write(struct ssh_buffer_struct *buffer,
+                              int fd,
+                              uint32_t len)
+{
+    int32_t bytes_written;
+    uint32_t total_bytes_written = 0;
+    uint8_t *ptr = NULL;
+    int rc;
+
+    if (buffer == NULL || fd < 0 || len == 0) {
+        errno = EINVAL;
+        return SSH_ERROR;
+    }
+
+    buffer_verify(buffer);
+
+    /*
+     * Check whether the buffer the contains
+     * at least len bytes or not.
+     */
+    rc = ssh_buffer_validate_length(buffer, len);
+    if (rc != SSH_OK) {
+        errno = EINVAL;
+        return SSH_ERROR;
+    }
+
+    ptr = ssh_buffer_get(buffer);
+
+    do {
+        bytes_written = write(fd,
+                              ptr + total_bytes_written,
+                              len - total_bytes_written);
+        if (bytes_written == -1) {
+            if (errno  == EINTR) {
+                continue;
+            }
+
+            return SSH_ERROR;
+        }
+
+        total_bytes_written += bytes_written;
+    } while (total_bytes_written < len);
+
+    buffer->pos += total_bytes_written;
+    buffer_verify(buffer);
+
+    return total_bytes_written;
+}
+
 /** @} */

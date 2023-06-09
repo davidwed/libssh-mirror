@@ -75,6 +75,7 @@ uint32_t ssh_buffer_pass_bytes_end(ssh_buffer buffer, uint32_t len);
 uint32_t ssh_buffer_pass_bytes(ssh_buffer buffer, uint32_t len);
 
 int32_t ssh_buffer_file_read(ssh_buffer buffer, int fd, uint32_t len);
+int32_t ssh_buffer_file_write(ssh_buffer buffer, int fd, uint32_t len);
 
 #ifdef __cplusplus
 }
