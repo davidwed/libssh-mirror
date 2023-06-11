@@ -80,6 +80,7 @@ typedef struct sftp_statvfs_struct* sftp_statvfs_t;
 typedef struct sftp_limits_struct* sftp_limits_t;
 typedef struct sftp_aio_struct* sftp_aio;
 typedef struct sftp_name_id_map_struct *sftp_name_id_map;
+typedef struct sftp_ft_struct* sftp_ft;
 
 struct sftp_session_struct {
     ssh_session session;
@@ -202,6 +203,27 @@ struct sftp_statvfs_struct {
   uint64_t f_fsid;    /** file system id */
   uint64_t f_flag;    /** bit mask of f_flag values */
   uint64_t f_namemax; /** maximum filename length */
+};
+
+enum sftp_ft_type_e {
+    SFTP_FT_TYPE_LOCAL_COPY,
+    SFTP_FT_TYPE_UPLOAD,
+    SFTP_FT_TYPE_DOWNLOAD,
+    SFTP_FT_TYPE_REMOTE_COPY,
+    SFTP_FT_TYPE_NONE /* Keep this one last in the list */
+};
+
+enum sftp_ft_options_e {
+    SFTP_FT_OPTIONS_TYPE,
+
+    SFTP_FT_OPTIONS_SOURCE_PATH,
+    SFTP_FT_OPTIONS_TARGET_PATH,
+    SFTP_FT_OPTIONS_TARGET_MODE,
+
+    SFTP_FT_OPTIONS_CHUNK_SIZE,
+    SFTP_FT_OPTIONS_REQUESTS,
+
+    SFTP_FT_OPTIONS_RESUME_TRANSFER
 };
 
 /**
