@@ -66,4 +66,107 @@ struct sftp_ft_struct {
     uint64_t bytes_requested;
 };
 
+/**
+ * @internal
+ *
+ * @brief Validate an sftp file transfer structure.
+ *
+ * @param[in] ft          sftp ft handle to the file transfer structure
+ *                        to validate.
+ *
+ * @return                SSH_OK for a valid file transfer structure,
+ *                        SSH_ERROR for an invalid file transfer structure
+ */
+static int ft_validate(sftp_ft ft) __attr_unused__;
+static int ft_validate(sftp_ft ft)
+{
+    sftp_session sftp = NULL;
+
+    if (ft == NULL ||
+        ft->sftp == NULL ||
+        ft->sftp->session == NULL) {
+        return SSH_ERROR;
+    }
+
+    sftp = ft->sftp;
+
+    if (ft->type == SFTP_FT_TYPE_NONE) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid sftp ft, no transfer type set");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    if (ft->type > SFTP_FT_TYPE_NONE) {
+        /*
+         * Should never happen, as sftp_ft_new() should set the transfer type to
+         * SFTP_FT_TYPE_NONE and sftp_ft_options_set() shouldn't allow the user
+         * to set an invalid transfer type, hence the file transfer structure
+         * should never contain an invalid transfer type.
+         */
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid sftp ft, transfer type is invalid");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    if (ft->source_path == NULL) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid sftp ft, source path is NULL");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    if (ft->target_path == NULL) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid sftp ft, target path is NULL");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    /*
+     * The internal ft_*() functions are responsible for setting and updating
+     * the bytes_* fields of a file transfer structure during a transfer. The
+     * user can only get the values of those fields.
+     *
+     * Hence, the failure of any one of the following sanity checks would likely
+     * indicate an overflow or a logical error in the code of the ft_*()
+     * functions.
+     */
+    if (ft->bytes_transferred > ft->bytes_total) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid sftp ft, bytes transferred "
+                      "greater than bytes total");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    if (ft->bytes_skipped > ft->bytes_total) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid sftp ft, bytes skipped "
+                      "greater than bytes total");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    if (ft->bytes_requested > ft->bytes_total) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid sftp ft, bytes requested "
+                      "greater than bytes total");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    if (ft->bytes_transferred > ft->bytes_requested) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid sftp ft, bytes transferred "
+                      "greater than bytes requested");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    /* valid sftp ft */
+    return SSH_OK;
+}
+
 #endif /* WITH_SFTP */
