@@ -46,6 +46,7 @@
 #include "libssh/misc.h"
 #include "libssh/pki.h"
 #include "libssh/kex.h"
+#include "libssh/mux.h"
 
 #define set_status(session, status) do {\
         if (session->common.callbacks && session->common.callbacks->connect_status_function) \
@@ -549,6 +550,17 @@ int ssh_connect(ssh_session session)
     }
     session->alive = 0;
     session->client = 1;
+
+    if (session->opts.control_master == SSH_CONTROL_MASTER_AUTO) {
+        ret = mux_client(session);
+        if (ret == SSH_ERROR) {
+            // mux_listener_setup(session);
+            printf("mux failure!!! :((((((((((((((((((((((((((((((((((((((((\n");
+        }else{
+            printf("mux succcesss :))))))))))))))))\n");
+            session->opts.fd = ret;
+        }
+    }
 
     if (session->opts.fd == SSH_INVALID_SOCKET &&
         session->opts.host == NULL &&
