@@ -999,5 +999,31 @@ ssh_socket_connect_proxycommand(ssh_socket s, const char *command)
     return SSH_OK;
 }
 
+int
+ssh_socket_connect_mux(ssh_socket s)
+{
+    ssh_poll_handle h = NULL;
+    int pid;
+    int rc;
+
+    if (s->state != SSH_SOCKET_NONE) {
+        return SSH_ERROR;
+    }
+
+    printf("connecting using mux\n");
+
+    ssh_socket_set_fd(s, s->session->mux_sock);
+    h = ssh_socket_get_poll_handle(s);
+    if (h == NULL) {
+        return SSH_ERROR;
+    }
+    ssh_socket_set_connected(s, h);
+    if (s->callbacks && s->callbacks->connected) {
+        s->callbacks->connected(SSH_SOCKET_CONNECTED_OK, 0, s->callbacks->userdata);
+    }
+
+    return SSH_OK;
+}
+
 #endif /* _WIN32 */
 /** @} */

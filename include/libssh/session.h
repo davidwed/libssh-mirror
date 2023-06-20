@@ -134,6 +134,7 @@ struct ssh_session_struct {
     uint32_t send_seq;
     uint32_t recv_seq;
     struct ssh_timestamp last_rekey_time;
+    socket_t mux_sock;
 
     int connected;
     /* !=0 when the user got a session handle */

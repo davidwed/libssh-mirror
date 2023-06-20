@@ -422,6 +422,10 @@ int ssh_userauth_none(ssh_session session, const char *username)
             return SSH_AUTH_ERROR;
     }
 
+    if (session->mux_sock) {
+        return SSH_AUTH_SUCCESS;
+    }
+
     rc = ssh_userauth_request_service(session);
     if (rc == SSH_AGAIN) {
         return SSH_AUTH_AGAIN;
@@ -501,6 +505,10 @@ int ssh_userauth_try_publickey(ssh_session session,
 
     if (session == NULL) {
         return SSH_AUTH_ERROR;
+    }
+
+    if (session->mux_sock) {
+        return SSH_AUTH_SUCCESS;
     }
 
     if (pubkey == NULL || !ssh_key_is_public(pubkey)) {
@@ -634,6 +642,10 @@ int ssh_userauth_publickey(ssh_session session,
         return SSH_AUTH_ERROR;
     }
 
+    if (session->mux_sock) {
+        return SSH_AUTH_SUCCESS;
+    }
+
     if (privkey == NULL || !ssh_key_is_private(privkey)) {
         ssh_set_error(session, SSH_FATAL, "Invalid private key");
         return SSH_AUTH_ERROR;
@@ -753,6 +765,10 @@ static int ssh_userauth_agent_publickey(ssh_session session,
     const char *sig_type_c = NULL;
     bool allowed;
     int rc;
+
+    if (session->mux_sock) {
+        return SSH_AUTH_SUCCESS;
+    }
 
     switch(session->pending_call_state) {
         case SSH_PENDING_CALL_NONE:
@@ -909,6 +925,10 @@ int ssh_userauth_agent(ssh_session session,
     ssh_key *configKeys = NULL;
     size_t configKeysCount = 0;
     size_t i;
+
+    if (session->mux_sock) {
+        return SSH_AUTH_SUCCESS;
+    }
 
     if (session == NULL) {
         return SSH_AUTH_ERROR;
@@ -1127,6 +1147,10 @@ int ssh_userauth_publickey_auto_get_current_identity(ssh_session session,
         return SSH_ERROR;
     }
 
+    if (session->mux_sock) {
+        return SSH_AUTH_SUCCESS;
+    }
+
     if (value == NULL) {
         ssh_set_error_invalid(session);
         return SSH_ERROR;
@@ -1188,6 +1212,9 @@ int ssh_userauth_publickey_auto(ssh_session session,
 
     if (session == NULL) {
         return SSH_AUTH_ERROR;
+    }
+    if (session->mux_sock) {
+        return SSH_AUTH_SUCCESS;
     }
     if (! (session->opts.flags & SSH_OPT_FLAG_PUBKEY_AUTH)) {
         session->auth.supported_methods &= ~SSH_AUTH_METHOD_PUBLICKEY;
@@ -1427,6 +1454,10 @@ int ssh_userauth_password(ssh_session session,
                           const char *password)
 {
     int rc;
+
+    if (session->mux_sock) {
+        return SSH_AUTH_SUCCESS;
+    }
 
     switch (session->pending_call_state) {
         case SSH_PENDING_CALL_NONE:
