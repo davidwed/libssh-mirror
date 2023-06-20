@@ -111,6 +111,11 @@ sftp_status_message parse_status_msg(sftp_message msg);
 
 void status_msg_free(sftp_status_message status);
 
+int aio_begin_l2r(sftp_file remote_file,
+                  int local_fd,
+                  size_t *value_res_ptr,
+                  sftp_aio *aio);
+
 #ifdef __cplusplus
 }
 #endif

@@ -25,6 +25,8 @@
 
 #include "config.h"
 
+#include <errno.h>
+
 #include "libssh/sftp.h"
 #include "libssh/sftp_priv.h"
 #include "libssh/buffer.h"
@@ -489,6 +491,249 @@ ssize_t sftp_aio_wait_write(sftp_aio *aio)
     sftp_message_free(msg);
     sftp_set_error(sftp, SSH_FX_BAD_MESSAGE);
     return SSH_ERROR;
+}
+
+/**
+ * @internal
+ *
+ * @brief Begin a data chunk transfer from a local file to a remote file.
+ *
+ * This function caps the length which the caller requests to read from a local
+ * file and write to the remote file. The value of the cap is same as the value
+ * of the max_write_length field of the sftp_limits returned by sftp_limits().
+ *
+ * Then it tries to read the requested number of bytes (after capping) from
+ * the local file. After reading, it sends a write request for the read data
+ * to the sftp server, allocates memory to store information about the sent
+ * request and provides the caller an sftp aio handle to that memory.
+ *
+ * In case EOF is encountered before reading a single byte from the
+ * local file, no write request is sent and NULL is provided to the
+ * caller instead of a sftp aio handle. This scenario is not considered
+ * as an error and SSH_OK is returned with the count of number of bytes
+ * read (which the caller can check through the value result argument)
+ * set to 0.
+ *
+ * @param[in]     remote_file        sftp file handle of the remote file to
+ *                                   write to.
+ *
+ * @param[in]     local_fd           File descriptor of the local file to read
+ *                                   from.
+ *
+ * @param[in,out] value_res_ptr
+ * @parblock
+ *                                   A value-result pointer.
+ *
+ *                                   Value of the pointed variable set by
+ *                                   the caller before the call specifies the
+ *                                   number of bytes to read from the local
+ *                                   file.
+ *
+ *                                   On success, this function sets the value of
+ *                                   the pointed variable to the number of bytes
+ *                                   read from the local file.
+ *
+ *                                   On error, the value of the pointed variable
+ *                                   is left untouched.
+ * @endparblock
+ * @param[out]   aio                 Pointer to the location to store the
+ *                                   sftp aio handle corresponding to sent
+ *                                   request. In case EOF is encountered before
+ *                                   reading a single byte, NULL is stored at
+ *                                   that location.
+ *
+ * @returns                          SSH_OK on success, SSH_ERROR on error.
+ */
+int aio_begin_l2r(sftp_file remote_file,
+                  int local_fd,
+                  size_t *value_res_ptr,
+                  sftp_aio *aio)
+{
+    sftp_session sftp = NULL;
+    ssh_buffer buffer = NULL;
+    uint32_t *count_ptr = NULL;
+    uint8_t *data_ptr = NULL;
+
+    char errno_msg[SSH_ERRNO_MSG_MAX] = {0};
+    size_t to_read;
+    ssize_t bytes_read;
+    uint32_t id, to_cut, bytes_cut;
+    int rc;
+
+    if (remote_file == NULL ||
+        remote_file->sftp == NULL ||
+        remote_file->sftp->session == NULL) {
+        return SSH_ERROR;
+    }
+
+    sftp = remote_file->sftp;
+    if (local_fd < 0) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid local file descriptor %d passed as an argument",
+                      local_fd);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    if (value_res_ptr == NULL) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid argument, NULL passed as the value-result "
+                      "argument");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    if (*value_res_ptr == 0) {
+         ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid value-result argument, specifies 0 as the "
+                      "number of bytes to read from the local file");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    if (aio == NULL) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid argument, NULL passed instead of a pointer to "
+                      "a location to store an sftp aio handle");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    /*
+     * Cap the number of bytes to read from the local file as per the max
+     * number of bytes which can be sent in an sftp write request.
+     */
+    to_read = MIN(*value_res_ptr, sftp->limits->max_write_length);
+
+    buffer = ssh_buffer_new();
+    if (buffer == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    id = sftp_get_new_id(sftp);
+    rc = ssh_buffer_pack(buffer,
+                         "dSq",
+                         id,
+                         remote_file->handle,
+                         remote_file->offset);
+
+    if (rc != SSH_OK) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    /*
+     * Allocate memory at the tail of the ssh buffer for :
+     * - A uint32_t to store the count of the bytes read from the local file.
+     * - Memory to store the bytes to read from the local file.
+     *
+     * NOTE: The below code avoids using two separate ssh_buffer_allocate()
+     * calls for this allocation.
+     *
+     * This is because ssh_buffer_allocate() uses realloc() internally to expand
+     * the ssh buffer, and realloc'ing the ssh buffer due to the second
+     * ssh_buffer_allocate() call may deallocate the memory at the address
+     * returned by the first ssh_buffer_allocate() call.
+     *
+     * Hence this realloc'ing is dangerous if the address returned by the first
+     * ssh_buffer_allocate() call needs to be used after the second
+     * ssh_buffer_allocate() call, which would've been the case had we used two
+     * ssh_buffer_allocate() calls below.
+     */
+    count_ptr = ssh_buffer_allocate(buffer, sizeof(uint32_t) + to_read);
+    if (count_ptr == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    /*
+     * Due to pointer arithmetic, data_ptr will store the address of the byte
+     * after the uint32_t that count_ptr points to.
+     */
+    data_ptr = (uint8_t *)(count_ptr + 1);
+
+    /*
+     * Read data directly from the local file into the ssh buffer prepared for
+     * the write request.
+     */
+    bytes_read = ssh_readn(local_fd, data_ptr, to_read);
+    if (bytes_read == -1) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Failed to read data from the local file to "
+                      "the libssh buffer, reason : %s",
+                      ssh_strerror(errno, errno_msg, sizeof(errno_msg)));
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    if (bytes_read == 0) {
+        /*
+         * EOF encountered on the local file before reading a single byte,
+         * hence no data was read from the local file and hence no write
+         * request for the remote file is being sent in this case.
+         */
+        SSH_BUFFER_FREE(buffer);
+        *value_res_ptr = 0;
+        *aio = NULL;
+        return SSH_OK;
+    }
+
+    *count_ptr = htonl(bytes_read);
+
+    /*
+     * Adjust the ssh buffer's length according to the actual number of bytes
+     * read.
+     */
+    if ((size_t)bytes_read != to_read) {
+        to_cut = to_read - bytes_read;
+        bytes_cut = ssh_buffer_pass_bytes_end(buffer, to_cut);
+        if (bytes_cut != to_cut) {
+            /*
+             * Should not happen as the ssh buffer's length is certainly greater
+             * than the value of to_cut.
+             */
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "Failed to adjust the ssh buffer");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            SSH_BUFFER_FREE(buffer);
+            return SSH_ERROR;
+        }
+    }
+
+    *aio = sftp_aio_new();
+    if (*aio == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    (*aio)->file = remote_file;
+    (*aio)->id = id;
+    (*aio)->len = bytes_read;
+
+    rc = sftp_packet_write(sftp, SSH_FXP_WRITE, buffer);
+    SSH_BUFFER_FREE(buffer);
+    if (rc == SSH_ERROR) {
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    /*
+     * Assume that the bytes read from the local file have been written into
+     * the remote file.
+     */
+    remote_file->offset += bytes_read;
+
+    *value_res_ptr = bytes_read;
+    return SSH_OK;
 }
 
 #endif /* WITH_SFTP */
