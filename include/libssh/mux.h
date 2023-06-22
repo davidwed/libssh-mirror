@@ -1,6 +1,7 @@
 #include "libssh/libssh.h"
 #include "libssh/session.h"
 #include "libssh/channels.h"
+#include "libssh/socket.h"
 #include "buffer.h"
 
 // enum ssh_mux_state_e {
@@ -35,8 +36,8 @@
 
 int mux_client(ssh_session session);
 // int mux_listener_setup(ssh_session session);
-int mux_client_exchange_hello(int sock);
-int mux_client_write_packet(int fd, ssh_buffer msg);
+// int mux_client_exchange_hello(ssh_socket sock);
+// int mux_client_write_packet(ssh_socket sock, ssh_buffer msg);
 // void mux_loop(ssh_session session);
 // int mux_master_read_callback(ssh_session session, int client_sock);
 // int mux_master_process_hello(ssh_session ssh, u_int rid, ssh_buffer msg, ssh_buffer reply);

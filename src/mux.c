@@ -66,12 +66,13 @@ int mux_client_read(int sock, ssh_buffer b, size_t need)
 	return SSH_OK;
 }
 
-int mux_client_read_packet(int fd, ssh_buffer m)
+int mux_client_read_packet(ssh_socket sock, ssh_buffer m)
 {
 	ssh_buffer queue;
 	unsigned long need, have;
 	const u_char *ptr;
 	int rc;
+	int fd = ssh_socket_get_fd(sock);
 	// int oerrno;
 
 	if ((queue = ssh_buffer_new()) == NULL) {
@@ -107,7 +108,7 @@ int mux_client_read_packet(int fd, ssh_buffer m)
 	return 0;
 }
 
-int mux_client_write_packet(int sock, ssh_buffer msg)
+int mux_client_write_packet(ssh_socket sock, ssh_buffer msg)
 {
 	ssh_buffer queue;
 	u_int have, need;
@@ -126,25 +127,36 @@ int mux_client_write_packet(int sock, ssh_buffer msg)
 		// error handling
 	}
 
-	need = ssh_buffer_get_len(queue);
-	ptr = ssh_buffer_get(queue);
-	for (have = 0; have < need; ) {
-		len = write(sock, ptr + have, need - have);
-		if (len == -1) {
-			printf("couldn't write\n");
-		}
-		if (len == 0) {
-			ssh_buffer_free(queue);
-			return -1;
-		}
+	ssh_log_hexdump("before write buffer: ", ssh_buffer_get(queue), ssh_buffer_get_len(queue));
 
-		have += (u_int)len;
+	ssh_socket_set_write_wontblock(sock);
+
+	if (ssh_socket_write(sock, ssh_buffer_get(queue), ssh_buffer_get_len(queue)) != SSH_OK){
+		// error handling
+		printf("couldn't write\n");
 	}
+
+	// ssh_socket_nonblocking_flush(sock);
+
+	// need = ssh_buffer_get_len(queue);
+	// ptr = ssh_buffer_get(queue);
+	// for (have = 0; have < need; ) {
+	// 	len = write(sock, ptr + have, need - have);
+	// 	if (len == -1) {
+	// 		printf("couldn't write\n");
+	// 	}
+	// 	if (len == 0) {
+	// 		ssh_buffer_free(queue);
+	// 		return -1;
+	// 	}
+	// 	have += (u_int)len;
+	// }
+
 	ssh_buffer_free(queue);
 	return 0;
 }
 
-int mux_client_exchange_hello(int fd)
+int mux_client_exchange_hello(ssh_socket sock)
 {
 	u_int type, ver;
 	int rc, ret = -1;
@@ -166,17 +178,19 @@ int mux_client_exchange_hello(int fd)
 
 	ssh_log_hexdump("my buffer: ", ssh_buffer_get(msg), ssh_buffer_get_len(msg));
 
-	if (mux_client_write_packet(fd, msg) != 0) {
+	if (mux_client_write_packet(sock, msg) != 0) {
 		// error handling
 		goto out;
 	}
+
+	// ssh_socket_write(sock, ssh_buffer_get(msg), ssh_buffer_get_len(msg));
 
 	ssh_buffer_reinit(msg);
 
-	if (mux_client_read_packet(fd, msg) != 0) {
-		// error handling
-		goto out;
-	}
+	// if (mux_client_read_packet(sock, msg) != 0) {
+	// 	// error handling
+	// 	goto out;
+	// }
 
 	if ((rc = ssh_buffer_get_u32(msg, &type)) != 0){
 		// error handling
@@ -221,27 +235,33 @@ int mux_client_exchange_hello(int fd)
 
 int mux_client(ssh_session session){
     
-	struct sockaddr_un addr;
-	int sock;
+	ssh_socket sock;
 
-	memset(&addr, '\0', sizeof(addr));
-	addr.sun_family = AF_UNIX;
+	sock = ssh_socket_new(session);
 
-	strcpy(addr.sun_path, session->opts.control_path);
-
-	sock = socket(PF_UNIX, SOCK_STREAM, 0);
-
-	if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		// error handling
-		close(sock);
+	if (sock == NULL || ssh_socket_unix(sock, session->opts.control_path) != SSH_OK) {
+		printf("ssh_socket_unix failed\n");
 		return SSH_ERROR;
 	}
 
-	fcntl(sock, F_SETFL, O_NONBLOCK);
+	ssh_socket_set_nonblocking(ssh_socket_get_fd(sock));
+
+	// struct sockaddr_un addr;
+	// int sock;
+	// memset(&addr, '\0', sizeof(addr));
+	// addr.sun_family = AF_UNIX;
+	// strcpy(addr.sun_path, session->opts.control_path);
+	// sock = socket(PF_UNIX, SOCK_STREAM, 0);
+	// if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+	// 	// error handling
+	// 	close(sock);
+	// 	return SSH_ERROR;
+	// }
+	// fcntl(sock, F_SETFL, O_NONBLOCK);
 
 	if (mux_client_exchange_hello(sock) != 0) {
 		printf("mux_client_exchange_hello failed\n");
-		close(sock);
+		ssh_socket_close(sock);
 		return -1;
 	}
 

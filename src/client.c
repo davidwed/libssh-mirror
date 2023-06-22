@@ -555,9 +555,9 @@ int ssh_connect(ssh_session session)
         ret = mux_client(session);
         if (ret == SSH_ERROR) {
             // mux_listener_setup(session);
-            printf("mux failure!!! :((((((((((((((((((((((((((((((((((((((((\n");
+            printf("mux failure! :(\n");
         }else{
-            printf("mux succcesss :))))))))))))))))\n");
+            printf("mux succcess! :)\n");
             session->opts.fd = ret;
         }
     }
