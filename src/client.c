@@ -558,7 +558,6 @@ int ssh_connect(ssh_session session)
             printf("mux failure! :(\n");
         }else{
             printf("mux succcess! :)\n");
-            session->opts.fd = ret;
         }
     }
 

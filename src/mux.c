@@ -36,6 +36,13 @@ int mux_server_sock = -1;
 ssh_channel mux_listener_channel = NULL;
 int connected_clients = 0;
 int hello_received = 0;
+int stop = 0;
+
+static int ssh_mux_client_socket_callback(const void *data, size_t len, void *user){
+	ssh_log_hexdump("Received data: ", data, len);
+	stop = 1;
+	return len;
+}
 
 int mux_client_read(int sock, ssh_buffer b, size_t need)
 {
@@ -129,8 +136,6 @@ int mux_client_write_packet(ssh_socket sock, ssh_buffer msg)
 
 	ssh_log_hexdump("before write buffer: ", ssh_buffer_get(queue), ssh_buffer_get_len(queue));
 
-	ssh_socket_set_write_wontblock(sock);
-
 	if (ssh_socket_write(sock, ssh_buffer_get(queue), ssh_buffer_get_len(queue)) != SSH_OK){
 		// error handling
 		printf("couldn't write\n");
@@ -161,6 +166,7 @@ int mux_client_exchange_hello(ssh_socket sock)
 	u_int type, ver;
 	int rc, ret = -1;
 	ssh_buffer msg;
+	ssh_poll_ctx ctx = NULL;
 
 	if ((msg = ssh_buffer_new()) == NULL){
 		// error handling
@@ -183,35 +189,41 @@ int mux_client_exchange_hello(ssh_socket sock)
 		goto out;
 	}
 
-	// ssh_socket_write(sock, ssh_buffer_get(msg), ssh_buffer_get_len(msg));
-
 	ssh_buffer_reinit(msg);
+
+	ctx = ssh_poll_get_ctx(ssh_socket_get_poll_handle(sock));
+	if (ctx == NULL) {
+		printf("ctx is null\n");
+		goto out;
+	}
+	while(!stop)
+		ssh_poll_ctx_dopoll(ctx, -1);
 
 	// if (mux_client_read_packet(sock, msg) != 0) {
 	// 	// error handling
 	// 	goto out;
 	// }
 
-	if ((rc = ssh_buffer_get_u32(msg, &type)) != 0){
-		// error handling
-	}
+	// if ((rc = ssh_buffer_get_u32(msg, &type)) != 0){
+	// 	// error handling
+	// }
 
-	type = ntohl(type);
-	if (type != MUX_MSG_HELLO) {
-		printf("expected HELLO (%u) got %u", MUX_MSG_HELLO, type);
-		goto out;
-	}
+	// type = ntohl(type);
+	// if (type != MUX_MSG_HELLO) {
+	// 	printf("expected HELLO (%u) got %u", MUX_MSG_HELLO, type);
+	// 	goto out;
+	// }
 
-	if ((rc = ssh_buffer_get_u32(msg, &ver)) != 0){
-		// fatal error
-	}
+	// if ((rc = ssh_buffer_get_u32(msg, &ver)) != 0){
+	// 	// fatal error
+	// }
 	
-	ver = ntohl(ver);
-	if (ver != SSH_MUX_VERSION) {
-		printf("Unsupported multiplexing protocol version %d "
-		    "(expected %d)", ver, SSH_MUX_VERSION);
-		goto out;
-	}
+	// ver = ntohl(ver);
+	// if (ver != SSH_MUX_VERSION) {
+	// 	printf("Unsupported multiplexing protocol version %d "
+	// 	    "(expected %d)", ver, SSH_MUX_VERSION);
+	// 	goto out;
+	// }
 
 	// debug2_f("master version %u", ver);
 
@@ -236,6 +248,9 @@ int mux_client_exchange_hello(ssh_socket sock)
 int mux_client(ssh_session session){
     
 	ssh_socket sock;
+    ssh_poll_handle h = NULL;
+	ssh_poll_ctx ctx = NULL;
+	ssh_socket_callbacks mux_client_callbacks;
 
 	sock = ssh_socket_new(session);
 
@@ -245,6 +260,26 @@ int mux_client(ssh_session session){
 	}
 
 	ssh_socket_set_nonblocking(ssh_socket_get_fd(sock));
+	ssh_socket_set_write_wontblock(sock);
+
+	mux_client_callbacks = malloc(sizeof(struct ssh_socket_callbacks_struct));
+	mux_client_callbacks->data = ssh_mux_client_socket_callback;
+	ssh_socket_set_callbacks(sock, mux_client_callbacks);
+
+    h = ssh_socket_get_poll_handle(sock);
+	if (h == NULL) {
+        return SSH_ERROR;
+    }
+	ctx = ssh_poll_get_ctx(h);
+	if (ctx == NULL) {
+		ctx = ssh_poll_get_default_ctx(session);
+		ssh_poll_ctx_add(ctx, h);
+	}
+    ssh_socket_set_connected(sock, h);
+
+	// ssh_poll_add_events(h, POLLIN);
+	// ctx = ssh_poll_ctx_new(2);
+	// ssh_poll_ctx_add(ctx, h);
 
 	// struct sockaddr_un addr;
 	// int sock;
