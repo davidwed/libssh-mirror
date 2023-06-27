@@ -288,14 +288,14 @@ int mux_client(ssh_session session){
 		ssh_poll_ctx_add(ctx, h);
 	}
     // ssh_socket_set_connected(sock, h);
+	
+	// ssh_poll_add_events(h, POLLIN);
+	// ctx = ssh_poll_ctx_new(2);
+	// ssh_poll_ctx_add(ctx, h);
 
 	if ((msg = ssh_buffer_new()) == NULL){
 		// error handling
 	}
-
-	// ssh_poll_add_events(h, POLLIN);
-	// ctx = ssh_poll_ctx_new(2);
-	// ssh_poll_ctx_add(ctx, h);
 
 	// struct sockaddr_un addr;
 	// int sock;

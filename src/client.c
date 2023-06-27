@@ -551,16 +551,6 @@ int ssh_connect(ssh_session session)
     session->alive = 0;
     session->client = 1;
 
-    if (session->opts.control_master == SSH_CONTROL_MASTER_AUTO) {
-        ret = mux_client(session);
-        if (ret == SSH_ERROR) {
-            // mux_listener_setup(session);
-            printf("mux failure! :(\n");
-        }else{
-            printf("mux succcess! :)\n");
-        }
-    }
-
     if (session->opts.fd == SSH_INVALID_SOCKET &&
         session->opts.host == NULL &&
         session->opts.ProxyCommand == NULL)
@@ -597,6 +587,16 @@ int ssh_connect(ssh_session session)
     session->socket_callbacks.data = callback_receive_banner;
     session->socket_callbacks.exception = ssh_socket_exception_callback;
     session->socket_callbacks.userdata = session;
+
+    if (session->opts.control_master == SSH_CONTROL_MASTER_AUTO) {
+        ret = mux_client(session);
+        if (ret == SSH_ERROR) {
+            // mux_listener_setup(session);
+            printf("mux failure! :(\n");
+        }else{
+            printf("mux success! :)\n");
+        }
+    }
 
     if (session->opts.fd != SSH_INVALID_SOCKET) {
         session->session_state = SSH_SESSION_STATE_SOCKET_CONNECTED;
