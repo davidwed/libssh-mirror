@@ -736,4 +736,199 @@ int aio_begin_l2r(sftp_file remote_file,
     return SSH_OK;
 }
 
+/**
+ * @internal
+ *
+ * @brief Wait for an async remote read to complete and write
+ * the read data in a local file.
+ *
+ * This function tries to write the bytes read from the remote
+ * file to the local file until those many bytes are written or
+ * some failure occurs.
+ *
+ * A pointer to a sftp aio handle should be passed while calling
+ * this function. Except when the return value is SSH_AGAIN,
+ * this function releases the memory corresponding to the supplied
+ * aio handle and assigns NULL to that aio handle using the passed
+ * pointer to that handle.
+ *
+ * If the remote file is opened in non-blocking mode and the request
+ * hasn't been executed yet this function returns SSH_AGAIN and must
+ * be called again using the same sftp aio handle.
+ *
+ * @param[in] aio                  Pointer to the sftp aio handle returned by
+ *                                 sftp_aio_begin_read().
+ *
+ * @param[in] fd                   The file descriptor of the local file
+ *                                 in which data read from the remote file
+ *                                 will be written.
+ *
+ * @returns                        Number of bytes read from the remote file
+ *                                 and written to the local file on success,
+ *                                 SSH_ERROR on error.
+ *
+ * @warning                        A call to this function with an invalid
+ *                                 sftp aio handle may never return.
+ *
+ * @see sftp_aio_begin_read()
+ */
+ssize_t aio_wait_r2l(sftp_aio *aio, int local_fd)
+{
+    sftp_file remote_file = NULL;
+    size_t bytes_requested;
+
+    sftp_session sftp = NULL;
+    sftp_message msg = NULL;
+    sftp_status_message status = NULL;
+
+    char errno_msg[SSH_ERRNO_MSG_MAX] = {0};
+    uint32_t string_len, host_len;
+    int32_t bytes_written;
+    int rc, err;
+
+    if (aio == NULL || *aio == NULL) {
+        return SSH_ERROR;
+    }
+
+    remote_file = (*aio)->file;
+    bytes_requested = (*aio)->len;
+
+    if (remote_file == NULL ||
+        remote_file->sftp == NULL ||
+        remote_file->sftp->session == NULL) {
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    sftp = remote_file->sftp;
+    if (bytes_requested == 0) {
+        /* should never happen */
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid sftp aio, len for requested i/o is 0");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    if (local_fd < 0) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid local file descriptor %d passed as an "
+                      "argument", local_fd);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    /* handle an existing request */
+    rc = sftp_recv_response_msg(sftp, (*aio)->id, !remote_file->nonblocking, &msg);
+    if (rc == SSH_ERROR) {
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    if (rc == SSH_AGAIN) {
+        return SSH_AGAIN;
+    }
+
+    /*
+     * Release memory of the structure that (*aio) points to
+     * as all further points of return are for success or
+     * failure.
+     */
+    SFTP_AIO_FREE(*aio);
+
+    switch (msg->packet_type) {
+    case SSH_FXP_STATUS:
+        status = parse_status_msg(msg);
+        sftp_message_free(msg);
+        if (status == NULL) {
+            return SSH_ERROR;
+        }
+
+        sftp_set_error(sftp, status->status);
+        if (status->status != SSH_FX_EOF) {
+            ssh_set_error(sftp->session, SSH_REQUEST_DENIED,
+                          "SFTP server : %s", status->errormsg);
+            err = SSH_ERROR;
+        } else {
+            remote_file->eof = 1;
+            /* Update the offset correctly */
+            remote_file->offset -= bytes_requested;
+            err = SSH_OK;
+        }
+
+        status_msg_free(status);
+        return err;
+
+    case SSH_FXP_DATA:
+        rc = ssh_buffer_get_u32(msg->payload, &string_len);
+        if (rc == 0) {
+            /* Insufficient data in the buffer */
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "Received invalid DATA packet from sftp server");
+            sftp_set_error(sftp, SSH_FX_BAD_MESSAGE);
+            sftp_message_free(msg);
+            return SSH_ERROR;
+        }
+
+        host_len = ntohl(string_len);
+
+        /*
+         * Check whether the ssh buffer contains at least
+         * host_len bytes or not.
+         */
+        rc = ssh_buffer_validate_length(msg->payload, host_len);
+        if (rc == SSH_ERROR) {
+           ssh_set_error(sftp->session, SSH_FATAL,
+                         "Received invalid DATA packet from sftp server");
+            sftp_set_error(sftp, SSH_FX_BAD_MESSAGE);
+            sftp_message_free(msg);
+            return SSH_ERROR;
+        }
+
+        bytes_written = ssh_buffer_file_write(msg->payload,
+                                              local_fd,
+                                              host_len);
+        if (bytes_written == SSH_ERROR) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "Failed to write to the local file, "
+                          "reason : %s",
+                          ssh_strerror(errno, errno_msg, sizeof(errno_msg)));
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            sftp_message_free(msg);
+            return SSH_ERROR;
+        }
+
+        if ((uint32_t)bytes_written != host_len) {
+            /*
+             * Should never happen if ssh_buffer_file_write() is
+             * successful, as it tries to write the requested number
+             * of bytes until those many bytes are written (or) some
+             * failure occurs.
+             */
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "Short write on local file, requested to write "
+                          "%"PRIu32" bytes, wrote only %d bytes",
+                          host_len, bytes_written);
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            sftp_message_free(msg);
+            return SSH_ERROR;
+        }
+
+        /* Update the offset correctly */
+        remote_file->offset -= (bytes_requested - host_len);
+        sftp_message_free(msg);
+        return host_len;
+
+    default:
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Received message %d during read!", msg->packet_type);
+        sftp_set_error(sftp, SSH_FX_BAD_MESSAGE);
+        sftp_message_free(msg);
+        return SSH_ERROR;
+    }
+
+    return SSH_ERROR; /* not reached */
+}
+
 #endif /* WITH_SFTP */
