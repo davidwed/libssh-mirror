@@ -595,10 +595,13 @@ int ssh_connect(ssh_session session)
             printf("mux failure! :(\n");
         }else{
             printf("mux success! :)\n");
+            session->mux_sock = ret;
         }
     }
 
-    if (session->opts.fd != SSH_INVALID_SOCKET) {
+    if (session->mux_sock) {
+        ret = ssh_socket_connect_mux(session->socket);
+    } else if (session->opts.fd != SSH_INVALID_SOCKET) {
         session->session_state = SSH_SESSION_STATE_SOCKET_CONNECTED;
         ssh_socket_set_fd(session->socket, session->opts.fd);
         ret = SSH_OK;
