@@ -740,6 +740,9 @@ int ssh_handle_packets_termination(ssh_session session,
     }
 
     tm = timeout_ms;
+
+    printf("tm = %d\n", tm);
+
     while(!fct(user)) {
         ret = ssh_handle_packets(session, tm);
         if (ret == SSH_ERROR) {

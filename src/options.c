@@ -1649,6 +1649,13 @@ int ssh_options_apply(ssh_session session)
             return -1;
         }
     }
+    
+    if (session->opts.control_master == NULL) {
+        rc = ssh_options_set(session, SSH_OPTIONS_CONTROL_MASTER, SSH_CONTROL_MASTER_NO);
+        if (rc < 0) {
+            return -1;
+        }
+    }
 
     if ((session->opts.exp_flags & SSH_OPT_EXP_FLAG_KNOWNHOSTS) == 0) {
         if (session->opts.knownhosts == NULL) {

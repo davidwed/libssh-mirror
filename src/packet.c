@@ -1774,6 +1774,22 @@ int ssh_packet_send(ssh_session session)
         return SSH_ERROR;
     }
 
+    if (session->mux_sock != NULL) {
+        rc = ssh_packet_write(session);
+        if (rc == SSH_ERROR) {
+            return rc;
+        }
+        if (rc == SSH_AGAIN) {
+            return rc;
+        }
+        /* rc == SSH_OK */
+        rc = ssh_buffer_reinit(session->out_buffer);
+        if (rc < 0) {
+            return SSH_ERROR;
+        }
+        return rc;
+    }
+
     payload = (uint8_t *)ssh_buffer_get(session->out_buffer);
     type = payload[0]; /* type is the first byte of the packet now */
     need_rekey = ssh_packet_need_rekey(session, payloadsize);
@@ -1809,24 +1825,6 @@ int ssh_packet_send(ssh_session session)
         }
         return SSH_OK;
     }
-
-    // if (session->mux_sock != NULL) {
-    //     rc = ssh_mux_client_send(session, session->out_buffer);
-    //     if (rc == SSH_ERROR) {
-    //         return rc;
-    //     }
-    //     if (rc == SSH_AGAIN) {
-    //         return rc;
-    //     }
-    //     /* rc == SSH_OK */
-    //     rc = ssh_buffer_reinit(session->out_buffer);
-    //     if (rc < 0) {
-    //         return SSH_ERROR;
-    //     }
-    //     return rc;
-    // } else {
-    //     rc = packet_send2(session);
-    // }
 
     /* Send the packet normally */
     rc = packet_send2(session);

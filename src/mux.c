@@ -1,10 +1,13 @@
 #include "config.h"
 #include "libssh/mux.h"
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <stdio.h>
 #include <sys/un.h>
 #include <poll.h>
 #include <fcntl.h>
+#include <errno.h>
+
 
 
 typedef unsigned int u_int;
@@ -17,6 +20,7 @@ typedef unsigned long size_t;
 #define SSH_MUX_VERSION 4
 
 #define MUX_MSG_HELLO			0x00000001
+#define MUX_C_NEW_SESSION		0x10000002
 #define MUX_C_ALIVE_CHECK		0x10000004
 #define MUX_S_ALIVE				0x80000005
 
@@ -40,9 +44,10 @@ int connected_clients = 0;
 int hello_received = 0;
 int stop = 0;
 unsigned int mux_client_request_id = 0;
+unsigned int mux_server_pid = 0;
 ssh_buffer msg;
 
-static int mux_client_socket_callback(const void *data, size_t len, void *user){
+static size_t mux_client_socket_callback(const void *data, size_t len, void *user){
 	ssh_log_hexdump("Received data: ", data, len);
 	stop = 1;
 	ssh_buffer_add_data(msg, data, len);
@@ -300,6 +305,164 @@ int mux_client_alive_check(ssh_socket sock) {
 	return ret;
 }
 
+int
+mm_send_fd(int sock, int fd)
+{
+	struct msghdr msg;
+	union {
+		struct cmsghdr hdr;
+		char buf[CMSG_SPACE(sizeof(int))];
+	} cmsgbuf;
+	struct cmsghdr *cmsg;
+	struct iovec vec;
+	char ch = '\0';
+	ssize_t n;
+	struct pollfd pfd;
+
+	memset(&msg, 0, sizeof(msg));
+	memset(&cmsgbuf, 0, sizeof(cmsgbuf));
+	msg.msg_control = (caddr_t)&cmsgbuf.buf;
+	msg.msg_controllen = sizeof(cmsgbuf.buf);
+	cmsg = CMSG_FIRSTHDR(&msg);
+	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+	cmsg->cmsg_level = SOL_SOCKET;
+	cmsg->cmsg_type = SCM_RIGHTS;
+	*(int *)CMSG_DATA(cmsg) = fd;
+
+	vec.iov_base = &ch;
+	vec.iov_len = 1;
+	msg.msg_iov = &vec;
+	msg.msg_iovlen = 1;
+
+	pfd.fd = sock;
+	pfd.events = POLLOUT;
+	while ((n = sendmsg(sock, &msg, 0)) == -1 &&
+	    (errno == EAGAIN || errno == EINTR)) {
+		printf("sendmsg(%d): %s", fd, strerror(errno));
+		(void)poll(&pfd, 1, -1);
+	}
+	if (n == -1) {
+		printf("sendmsg(%d): %s", fd, strerror(errno));
+		return -1;
+	}
+
+	if (n != 1) {
+		printf("sendmsg: expected sent 1 got %zd", n);
+		return -1;
+	}
+	return 0;
+}
+
+int mux_client_open_session(ssh_socket sock, ssh_session session) {
+	char *e;
+	const char *term = NULL;
+	u_int i, echar, rid, sid, esid, exitval, type, exitval_seen;
+	extern char **environ;
+	int r, rawmode, fd;
+
+	if ((mux_server_pid = mux_client_alive_check(sock)) == 0) {
+		return -1;
+	}
+
+	// ssh_signal(SIGPIPE, SIG_IGN);
+
+	// if (options.stdin_null && stdfd_devnull(1, 0, 0) == -1)
+	// 	fatal_f("stdfd_devnull failed");
+
+
+	term = getenv("TERM");
+	echar = 0xffffffff;
+	
+	// if (session->options.escape_char != SSH_ESCAPECHAR_NONE)
+	//     echar = (u_int)options.escape_char;
+
+	ssh_buffer_reinit(msg);
+
+	ssh_buffer_pack(msg, "ddsdddddss",
+					MUX_C_NEW_SESSION,
+					mux_client_request_id,
+					"",
+					1,
+					0,
+					0,
+					0,
+					echar,
+					term == NULL ? "" : term,
+					""
+	);
+
+	// /* Pass environment */
+	// if (options.num_send_env > 0 && environ != NULL) {
+	// 	for (i = 0; environ[i] != NULL; i++) {
+	// 		if (!env_permitted(environ[i]))
+	// 			continue;
+	// 		if ((r = sshbuf_put_cstring(m, environ[i])) != 0)
+	// 			fatal_fr(r, "request sendenv");
+	// 	}
+	// }
+	// for (i = 0; i < options.num_setenv; i++) {
+	// 	if ((r = sshbuf_put_cstring(m, options.setenv[i])) != 0)
+	// 		fatal_fr(r, "request setenv");
+	// }
+
+	if (mux_client_write_packet(sock, msg) != 0) {
+		printf("write packet failed\n");
+		return SSH_ERROR;
+	}
+
+	/* Send the stdio file descriptors */
+
+	fd = ssh_socket_get_fd(sock);
+
+	if (mm_send_fd(fd, STDIN_FILENO) == -1 || mm_send_fd(fd, STDOUT_FILENO) == -1 || mm_send_fd(fd, STDERR_FILENO) == -1) {
+		printf("send fd failed\n");
+		return SSH_ERROR;
+	}
+
+	printf("send fd success\n");
+
+	// /* Read their reply */
+	// sshbuf_reset(m);
+	// if (mux_client_read_packet(fd, m) != 0) {
+	// 	error_f("read from master failed: %s", strerror(errno));
+	// 	sshbuf_free(m);
+	// 	return -1;
+	// }
+
+	// if ((r = sshbuf_get_u32(m, &type)) != 0 ||
+	//     (r = sshbuf_get_u32(m, &rid)) != 0)
+	// 	fatal_fr(r, "parse");
+	// if (rid != muxclient_request_id)
+	// 	fatal_f("out of sequence reply: my id %u theirs %u",
+	// 	    muxclient_request_id, rid);
+
+	// switch (type) {
+	// case MUX_S_SESSION_OPENED:
+	// 	if ((r = sshbuf_get_u32(m, &sid)) != 0)
+	// 		fatal_fr(r, "parse session ID");
+	// 	debug_f("master session id: %u", sid);
+	// 	break;
+	// case MUX_S_PERMISSION_DENIED:
+	// 	if ((r = sshbuf_get_cstring(m, &e, NULL)) != 0)
+	// 		fatal_fr(r, "parse error message");
+	// 	error("Master refused session request: %s", e);
+	// 	sshbuf_free(m);
+	// 	return -1;
+	// case MUX_S_FAILURE:
+	// 	if ((r = sshbuf_get_cstring(m, &e, NULL)) != 0)
+	// 		fatal_fr(r, "parse error message");
+	// 	error_f("session request failed: %s", e);
+	// 	sshbuf_free(m);
+	// 	return -1;
+	// default:
+	// 	sshbuf_free(m);
+	// 	error_f("unexpected response from master 0x%08x", type);
+	// 	return -1;
+	// }
+	mux_client_request_id++;
+	return SSH_OK;
+}
+
 int mux_client(ssh_session session){
     
 	ssh_socket sock;
@@ -363,9 +526,14 @@ int mux_client(ssh_session session){
 		return -1;
 	}
 
+	if (mux_client_open_session(sock, session) == SSH_ERROR) {
+		printf("open session failed\n");
+		ssh_socket_close(sock);
+		return -1;
+	}
 
 	ssh_buffer_free(msg);
-	return SSH_OK;
+	return ssh_socket_get_fd(sock);
 }
 
 // int mux_listener_setup(ssh_session session){

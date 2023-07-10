@@ -1010,6 +1010,8 @@ ssh_socket_connect_mux(ssh_socket s)
         return SSH_ERROR;
     }
 
+    printf("connecting using mux\n");
+
     ssh_socket_set_fd(s, s->session->mux_sock);
     h = ssh_socket_get_poll_handle(s);
     if (h == NULL) {
