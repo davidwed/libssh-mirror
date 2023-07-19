@@ -1263,6 +1263,64 @@ LIBSSH_API int sftp_get_users_groups_by_id(sftp_session sftp,
                                            sftp_name_id_map users_map,
                                            sftp_name_id_map groups_map);
 
+/**
+ * @brief Copy a range of data from one sftp file to another.
+ *
+ * This function performs a data copy between two files present on the server
+ * without the additional cost of transferring data from server to client and
+ * then back from client to server.
+ *
+ * This uses the "copy-data" extension. You should check if the extension is
+ * supported using :
+ *
+ * @code
+ * int supported = sftp_extension_supported(sftp, "copy-data", "1");
+ * @endcode
+ *
+ * @param file_in       The open sftp file handle to copy from.
+ * @param off_in
+ * @parblock
+ *                      If off_in is NULL, then bytes are read from file_in
+ *                      starting from its file offset and on success, file_in's
+ *                      file offset is adjusted by the number of bytes copied.
+ *
+ *                      If off_in is not NULL, then off_in must point to a
+ *                      buffer that specifies the starting offset from where
+ *                      bytes will be read from file_in. On success, file_in's
+ *                      file offset is not changed, but the buffer that off_in
+ *                      points to is adjusted by the number of bytes copied.
+ * @endparblock
+ * @param file_out      The open sftp file handle to copy to.
+ * @param off_out
+ * @parblock
+ *                      If off_out is NULL, then bytes are written to file_out
+ *                      starting from its file offset and on success, file_out's
+ *                      file offset is adjusted by the number of bytes copied.
+ *
+ *                      If off_out is not NULL, then off_out must point to a
+ *                      buffer that specifies the starting offset from where
+ *                      bytes will be written to file_out. On success,
+ *                      file_out's file offset is not changed, but the buffer
+ *                      that off_out points to is adjusted by the number of
+ *                      bytes copied.
+ * @endparblock
+ * @param len           Number of bytes to copy. If this is 0, then the data
+ *                      will be read from file_in until EOF is reached.
+ *
+ * @returns             Number of bytes copied on success, SSH_ERROR on error.
+ *
+ * @warning             Files handled by sftp file handles passed to this
+ *                      function should be opened by the caller (prior to
+ *                      calling this function) using the same sftp session
+ *                      handle.
+ *
+ * @see sftp_open()
+ * @see sftp_extension_supported()
+ */
+LIBSSH_API int64_t sftp_copy_file_range(sftp_file file_in, uint64_t *off_in,
+                                        sftp_file file_out, uint64_t *off_out,
+                                        uint64_t len);
+
 #ifdef WITH_SERVER
 /**
  * @brief Create a new sftp server session.
