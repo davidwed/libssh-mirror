@@ -74,6 +74,7 @@ if (WITH_SFTP)
         torture_sftp_packet_read
         torture_sftp_recv_response_msg
         torture_sftp_get_users_groups_by_id
+        torture_sftp_copy_file_range
         ${SFTP_BENCHMARK_TESTS})
 endif (WITH_SFTP)
 
