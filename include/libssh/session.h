@@ -106,6 +106,7 @@ enum ssh_pending_call_e {
 #define SSH_OPT_EXP_FLAG_GLOBAL_KNOWNHOSTS 0x2
 #define SSH_OPT_EXP_FLAG_PROXYCOMMAND 0x4
 #define SSH_OPT_EXP_FLAG_IDENTITY 0x8
+#define SSH_OPT_EXP_FLAG_CONTROL_PATH 0x10
 
 /* extensions flags */
 /* negotiation enabled */
@@ -133,6 +134,7 @@ struct ssh_session_struct {
     uint32_t send_seq;
     uint32_t recv_seq;
     struct ssh_timestamp last_rekey_time;
+    socket_t mux_sock;
 
     int connected;
     /* !=0 when the user got a session handle */
@@ -260,6 +262,8 @@ struct ssh_session_struct {
         uint32_t rekey_time;
         int rsa_min_size;
         bool identities_only;
+        int control_master;
+        char *control_path;
     } opts;
     /* counters */
     ssh_counter socket_counter;
