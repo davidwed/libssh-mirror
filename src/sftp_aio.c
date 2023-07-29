@@ -931,4 +931,253 @@ ssize_t aio_wait_r2l(sftp_aio *aio, int local_fd)
     return SSH_ERROR; /* not reached */
 }
 
+/**
+ * @internal
+ *
+ * @brief Wait for an async remote read to complete and begin an async remote
+ * write for the read data.
+ *
+ * If the remote file for reading is opened in non-blocking mode and the read
+ * request hasn't been executed yet, this function returns SSH_AGAIN and must
+ * be called again using the same sftp aio handle.
+ *
+ * @param[in,out] aio
+ * @parblock
+ *                                 A value result pointer.
+ *
+ *                                 An sftp aio handle returned by
+ *                                 sftp_aio_begin_read() should be stored at
+ *                                 the pointed location by the caller. This
+ *                                 handle specifies information about the async
+ *                                 read request to wait for.
+ *
+ *                                 If the return value is SSH_AGAIN, the
+ *                                 supplied sftp aio handle present at the
+ *                                 pointed location is left untouched.
+ *
+ *                                 Except when the return value is SSH_AGAIN,
+ *                                 the memory corresponding to the supplied
+ *                                 sftp aio handle present at the pointed
+ *                                 location is released.
+ *
+ *                                 On success, if the async read response
+ *                                 contains at least one byte of data, an async
+ *                                 write request is sent for that data and the
+ *                                 sftp aio handle corresponding to the sent
+ *                                 request is stored at the pointed location.
+ *
+ *                                 On success, if the async read response
+ *                                 contains EOF, no async write request is sent
+ *                                 since there is no data to write and NULL is
+ *                                 stored at the pointed location.
+ *
+ *                                 On error, NULL is stored at the pointed
+ *                                 location.
+ * @endparblock
+ * @param[in] file_out             The open sftp file handle to write to.
+ *
+ * @returns                        On success, the number of bytes read in the
+ *                                 async remote read and requested to write in
+ *                                 the async remote write are returned.
+ *
+ * @retval 0                       On success, If 0 bytes were read before
+ *                                 encountering EOF in the async remote read.
+ *                                 No async write request is sent in this case.
+ *
+ * @retval SSH_AGAIN               If remote file for reading corresponding to
+ *                                 the supplied sftp aio handle is opened in
+ *                                 non-blocking mode and the read request hasn't
+ *                                 been executed yet.
+ *
+ * @retval SSH_ERROR               On error.
+ *
+ * @warning                        A call to this function with an invalid
+ *                                 sftp aio handle may never return.
+ *
+ * @see sftp_aio_begin_read()
+ */
+ssize_t aio_wait_begin_r2r(sftp_aio *aio, sftp_file file_out)
+{
+    sftp_session sftp = NULL;
+    ssh_buffer buffer = NULL;
+    uint32_t *count_ptr = NULL;
+    void *data_ptr = NULL;
+
+    uint32_t id, to_cut, bytes_cut;
+    size_t bytes_requested;
+    ssize_t bytes_read;
+    int rc;
+
+    if (aio == NULL || *aio == NULL ||
+        file_out == NULL ||
+        file_out->sftp == NULL ||
+        file_out->sftp->session == NULL) {
+
+        if (aio != NULL && *aio != NULL) {
+            SFTP_AIO_FREE(*aio);
+        }
+        return SSH_ERROR;
+    }
+
+    sftp = file_out->sftp;
+    bytes_requested = (*aio)->len;
+
+    id = sftp_get_new_id(sftp);
+
+    /*
+     * Prepare an ssh buffer for a remote write request for writing to
+     * file_out.
+     */
+    buffer = ssh_buffer_new();
+    if (buffer == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    rc = ssh_buffer_pack(buffer,
+                         "dSq",
+                         id,
+                         file_out->handle,
+                         file_out->offset);
+    if (rc == SSH_ERROR) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SSH_BUFFER_FREE(buffer);
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    /*
+     * Allocate memory at the tail of the ssh buffer for :
+     * - A uint32_t to store the count of the bytes to write to file_out
+     * - Memory to store the bytes to write to file_out.
+     *
+     * NOTE: The below code avoids using two separate ssh_buffer_allocate()
+     * calls for this allocation.
+     *
+     * This is because ssh_buffer_allocate() uses realloc() internally to expand
+     * the ssh buffer, and realloc'ing the ssh buffer due to the second
+     * ssh_buffer_allocate() call may deallocate the memory at the address
+     * returned by the first ssh_buffer_allocate() call.
+     *
+     * Hence this realloc'ing is dangerous if the address returned by the first
+     * ssh_buffer_allocate() call needs to be used after the second
+     * ssh_buffer_allocate() call, which would've been the case had we used two
+     * ssh_buffer_allocate() calls below.
+     */
+    count_ptr = ssh_buffer_allocate(buffer, sizeof(uint32_t) + bytes_requested);
+    if (count_ptr == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SSH_BUFFER_FREE(buffer);
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    /*
+     * Due to pointer arithmetic, data_ptr will store the address of the byte
+     * after the uint32_t that count_ptr points to.
+     */
+    data_ptr = count_ptr + 1;
+
+    /*
+     * Wait for the remote read corresponding to aio to complete and store the
+     * read data directly in the ssh buffer prepared for a write request for
+     * writing to file_out.
+     */
+    bytes_read = sftp_aio_wait_read(aio, data_ptr, bytes_requested);
+
+    /*
+     * Memory corresponding to (*aio) will be freed by sftp_aio_wait_read()
+     * except when it returns SSH_AGAIN.
+     */
+
+    if (bytes_read == SSH_ERROR) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    if (bytes_read == SSH_AGAIN) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_AGAIN;
+    }
+
+    /*
+     * bytes_read > 0 is a defensive check that ensures that the second
+     * condition is evaluated only when bytes_read is +ve.
+     *
+     * This is kept so that if the code is reformatted in future (e.g the
+     * following "if" is moved above the "if" for SSH_ERROR and "if" for
+     * SSH_AGAIN), then the second condition should NOT get evaluated for
+     * bytes_read == SSH_ERROR(-1) and bytes_read == SSH_AGAIN(-2).
+     *
+     * Because that 2nd condition if evaluated, would probably evaluate to true
+     * for those negatives (as the code casts bytes_read to uint64_t before
+     * comparing) but we don't want the following ("if")'s code to get executed
+     * for those negative values.
+     */
+    if (bytes_read > 0 &&
+        (uint64_t)bytes_read > sftp->limits->max_write_length) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Cannot send the read bytes in a single remote write "
+                      "request as the number of bytes read (%zd) exceed "
+                      "libssh's sftp limit for writing (%"PRIu64")",
+                       bytes_requested, sftp->limits->max_write_length);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    if (bytes_read == 0) {
+        SSH_BUFFER_FREE(buffer);
+        return 0;
+    }
+
+    *count_ptr = htonl(bytes_read);
+
+    /*
+     * The ssh buffer was allocated according to the number of bytes requested
+     * to read. After reading into the ssh buffer, update its length according
+     * to the number of bytes actually read.
+     */
+    to_cut = bytes_requested - bytes_read;
+    if (to_cut > 0) {
+        bytes_cut = ssh_buffer_pass_bytes_end(buffer, to_cut);
+        if (bytes_cut != to_cut) {
+            /*
+             * Should not happen since the ssh buffer's length is surely greater
+             * than the value of to_cut.
+             */
+            SSH_BUFFER_FREE(buffer);
+            return SSH_ERROR;
+        }
+    }
+
+    *aio = sftp_aio_new();
+    if (*aio == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    (*aio)->file = file_out;
+    (*aio)->id = id;
+    (*aio)->len = (size_t)bytes_read;
+
+    rc = sftp_packet_write(sftp, SSH_FXP_WRITE, buffer);
+    SSH_BUFFER_FREE(buffer);
+    if (rc == SSH_ERROR) {
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    /* Assume that the data has been written to file_out */
+    file_out->offset += bytes_read;
+
+    return bytes_read;
+}
+
 #endif /* WITH_SFTP */

@@ -1463,4 +1463,539 @@ out:
     return err;
 }
 
+/**
+ * @internal
+ *
+ * @brief Wait for an async remote read to complete and begin an async remote
+ * write. Enqueue the sftp aio handle corresponding to sent async write request
+ * in a queue of sftp aio handles.
+ *
+ * A pointer to a sftp aio handle should be passed while calling this function.
+ * Irrespective of success or failure, this function deallocates memory
+ * corresponding to the supplied aio handle and assigns NULL to that aio handle
+ * using the passed pointer to that handle.
+ *
+ * @param ft[in]                  sftp ft handle to a file transfer structure
+ *                                corresponding to the remote to remote
+ *                                transfer.
+ *
+ * @param aio[in]                 Pointer to a sftp aio handle dequeued from an
+ *                                aio queue in which ft_begin_r2l() enqueues
+ *                                sftp aio handles.
+ *
+ * @param bytes_down[in, out]     Pointer to a counter to keep the track of the
+ *                                number of bytes downloaded from the remote
+ *                                source file, it is updated appropriately as
+ *                                the bytes are downloaded from the remote
+ *                                source file.
+ *
+ * @param file_out[in]            The open sftp file handle to write to.
+ *
+ * @param up_aio_queue[in]        A queue of sftp aio handles in which the sftp
+ *                                aio handle corresponding to the sent write
+ *                                request will be enqueued.
+ *
+ * @returns                       SSH_OK on success, SSH_ERROR on error.
+ *
+ * @see ft_begin_r2l()
+ */
+static int ft_wait_begin_r2r(sftp_ft ft,
+                             sftp_aio *aio,
+                             uint64_t *bytes_down,
+                             sftp_file file_out,
+                             struct ssh_list *up_aio_queue)
+{
+    sftp_session sftp = NULL;
+    ssize_t bytes;
+    int rc;
+
+    rc = ft_validate(ft);
+    if (rc == SSH_ERROR) {
+        if (aio != NULL) {
+            SFTP_AIO_FREE(*aio);
+        }
+
+        return SSH_ERROR;
+    }
+
+    sftp = ft->sftp;
+
+    if (aio == NULL || *aio == NULL ||
+        bytes_down == NULL || file_out == NULL || up_aio_queue == NULL) {
+        ssh_set_error_invalid(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+
+        if (aio != NULL) {
+            SFTP_AIO_FREE(*aio);
+        }
+
+        return SSH_ERROR;
+    }
+
+    bytes = aio_wait_begin_r2r(aio, file_out);
+    if (bytes == SSH_ERROR) {
+        return SSH_ERROR;
+    }
+
+    if (bytes == SSH_AGAIN) {
+        /*
+         * Should never happen, since sftp ft api is the one
+         * opening and handling the remote source file and it shouldn't
+         * set non-blocking mode for the remote source file.
+         */
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Non-blocking mode set for the remote source file");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+
+        /*
+         * aio_wait_*() doesn't deallocate the memory corresponding to
+         * the supplied aio handle if it returns SSH_AGAIN, hence we need
+         * to release that memory before returning.
+         */
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    *bytes_down += bytes;
+    if (*bytes_down != ft->bytes_total &&
+        (size_t)bytes != ft->internal_chunk_size) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Remote source file is shorter than expected. Expected "
+                      "%"PRIu64" bytes, got %"PRIu64" bytes",
+                      ft->bytes_total,
+                      *bytes_down);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    rc = ssh_list_append(up_aio_queue, *aio);
+    if (rc == SSH_ERROR) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        SFTP_AIO_FREE(*aio);
+        return SSH_ERROR;
+    }
+
+    /*
+     * Store NULL at the pointed location, as the sftp aio handle present at
+     * that location has been stored in the queue.
+     */
+    *aio = NULL;
+
+    return SSH_OK;
+}
+
+/**
+ * @internal
+ *
+ * @brief Perform a remote to remote file transfer.
+ *
+ * @param ft          sftp ft handle to a file transfer structure corresponding
+ *                    to the remote to remote transfer.
+ *
+ * @returns           SSH_OK on success, SSH_ERROR on error.
+ */
+static int ft_transfer_r2r(sftp_ft ft) __attr_unused__;
+static int ft_transfer_r2r(sftp_ft ft)
+{
+    sftp_session sftp = NULL;
+    sftp_file file_in = NULL, file_out = NULL;
+    sftp_attributes attr_in = NULL, attr_out = NULL;
+    sftp_aio aio = NULL;
+    struct ssh_list *down_aio_queue = NULL, *up_aio_queue = NULL;
+
+    const char *static_ssh_err_str = NULL;
+    char *initial_ssh_err_str = NULL;
+    int initial_ssh_err_code, initial_sftp_err_code;
+
+    uint8_t callback_aborted_flag = 0,
+            down_req_err_flag = 0,
+            up_req_err_flag = 0;
+
+    mode_t target_mode = 0;
+    int64_t len_copy;
+    uint64_t bytes_downloaded = 0;
+    size_t i;
+    int rc, err = SSH_ERROR;
+
+    rc = ft_validate(ft);
+    if (rc == SSH_ERROR) {
+        return err;
+    }
+
+    sftp = ft->sftp;
+
+    /* initially */
+    ft->bytes_total = 0;
+    ft->bytes_transferred = 0;
+    ft->bytes_skipped = 0;
+    ft->bytes_requested = 0;
+
+    attr_in = sftp_stat(sftp, ft->source_path);
+    if (attr_in == NULL) {
+        return err;
+    }
+
+    if (attr_in->type != SSH_FILEXFER_TYPE_REGULAR) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Remote source file is not a regular file, "
+                      "the transfer cannot be performed");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        goto out;
+    }
+
+    if ((attr_in->flags & SSH_FILEXFER_ATTR_SIZE) == 0) {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "File attributes of the remote source file obtained from "
+                      "the sftp server do not contain the file size, the "
+                      "transfer cannot be performed");
+        sftp_set_error(sftp, SSH_FX_OP_UNSUPPORTED);
+        goto out;
+    }
+
+    ft->bytes_total = attr_in->size;
+
+    if (ft->resume_transfer_flag == 1) {
+        /*
+         * If the transfer is to be resumed, the target file
+         * must exist, must be a regular file and must not
+         * be larger than the source file.
+         */
+        attr_out = sftp_stat(sftp, ft->target_path);
+        if (attr_out == NULL) {
+            rc = sftp_get_error(sftp);
+            if (rc == SSH_FX_NO_SUCH_FILE ||
+                rc == SSH_FX_NO_SUCH_PATH) {
+                /*
+                 * Overwrite the ssh error string to a more
+                 * informative message for the user as compared
+                 * to SFTP SERVER : No such file or No such path.
+                 */
+                ssh_set_error(sftp->session, SSH_FATAL,
+                              "Remote target file does not exist, "
+                              "the transfer cannot be resumed");
+            }
+
+            goto out;
+        }
+
+        if (attr_out->type != SSH_FILEXFER_TYPE_REGULAR) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "Remote target file is not a regular file, "
+                          "the transfer cannot be resumed");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            sftp_attributes_free(attr_out);
+            goto out;
+        }
+
+        if ((attr_out->flags & SSH_FILEXFER_ATTR_SIZE) == 0) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "File attributes of the remote target file obtained "
+                          "from the sftp server do not contain the file size, "
+                          "the transfer cannot be resumed");
+            sftp_set_error(sftp, SSH_FX_OP_UNSUPPORTED);
+            sftp_attributes_free(attr_out);
+            goto out;
+        }
+
+        if (attr_out->size > attr_in->size) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "Remote target file is larger than the remote "
+                          "source file, the transfer cannot be resumed");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            sftp_attributes_free(attr_out);
+            goto out;
+        }
+
+        ft->bytes_transferred = attr_out->size;
+        ft->bytes_requested = attr_out->size;
+        ft->bytes_skipped = attr_out->size;
+        bytes_downloaded = attr_out->size;
+
+        sftp_attributes_free(attr_out);
+    } else {
+
+        if (ft->target_mode != 0) {
+            target_mode = ft->target_mode;
+        } else if ((attr_in->flags & SSH_FILEXFER_ATTR_PERMISSIONS) != 0) {
+            target_mode = attr_in->permissions & 0777;
+        } else {
+            target_mode = 0666;
+        }
+    }
+
+    /* Open the remote source file for reading */
+    file_in = sftp_open(sftp, ft->source_path, O_RDONLY, 0);
+    if (file_in == NULL) {
+        goto out;
+    }
+
+    /* Set the read offset for the remote source file */
+    if (ft->bytes_skipped > 0) {
+        rc = sftp_seek64(file_in, ft->bytes_skipped);
+        if (rc == SSH_ERROR) {
+            goto out;
+        }
+    }
+
+    /* Open the remote target file for writing */
+    file_out = sftp_open(sftp, ft->target_path,
+                         O_WRONLY | O_CREAT |
+                         (ft->resume_transfer_flag == 1 ? 0 : O_TRUNC),
+                         target_mode);
+    if (file_out == NULL) {
+        goto out;
+    }
+
+    /* Set the write offset for the remote target file */
+    if (ft->bytes_skipped > 0) {
+        rc = sftp_seek64(file_out, ft->bytes_skipped);
+        if (rc == SSH_ERROR) {
+            goto out;
+        }
+    }
+
+    /* Call the progress callback before starting the transfer */
+    if (ft->pgrs_callback != NULL) {
+        rc = ft->pgrs_callback(ft);
+        if (rc != 0) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "File transfer aborted by the progress callback");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            goto out;
+        }
+    }
+
+    rc = sftp_extension_supported(sftp, "copy-data", "1");
+    if (rc == 1) {
+        len_copy = sftp_copy_file_range(file_in, NULL, file_out, NULL, 0);
+        if (len_copy == SSH_ERROR) {
+            goto out;
+        }
+
+        if ((uint64_t)len_copy != (ft->bytes_total - ft->bytes_skipped)) {
+            ssh_set_error(sftp, SSH_FATAL,
+                          "Remote source file is shorter than expected, "
+                          "expected %"PRIu64" bytes, got only %"PRIu64" bytes",
+                          ft->bytes_total,
+                          (ft->bytes_skipped + (uint64_t)len_copy));
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            goto out;
+        }
+
+        ft->bytes_transferred = ft->bytes_total;
+        ft->bytes_requested = ft->bytes_total;
+
+        if (ft->pgrs_callback != NULL) {
+            /*
+             * Ignoring the callback's return value here as the transfer
+             * has already completed successfully.
+             */
+            ft->pgrs_callback(ft);
+        }
+
+        err = SSH_OK;
+        goto out;
+    }
+
+    /*
+     * If the "copy-data" extension isn't supported, then we need to download
+     * chunks from the remote source file and upload them to the remote target
+     * file.
+     *
+     * ft_begin_r2l() has been used to issue a download request.
+     *
+     * ft_wait_begin_r2r() has been used to wait for the response of a download
+     * request and issue an upload request for the downloaded data.
+     *
+     * ft_wait_l2r() has been used to wait for the response of a upload request.
+     */
+
+    /* Get the initial ssh and sftp errors */
+    static_ssh_err_str = ssh_get_error(sftp->session);
+    initial_ssh_err_str = strdup(static_ssh_err_str);
+    if (initial_ssh_err_str == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        goto out;
+    }
+
+    initial_ssh_err_code = ssh_get_error_code(sftp->session);
+    initial_sftp_err_code = sftp_get_error(sftp);
+
+    down_aio_queue = ssh_list_new();
+    if (down_aio_queue == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        goto out;
+    }
+
+    up_aio_queue = ssh_list_new();
+    if (up_aio_queue == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        goto out;
+    }
+
+    /* Issue in-flight download requests */
+    for (i = 0;
+         i < ft->in_flight_requests && ft->bytes_requested < ft->bytes_total;
+         ++i) {
+        rc = ft_begin_r2l(ft, file_in, down_aio_queue);
+        if (rc == SSH_ERROR) {
+            down_req_err_flag = 1;
+            break;
+        }
+    }
+
+    /*
+     * Get the responses of the issued download requests and issue in-flight
+     * upload requests for the downloaded data. Issue more download requests if
+     * needed.
+     */
+    for (i = 0;
+         i < ft->in_flight_requests &&
+         (aio = ssh_list_pop_head(sftp_aio, down_aio_queue)) != NULL;
+         ++i) {
+        rc = ft_wait_begin_r2r(ft,
+                               &aio,
+                               &bytes_downloaded,
+                               file_out,
+                               up_aio_queue);
+        if (rc == SSH_ERROR) {
+            up_req_err_flag = 1;
+            break;
+        }
+
+        if (ft->bytes_requested == ft->bytes_total ||
+            down_req_err_flag == 1) {
+            /* No need to issue more download requests */
+            continue;
+        }
+
+        /* else issue a download request */
+        rc = ft_begin_r2l(ft, file_in, down_aio_queue);
+        if (rc == SSH_ERROR) {
+            down_req_err_flag = 1;
+        }
+    }
+
+    /*
+     * At this point we have in-flight upload and download requests.
+     *
+     * Get responses for the issued upload and download requests, issue
+     * upload requests corresponding to the downloaded data and issue
+     * more download requests if needed.
+     */
+    while ((aio = ssh_list_pop_head(sftp_aio, up_aio_queue)) != NULL) {
+        rc = ft_wait_l2r(ft, &aio);
+        if (rc == SSH_ERROR) {
+            break;
+        }
+
+        if (ft->pgrs_callback != NULL && callback_aborted_flag != 1) {
+            rc = ft->pgrs_callback(ft);
+            if (rc != 0) {
+                callback_aborted_flag = 1;
+                ssh_set_error(sftp->session, SSH_FATAL,
+                              "File transfer aborted by the progress callback");
+                sftp_set_error(sftp, SSH_FX_FAILURE);
+            }
+        }
+
+        /*
+         * Wait for the response of a request present in the download queue and
+         * issue an upload request corresponding to that download response.
+         */
+        if (up_req_err_flag != 1) {
+            aio = ssh_list_pop_head(sftp_aio, down_aio_queue);
+            if (aio != NULL) {
+                rc = ft_wait_begin_r2r(ft,
+                                       &aio,
+                                       &bytes_downloaded,
+                                       file_out,
+                                       up_aio_queue);
+                if (rc == SSH_ERROR) {
+                    up_req_err_flag = 1;
+                }
+            }
+        }
+
+        if (ft->bytes_requested == ft->bytes_total ||
+            callback_aborted_flag == 1 ||
+            down_req_err_flag == 1 ||
+            up_req_err_flag == 1) {
+            /* No need to issue more download requests */
+            continue;
+        }
+
+        /* else issue a download request */
+        rc = ft_begin_r2l(ft, file_in, down_aio_queue);
+        if (rc == SSH_ERROR) {
+            down_req_err_flag = 1;
+        }
+    }
+
+    /* Free the aio structures corresponding to the outstanding requests */
+    while ((aio = ssh_list_pop_head(sftp_aio, down_aio_queue)) != NULL) {
+        SFTP_AIO_FREE(aio);
+    }
+
+    while ((aio = ssh_list_pop_head(sftp_aio, up_aio_queue)) != NULL) {
+        SFTP_AIO_FREE(aio);
+    }
+
+    if (ft->bytes_transferred == ft->bytes_total) {
+        /* File transfer was successful */
+        if (callback_aborted_flag == 1) {
+            /*
+             * The progress callback tried to abort the transfer
+             * but getting the responses for the outstanding
+             * async requests completed the transfer and
+             * no other operation failed.
+             *
+             * We changed the ssh and sftp errors because the
+             * progress callback tried to abort, but since the
+             * file transfer operation is successful we restore
+             * them to their previous state.
+             */
+            ssh_set_error(sftp->session, initial_ssh_err_code,
+                          "%s", initial_ssh_err_str);
+            sftp_set_error(sftp, initial_sftp_err_code);
+        }
+
+        err = SSH_OK;
+    }
+
+out:
+    ssh_list_free(up_aio_queue);
+    ssh_list_free(down_aio_queue);
+    SAFE_FREE(initial_ssh_err_str);
+
+    /*
+     * It is possible that the whole transfer is a success and err is set to
+     * SSH_OK, but closing of the source or target file fails.
+     *
+     * In this case the err is to be set back to SSH_ERROR.
+     */
+    if (file_out != NULL) {
+        rc = sftp_close(file_out);
+        if (rc == SSH_ERROR) {
+            err = SSH_ERROR;
+        }
+    }
+
+    if (file_in != NULL) {
+        rc = sftp_close(file_in);
+        if (rc == SSH_ERROR) {
+            err = SSH_ERROR;
+        }
+    }
+
+    sftp_attributes_free(attr_in);
+
+    return err;
+}
+
 #endif /* WITH_SFTP */

@@ -118,6 +118,8 @@ int aio_begin_l2r(sftp_file remote_file,
 
 ssize_t aio_wait_r2l(sftp_aio *aio, int local_fd);
 
+ssize_t aio_wait_begin_r2r(sftp_aio *aio, sftp_file file_out);
+
 #ifdef __cplusplus
 }
 #endif
