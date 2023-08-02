@@ -1777,7 +1777,7 @@ int ssh_packet_send(ssh_session session)
     payload = (uint8_t *)ssh_buffer_get(session->out_buffer);
     type = payload[0]; /* type is the first byte of the packet now */
 
-    if (session->mux_sock != NULL) {
+    if (session->mux_sock) {
         if (type >= 80 && type <= 127) {
             rc = ssh_packet_write(session);
 	    } else {
