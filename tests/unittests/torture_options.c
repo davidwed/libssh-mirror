@@ -181,6 +181,7 @@ static void torture_options_set_key_exchange(void **state)
     /* Test known kexes */
     rc = ssh_options_set(session,
                          SSH_OPTIONS_KEY_EXCHANGE,
+                         "sntrup761x25519-sha512@openssh.com,"
                          "curve25519-sha256,curve25519-sha256@libssh.org,"
                          "ecdh-sha2-nistp256,diffie-hellman-group16-sha512,"
                          "diffie-hellman-group18-sha512,"
@@ -195,6 +196,7 @@ static void torture_options_set_key_exchange(void **state)
                             "diffie-hellman-group14-sha256");
     } else {
         assert_string_equal(session->opts.wanted_methods[SSH_KEX],
+                            "sntrup761x25519-sha512@openssh.com,"
                             "curve25519-sha256,curve25519-sha256@libssh.org,"
                             "ecdh-sha2-nistp256,diffie-hellman-group16-sha512,"
                             "diffie-hellman-group18-sha512,"
@@ -1277,7 +1279,7 @@ static void torture_options_copy(void **state)
           "BindAddress 127.0.0.2\n"
           "GlobalKnownHostsFile /etc/ssh/known_hosts2\n"
           "UserKnownHostsFile ~/.ssh/known_hosts2\n"
-          "KexAlgorithms curve25519-sha256,ecdh-sha2-nistp521\n"
+          "KexAlgorithms curve25519-sha256,sntrup761x25519-sha512@openssh.com,ecdh-sha2-nistp521\n"
           "Ciphers aes256-ctr\n"
           "MACs hmac-sha2-256\n"
           "HostKeyAlgorithms ssh-ed25519,ecdsa-sha2-nistp521\n"
