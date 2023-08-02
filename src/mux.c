@@ -26,6 +26,13 @@ unsigned int mux_client_request_id = 0;
 unsigned int mux_server_pid = 0;
 ssh_buffer msg;
 
+int mux_client_open_session(ssh_socket sock, ssh_session session);
+int mux_client(ssh_session session);
+int send_fd(int sock, int fd);
+int mux_client_alive_check(ssh_socket sock);
+int mux_client_write_packet(ssh_socket sock);
+int mux_client_exchange_hello(ssh_socket sock);
+
 static size_t mux_client_socket_callback(const void *data, size_t len, void *user){
 	ssh_log_hexdump("Received data: ", data, len);
 	stop = 1;
@@ -38,12 +45,10 @@ static void mux_exception_callback(int code, int errno_code,void *user){
 	stop = 1;
 }
 
-int mux_client_write_packet(ssh_socket sock, ssh_buffer msg)
+int mux_client_write_packet(ssh_socket sock)
 {
 	ssh_buffer queue;
-	u_int have, need;
-	int rc, len;
-	const u_char *ptr;
+	int rc;
 
 	if ((queue = ssh_buffer_new()) == NULL){
 		// error handling
@@ -70,7 +75,7 @@ int mux_client_exchange_hello(ssh_socket sock)
 {
 	u_int type, ver;
 	int rc, ret = -1;
-	int len;
+	u_int len;
 	ssh_poll_ctx ctx = NULL;
 
 	ssh_buffer_reinit(msg);
@@ -80,7 +85,7 @@ int mux_client_exchange_hello(ssh_socket sock)
         // error handling
     }
 
-	if (mux_client_write_packet(sock, msg) != 0) {
+	if (mux_client_write_packet(sock) != 0) {
 		// error handling
 		goto out;
 	}
@@ -100,7 +105,7 @@ int mux_client_exchange_hello(ssh_socket sock)
 
 	ssh_buffer_get_u32(msg, &len);
 	len = ntohl(len);
-	printf("read packet size: %lu\n", len);
+	printf("read packet size: %u\n", len);
 
 	if ((rc = ssh_buffer_get_u32(msg, &type)) != 0){
 		// error handling
@@ -131,8 +136,8 @@ int mux_client_exchange_hello(ssh_socket sock)
 }
 
 int mux_client_alive_check(ssh_socket sock) {
-	int rc, len, ret = -1;
-	u_int type, rid, pid;
+	int rc, ret = -1;
+	u_int len, type, rid, pid;
 	ssh_poll_ctx ctx = NULL;
 
 	ssh_buffer_reinit(msg);
@@ -142,7 +147,7 @@ int mux_client_alive_check(ssh_socket sock) {
         // error handling
     }
 
-	if (mux_client_write_packet(sock, msg) != 0) {
+	if (mux_client_write_packet(sock) != 0) {
 		// error handling
 		goto out;
 	}
@@ -162,7 +167,7 @@ int mux_client_alive_check(ssh_socket sock) {
 
 	ssh_buffer_get_u32(msg, &len);
 	len = ntohl(len);
-	printf("read packet size: %lu\n", len);
+	printf("read packet size: %u\n", len);
 
 	if ((rc = ssh_buffer_get_u32(msg, &type)) != 0){
 		// error handling
@@ -197,7 +202,7 @@ int mux_client_alive_check(ssh_socket sock) {
 
 int send_fd(int sock, int fd)
 {
-	struct msghdr msg;
+	struct msghdr msgh;
 	union {
 		struct cmsghdr hdr;
 		char buf[CMSG_SPACE(sizeof(int))];
@@ -208,11 +213,11 @@ int send_fd(int sock, int fd)
 	ssize_t n;
 	struct pollfd pfd;
 
-	memset(&msg, 0, sizeof(msg));
+	memset(&msgh, 0, sizeof(msgh));
 	memset(&cmsgbuf, 0, sizeof(cmsgbuf));
-	msg.msg_control = (caddr_t)&cmsgbuf.buf;
-	msg.msg_controllen = sizeof(cmsgbuf.buf);
-	cmsg = CMSG_FIRSTHDR(&msg);
+	msgh.msg_control = (caddr_t)&cmsgbuf.buf;
+	msgh.msg_controllen = sizeof(cmsgbuf.buf);
+	cmsg = CMSG_FIRSTHDR(&msgh);
 	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
 	cmsg->cmsg_level = SOL_SOCKET;
 	cmsg->cmsg_type = SCM_RIGHTS;
@@ -220,12 +225,12 @@ int send_fd(int sock, int fd)
 
 	vec.iov_base = &ch;
 	vec.iov_len = 1;
-	msg.msg_iov = &vec;
-	msg.msg_iovlen = 1;
+	msgh.msg_iov = &vec;
+	msgh.msg_iovlen = 1;
 
 	pfd.fd = sock;
 	pfd.events = POLLOUT;
-	while ((n = sendmsg(sock, &msg, 0)) == -1 &&
+	while ((n = sendmsg(sock, &msgh, 0)) == -1 &&
 	    (errno == EAGAIN || errno == EINTR)) {
 		printf("sendmsg(%d): %s", fd, strerror(errno));
 		(void)poll(&pfd, 1, -1);
@@ -245,7 +250,7 @@ int send_fd(int sock, int fd)
 int mux_client_open_session(ssh_socket sock, ssh_session session) {
 	const char *term = NULL;
 	u_int echar;
-	int r, rawmode, fd;
+	int fd;
 
 	if ((mux_server_pid = mux_client_alive_check(sock)) == 0) {
 		return -1;
@@ -269,7 +274,7 @@ int mux_client_open_session(ssh_socket sock, ssh_session session) {
 					""
 	);
 
-	if (mux_client_write_packet(sock, msg) != 0) {
+	if (mux_client_write_packet(sock) != 0) {
 		printf("write packet failed\n");
 		return SSH_ERROR;
 	}
@@ -287,7 +292,8 @@ int mux_client_open_session(ssh_socket sock, ssh_session session) {
 	return SSH_OK;
 }
 
-int mux_client(ssh_session session){
+int mux_client(ssh_session session)
+{
     
 	ssh_socket sock;
     ssh_poll_handle h = NULL;

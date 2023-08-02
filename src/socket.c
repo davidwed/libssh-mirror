@@ -1003,8 +1003,6 @@ int
 ssh_socket_connect_mux(ssh_socket s)
 {
     ssh_poll_handle h = NULL;
-    int pid;
-    int rc;
 
     if (s->state != SSH_SOCKET_NONE) {
         return SSH_ERROR;
