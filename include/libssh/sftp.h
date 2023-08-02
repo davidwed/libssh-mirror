@@ -1343,6 +1343,455 @@ LIBSSH_API int64_t sftp_copy_file_range(sftp_file file_in, uint64_t *off_in,
                                         sftp_file file_out, uint64_t *off_out,
                                         uint64_t len);
 
+/**
+ * @brief Allocate a new sftp file transfer structure and set the default values
+ * for its fields.
+ *
+ * Caller can change the defaults using sftp_ft_options_set().
+ *
+ * @param sftp          The sftp session to use for the file transfers that
+ *                      would be performed using the sftp ft handle returned by
+ *                      this function.
+ *
+ * @returns             An sftp ft handle to the newly allocated file transfer
+ *                      structure or NULL on error.
+ *
+ * @see sftp_ft_options_set()
+ * @see sftp_ft_transfer()
+ * @see sftp_ft_free()
+ */
+LIBSSH_API sftp_ft sftp_ft_new(sftp_session sftp);
+
+/**
+ * @brief Deallocate memory associated with a file transfer structure.
+ *
+ * @param ft          sftp ft handle to the file transfer structure to
+ *                    deallocate.
+ *
+ * @see sftp_ft_new()
+ * @see sftp_ft_options_set()
+ * @see sftp_ft_transfer()
+ */
+LIBSSH_API void sftp_ft_free(sftp_ft);
+
+/**
+ * @brief Set an option for a file transfer.
+ *
+ * A typical application would call this function multiple times in
+ * the setup phase to set multiple options before calling sftp_ft_transfer()
+ * to perform the transfer.
+ *
+ * Options set with this function call are valid for all forthcoming transfers
+ * performed using the sftp ft handle passed to this function. The options are
+ * not in any way reset between transfers, so if you want subsequent transfers
+ * with different options, you must change them by using this function
+ * between the transfers.
+ *
+ * Strings passed to this function as 'char *' arguments, are copied by
+ * the function to the file transfer structure handled by the sftp ft handle
+ * passed to this function. Hence, the string storage associated to the
+ * pointer argument may be discarded or reused by the caller after this function
+ * returns.
+ *
+ * @param ft          sftp ft handle to a file transfer structure corresponding
+ *                    to the file transfer for which options are to be set.
+ *
+ * @param type
+ * @parblock
+ *                    The option type to set. This could be one of the
+ *                    following :
+ *
+ *                    - SFTP_FT_OPTIONS_TYPE : The type of the transfer
+ *                      (enum sftp_ft_type_e).
+ *                          - SFTP_FT_TYPE_LOCAL_COPY
+ *                          - SFTP_FT_TYPE_UPLOAD
+ *                          - SFTP_FT_TYPE_DOWNLOAD
+ *                          - SFTP_FT_TYPE_REMOTE_COPY\n
+ *                      \n
+ *                    - SFTP_FT_OPTIONS_SOURCE_PATH : The path of the source
+ *                      file (const char *).
+ *
+ *                    - SFTP_FT_OPTIONS_TARGET_PATH : The path of the target
+ *                      file (const char *).
+ *
+ *                    - SFTP_FT_OPTIONS_TARGET_MODE : The permission mode to set
+ *                      for the target file. (mode_t)
+ *
+ *                    - SFTP_FT_OPTIONS_CHUNK_SIZE : Files are transferred in
+ *                      chunks, this option specifies the chunk size to use for
+ *                      the transfer (size_t).
+ *
+ *                      Larger chunk sizes require fewer number of round trips
+ *                      to complete the transfer at the cost of higher memory
+ *                      consumption.
+ *
+ *                      Setting 0 will revert the chunk size to the default.
+ *
+ *                      User can obtain the chunk size using
+ *                      sftp_ft_get_chunk_size().
+ *
+ *                    - SFTP_FT_OPTIONS_REQUESTS : The count of the requests
+ *                      that may be outstanding at any one time (size_t).
+ *
+ *                      Increasing this count may slightly improve file transfer
+ *                      speeds but will increase memory usage.
+ *
+ *                      Setting 0 will revert the count to the default. The
+ *                      default is 20.
+ *
+ *                      User can obtain this count using
+ *                      sftp_ft_get_requests_count().
+ *
+ *                    - SFTP_FT_OPTIONS_RESUME_TRANSFER : Enable or
+ *                      disable the resume transfer option (bool)
+ *
+ *                      This option is disabled by default.
+ *
+ *                      When this option is enabled, sftp_ft_transfer() tries to
+ *                      resume partial transfers of existing source and target
+ *                      files.
+ *
+ *                      Note : Resumption assumes that the existing contents of
+ *                      the target file match the partial contents of the source
+ *                      file. If the target file's existing contents differ from
+ *                      the partial contents of the source file then the
+ *                      resultant target file after the transfer is likely to be
+ *                      a corrupted file.
+ * @endparblock
+ * @param value         The value to set. This is a generic pointer and the
+ *                      datatype which is used should be set according to the
+ *                      type parameter.
+ *
+ * @returns             SSH_OK on success, SSH_ERROR on failure with the ssh and
+ *                      sftp errors set to indicate the error.
+ *
+ * @see sftp_ft_transfer()
+ * @see sftp_ft_set_pgrs_callback()
+ * @see ssh_get_error()
+ * @see sftp_get_error()
+ */
+LIBSSH_API int sftp_ft_options_set(sftp_ft ft,
+                                   enum sftp_ft_options_e type,
+                                   const void *value);
+
+/**
+ * @brief Set the progress callback and user data for a file transfer.
+ *
+ * @param ft            sftp ft handle to a file transfer structure.
+ *
+ * @param callback
+ * @parblock
+ *                      The progress callback called during the transfers which
+ *                      are performed using the sftp ft handle passed to this
+ *                      function. Transfers can be performed by calling
+ *                      sftp_ft_transfer().
+ *
+ *                      If set, the callback is called by sftp_ft_transfer()
+ *                          - Once before beginning the transfer.
+ *                          - After transferring each chunk.
+ *
+ *                      \n The sftp ft handle passed to sftp_ft_transfer() is
+ *                      passed down to this callback, the file transfer
+ *                      structure handled by this handle is updated as the
+ *                      transfer progresses.
+ *
+ *                      To check the progress of the transfer inside the
+ *                      progress callback, the sftp_ft_get_*() functions
+ *                      can be used to get various metrics that indicate
+ *                      how much the transfer has progressed.
+ *
+ *                      If the callback returns a non-zero return value then :
+ *                          - sftp_ft_transfer() won't issue any new transfer
+ *                            requests and won't call the callback again.
+ *
+ *                          - sftp_ft_transfer() tries abort the transfer after
+ *                            getting the responses for the outstanding requests
+ *                            and processing the outstanding responses.
+ *
+ *                              - If processing the outstanding requests and
+ *                                responses completes the transfer, then
+ *                                sftp_ft_transfer() returns SSH_OK.
+ *
+ *                              - If processing the outstanding requests and
+ *                                responses doesn't complete the transfer, then
+ *                                sftp_ft_transfer() returns SSH_ERROR with ssh
+ *                                and sftp errors set to indicate that the
+ *                                transfer was aborted by the callback.
+ *
+ *                      \n Note : In case of a remote-copy transfer, if the
+ *                      sftp server supports the "copy-data" extension, then the
+ *                      callback is called once before the transfer begins and
+ *                      once after the entire transfer ends successfully. In
+ *                      this case, the callback is not called after transferring
+ *                      each chunk.
+ * @endparblock
+ * @param user_data
+ * @parblock
+ *                      User data that could be useful in the progress callback.
+ *
+ *                      sftp_ft_get_user_data() can be used inside the progress
+ *                      callback to get this data.
+ * @endparblock
+ *
+ * @returns             SSH_OK on success, SSH_ERROR if the parameter ft is
+ *                      NULL.
+ *
+ * @see sftp_ft_options_set()
+ * @see sftp_ft_transfer()
+ * @see sftp_ft_get_bytes_transferred()
+ * @see sftp_ft_get_bytes_total()
+ * @see sftp_ft_get_bytes_skipped()
+ */
+LIBSSH_API int sftp_ft_set_pgrs_callback(sftp_ft ft,
+                                         int (*callback)(sftp_ft ft),
+                                         void *user_data);
+
+/**
+ * @brief Perform a file transfer.
+ *
+ * To perform a file transfer the user should perform the following steps :
+ *
+ * 1. Allocate a file transfer structure using sftp_ft_new().
+ *
+ * 2. Set the options for the file transfer using sftp_ft_options_set().
+ *
+ * 3. [Optional] Set the progress callback using sftp_ft_set_pgrs_callback().
+ *
+ * 4. Perform the file transfer using this function. This function updates
+ *    the file transfer structure as the transfer progresses.
+ *
+ * 5. [Optional] Check the state of the file transfer using the sftp_ft_get_*()
+ *    API. The state of the file transfer is described using the following
+ *    metrics :
+ *     - bytes transferred (See sftp_ft_get_bytes_transferred())
+ *     - bytes total (See sftp_ft_get_bytes_total())
+ *     - bytes skipped (See sftp_ft_get_bytes_skipped())
+ *
+ * 6. Deallocate the file transfer structure using sftp_ft_free().
+ *
+ * After creating a file transfer structure in Step-1, the user can perform
+ * multiple file transfers by repeating steps 2 to 5 using the same file
+ * transfer structure before deallocating the structure in Step-6.
+ *
+ * Irrespective of success or failure, this function updates the file transfer
+ * structure to represent the state of the transfer. Hence, even on failure of
+ * this function the caller can perform the Step-5 to retrieve the metrics
+ * related to the failed transfer.
+ *
+ * The above described feature could be useful when the transfer fails after
+ * occurring partially and the user wants to retrieve metrics related to the
+ * partial transfer.
+ *
+ * @param ft          sftp ft handle to the file transfer structure to be used
+ *                    for the transfer.
+ *
+ * @returns           SSH_OK on success, SSH_ERROR on error with sftp and ssh
+ *                    errors set to indicate the error.
+ *
+ * @see sftp_ft_new()
+ * @see sftp_ft_options_set()
+ * @see sftp_ft_set_pgrs_callback()
+ * @see sftp_ft_get_bytes_total()
+ * @see sftp_ft_get_bytes_transferred()
+ * @see sftp_ft_get_bytes_skipped()
+ * @see sftp_ft_get_user_data()
+ * @see sftp_ft_free()
+ * @see ssh_get_error()
+ * @see sftp_get_error()
+ */
+LIBSSH_API int sftp_ft_transfer(sftp_ft ft);
+
+/**
+ * @brief Get the chunk size stored in a file transfer structure.
+ *
+ * @param ft          sftp ft handle to a file transfer structure.
+ *
+ * @returns           Chunk size stored in the file transfer structure handled
+ *                    by parameter ft or 0 if ft is NULL.
+ *
+ * @see sftp_ft_get_internal_chunk_size()
+ * @see sftp_ft_options_set()
+ */
+LIBSSH_API size_t sftp_ft_get_chunk_size(sftp_ft ft);
+
+/**
+ * @brief Get the internal chunk size stored in a file transfer structure
+ *
+ * The chunk size which can be set optionally using sftp_ft_options_set() with
+ * option type SFTP_FT_OPTIONS_CHUNK_SIZE, is the chunk size which the user
+ * requests libssh to use for the transfer, whereas internal chunk size is the
+ * chunk size which libssh actually uses to perform the transfer.
+ *
+ * The internal chunk size is set by sftp_ft_transfer() before starting the
+ * transfer.
+ *
+ * - If the default chunk size has to be used, the internal chunk size is set to
+ *   the appropriate default as per the transfer type.
+ *
+ * - If the user specifies a custom chunk size using sftp_ft_options_set()
+ *   with option type SFTP_FT_OPTIONS_CHUNK_SIZE, the internal chunk size is set
+ *   as per the user specified chunk size and the max limit for a chunk that the
+ *   transfer type supports.
+ *
+ * Typically, this function could be used:
+ * - in the progress callback (set using sftp_ft_set_pgrs_callback()), to get
+ *   the chunk size used for the ongoing transfer corresponding to which the
+ *   progress callback is called.
+ *
+ * - after sftp_ft_transfer() returns, to get the chunk size used for the
+ *   transfer performed by sftp_ft_transfer().
+ *
+ * @param ft          sftp ft handle to a file transfer structure.
+ *
+ * @returns           Internal chunk size stored in the file transfer structure
+ *                    handled by parameter ft or 0 if ft is NULL.
+ *
+ * @see sftp_ft_get_chunk_size()
+ * @see sftp_ft_options_set()
+ * @see sftp_ft_set_pgrs_callback()
+ */
+LIBSSH_API size_t sftp_ft_get_internal_chunk_size(sftp_ft ft);
+
+/**
+ * @brief Get the request count stored in a file transfer structure.
+ *
+ * See SFTP_FT_OPTIONS_REQUESTS option for sftp_ft_options_set() to understand
+ * what this count indicates.
+ *
+ * @param ft          sftp ft handle to a file transfer structure.
+ *
+ * @returns           Request count stored in the file transfer structure
+ *                    handled by the parameter ft or 0 if ft is NULL.
+ *
+ * @see sftp_ft_options_set()
+ */
+LIBSSH_API size_t sftp_ft_get_requests_count(sftp_ft ft);
+
+/**
+ * @brief Get the source path stored in a file transfer structure.
+ *
+ * @param ft          sftp ft handle to a file transfer structure.
+ *
+ * @returns           Source path stored in the file transfer structure handled
+ *                    by the parameter ft, NULL if no source path is set or
+ *                    if ft is NULL.
+ *
+ * @see sftp_ft_options_set()
+ */
+LIBSSH_API const char * sftp_ft_get_source_path(sftp_ft ft);
+
+/**
+ * @brief Get the target path stored in a file transfer structure.
+ *
+ * @param ft          sftp ft handle to a file transfer structure.
+ *
+ * @returns           Target path stored in the file transfer structure handled
+ *                    by the parameter ft, NULL if no target path is set or
+ *                    if ft is NULL.
+ *
+ * @see sftp_ft_options_set()
+ */
+LIBSSH_API const char * sftp_ft_get_target_path(sftp_ft ft);
+
+/**
+ * @brief Get the user data stored in a file transfer structure.
+ *
+ * This can be used to get the user data in the progress callback called by
+ * sftp_ft_transfer().
+ *
+ * @param ft          sftp ft handle to a file transfer structure.
+ *
+ * @returns           User data stored in the file transfer structure handled by
+ *                    parameter ft or NULL if ft is NULL.
+ *
+ * @see sftp_ft_set_pgrs_callback()
+ */
+LIBSSH_API void * sftp_ft_get_user_data(sftp_ft ft);
+
+/**
+ * @brief From a file transfer structure, get the count of the total number of
+ * bytes of the source file transferred to the target file.
+ *
+ * If the transfer is a resumed transfer, then this count includes the number
+ * of bytes that were present in the target file before the resumption began.
+ * To exclude them, the caller can subtract the value returned by
+ * sftp_ft_get_bytes_skipped() from the value returned by this function.
+ *
+ * Some of the ways in which this function can be used :
+ *
+ *     - The value returned by this function and sftp_ft_get_bytes_total() can
+ *       be compared inside the progress callback called by sftp_ft_transfer(),
+ *       this comparison can help in analysing the progress of the transfer.
+ *
+ *     - If sftp_ft_transfer() fails, this function can be used to retrieve the
+ *       count of the number of bytes transferred to the target file before the
+ *       failure occurred.
+ *
+ * @param ft          sftp ft handle to a file transfer structure.
+ *
+ * @returns           Count of the total number of bytes of source file
+ *                    transferred to the target file or 0 if the parameter ft is
+ *                    NULL.
+ *
+ * @see sftp_ft_transfer()
+ * @see sftp_ft_set_pgrs_callback()
+ * @see sftp_ft_get_bytes_total()
+ * @see sftp_ft_get_bytes_skipped()
+ */
+LIBSSH_API uint64_t sftp_ft_get_bytes_transferred(sftp_ft ft);
+
+/**
+ * @brief From a file transfer structure, get the count of the number of
+ * bytes present in the source file to transfer.
+ *
+ * @param ft         sftp ft handle to a file transfer structure.
+ *
+ * @returns          Count of the total number of bytes present in the source
+ *                   file or 0 if the parameter ft is NULL.
+ *
+ * @see sftp_ft_transfer()
+ * @see sftp_ft_set_pgrs_callback()
+ * @see sftp_ft_get_bytes_transferred()
+ * @see sftp_ft_get_bytes_skipped()
+ */
+LIBSSH_API uint64_t sftp_ft_get_bytes_total(sftp_ft ft);
+
+/**
+ * @brief From a file transfer structure, get the count of the number of bytes
+ * skipped from the start of the source file by sftp_ft_transfer() before
+ * starting a transfer.
+ *
+ * When the resume transfer option is disabled and transfers are performed,
+ * this count will be 0. On the other hand, when the option is enabled and
+ * transfers are performed this count could be non zero.
+ *
+ * In the case of a resumed transfer, sftp_ft_transfer() skips over the bytes of
+ * the source file already present in the target file, and starts transferring
+ * the bytes after the skipped bytes. This function gives the count of those
+ * skipped bytes.
+ *
+ * The count returned by sftp_ft_get_bytes_transferred() which includes these
+ * skipped bytes can be subtracted from the count returned by this function to
+ * get the "actual" number of bytes a sftp_ft_transfer() call has transferred.
+ *
+ * That "actual" number could be useful when the speed of a resumed transfer is
+ * to be calculated and the bytes that were already present in the target file
+ * before the resumption began are not to be taken into account to calculate
+ * the speed.
+ *
+ * @param ft         sftp ft handle to a file transfer structure.
+ *
+ * @returns          Count of the total number of bytes skipped from the start
+ *                   of the source file by sftp_ft_transfer() before starting
+ *                   a transfer or 0 if the parameter ft is NULL.
+ *
+ * @see sftp_ft_transfer()
+ * @see sftp_ft_set_pgrs_callback()
+ * @see sftp_ft_get_bytes_transferred()
+ * @see sftp_ft_get_bytes_total()
+ */
+LIBSSH_API uint64_t sftp_ft_get_bytes_skipped(sftp_ft ft);
+
 #ifdef WITH_SERVER
 /**
  * @brief Create a new sftp server session.

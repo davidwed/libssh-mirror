@@ -36,6 +36,8 @@
 
 #ifdef WITH_SFTP
 
+#define FT_REQUESTS_DEFAULT 20
+
 struct sftp_ft_struct {
     enum sftp_ft_type_e type;
     mode_t target_mode;
@@ -1996,6 +1998,373 @@ out:
     sftp_attributes_free(attr_in);
 
     return err;
+}
+
+sftp_ft sftp_ft_new(sftp_session sftp)
+{
+    sftp_ft ft = NULL;
+
+    if (sftp == NULL || sftp->session == NULL) {
+        return NULL;
+    }
+
+    ft = calloc(1, sizeof(struct sftp_ft_struct));
+    if (ft == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return NULL;
+    }
+
+    ft->sftp = sftp;
+
+    /* Default values */
+    ft->type = SFTP_FT_TYPE_NONE;
+    ft->chunk_size = 0;
+    ft->in_flight_requests = FT_REQUESTS_DEFAULT;
+
+    return ft;
+}
+
+void sftp_ft_free(sftp_ft ft)
+{
+    if (ft != NULL) {
+        SAFE_FREE(ft->source_path);
+        SAFE_FREE(ft->target_path);
+        SAFE_FREE(ft);
+    }
+}
+
+int sftp_ft_options_set(sftp_ft ft,
+                        enum sftp_ft_options_e type,
+                        const void *value)
+{
+    sftp_session sftp = NULL;
+    const enum sftp_ft_type_e *type_ptr = NULL;
+    const size_t *count_ptr = NULL;
+    char *path = NULL;
+    const bool *flag_ptr = NULL;
+    const mode_t *mode_ptr = NULL;
+
+    if (ft == NULL || ft->sftp == NULL || ft->sftp->session == NULL) {
+        return SSH_ERROR;
+    }
+
+    /*
+     * Don't use ft_validate() here, the file transfer structure
+     * could be in an invalid state (For e.g ft->source_path could be NULL)
+     * when this function is called.
+     */
+
+    sftp = ft->sftp;
+
+    switch (type) {
+    case SFTP_FT_OPTIONS_TYPE:
+        if (value == NULL) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "NULL passed as an argument instead of an address "
+                          "of a location storing the transfer type to set");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        type_ptr = value;
+
+        if (*type_ptr >= SFTP_FT_TYPE_NONE) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "Invalid argument, specifies invalid type %d as "
+                          "the transfer type to set", *type_ptr);
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        if (*type_ptr == SFTP_FT_TYPE_LOCAL_COPY) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "The feature to perform a local copy is "
+                          "currently not provided by the libssh sftp ft API");
+            sftp_set_error(sftp, SSH_FX_OP_UNSUPPORTED);
+            return SSH_ERROR;
+        }
+
+        ft->type = *type_ptr;
+        break;
+
+    case SFTP_FT_OPTIONS_SOURCE_PATH:
+        if (value == NULL) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "NULL passed as an argument instead of an address "
+                          "of a location storing the source path to set");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        path = strdup(value);
+        if (path == NULL) {
+            ssh_set_error_oom(sftp->session);
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        SAFE_FREE(ft->source_path);
+        ft->source_path = path;
+        break;
+
+    case SFTP_FT_OPTIONS_TARGET_PATH:
+        if (value == NULL) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "NULL passed as an argument instead of an address "
+                          "of a location storing the target path to set");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        path = strdup(value);
+        if (path == NULL) {
+            ssh_set_error_oom(sftp->session);
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        SAFE_FREE(ft->target_path);
+        ft->target_path = path;
+        break;
+
+    case SFTP_FT_OPTIONS_TARGET_MODE:
+        if (value == NULL) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "NULL passed as an argument instead of an address "
+                          "of a location storing the permissions mode to set");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        mode_ptr = value;
+        ft->target_mode = *mode_ptr;
+        break;
+
+    case SFTP_FT_OPTIONS_CHUNK_SIZE:
+        if (value == NULL) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "NULL passed as an argument instead of an address "
+                          "of a location storing the chunk size to set");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        /*
+         * 0 is a valid chunk size. Setting chunk size to 0 prompts the FT API
+         * to use the default chunk size during the transfer.
+         */
+        count_ptr = value;
+        ft->chunk_size = *count_ptr;
+        break;
+
+    case SFTP_FT_OPTIONS_REQUESTS:
+        if (value == NULL) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "NULL passed as an argument instead of an address "
+                          "of a location storing the request count to set");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        count_ptr = value;
+        if (*count_ptr == 0) {
+            /* Set the default in flight request count */
+            ft->in_flight_requests = FT_REQUESTS_DEFAULT;
+        } else {
+            ft->in_flight_requests = *count_ptr;
+        }
+
+        break;
+
+    case SFTP_FT_OPTIONS_RESUME_TRANSFER:
+        if (value == NULL) {
+            ssh_set_error(sftp->session, SSH_FATAL,
+                          "NULL passed as an argument instead of an address "
+                          "of a location storing the resume transfer flag to "
+                          "set");
+            sftp_set_error(sftp, SSH_FX_FAILURE);
+            return SSH_ERROR;
+        }
+
+        flag_ptr = value;
+        ft->resume_transfer_flag = *flag_ptr;
+        break;
+
+    default:
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid argument, specified unknown option type %d",
+                      type);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    return SSH_OK;
+}
+
+int sftp_ft_set_pgrs_callback(sftp_ft ft,
+                              int (*callback)(sftp_ft ft),
+                              void *user_data)
+{
+    if (ft == NULL) {
+        return SSH_ERROR;
+    }
+
+    /*
+     * Don't use ft_validate() here, the file transfer structure
+     * could be in an invalid state (For e.g ft->source_path could be NULL)
+     * when this function is called.
+     */
+
+    ft->pgrs_callback = callback;
+    ft->user_data = user_data;
+
+    return SSH_OK;
+}
+
+int sftp_ft_transfer(sftp_ft ft)
+{
+    int rc;
+    sftp_session sftp = NULL;
+
+    rc = ft_validate(ft);
+    if (rc == SSH_ERROR) {
+        return SSH_ERROR;
+    }
+
+    rc = ft_set_internal_chunk_size(ft);
+    if (rc == SSH_ERROR) {
+        return SSH_ERROR;
+    }
+
+    sftp = ft->sftp;
+
+    switch (ft->type) {
+    case SFTP_FT_TYPE_UPLOAD:
+        /* Upload = Local to Remote transfer (abbreviated as l2r) */
+        rc = ft_transfer_l2r(ft);
+        break;
+
+    case SFTP_FT_TYPE_DOWNLOAD:
+        /* Download = Remote to Local transfer (abbreviated as r2l) */
+        rc = ft_transfer_r2l(ft);
+        break;
+
+    case SFTP_FT_TYPE_REMOTE_COPY:
+        /* Remote-copy = Remote to Remote transfer (abbreviated as r2r) */
+        rc = ft_transfer_r2r(ft);
+        break;
+
+    case SFTP_FT_TYPE_LOCAL_COPY:
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "The feature to perform a local copy is "
+                      "currently not provided by the libssh sftp ft API");
+        sftp_set_error(sftp, SSH_FX_OP_UNSUPPORTED);
+        return SSH_ERROR;
+
+    case SFTP_FT_TYPE_NONE:
+        /*
+         * Never reached, as this case is handled by ft_validate()
+         * called at the beginning.
+         */
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "No transfer type specified for the transfer");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+
+    default:
+        /*
+         * Never reached, as this case is handled by ft_validate()
+         * called at the beginning.
+         */
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid transfer type %d", ft->type);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    return rc;
+}
+
+size_t sftp_ft_get_chunk_size(sftp_ft ft)
+{
+    if (ft == NULL) {
+        return 0;
+    }
+
+    return ft->chunk_size;
+}
+
+size_t sftp_ft_get_internal_chunk_size(sftp_ft ft)
+{
+    if (ft == NULL) {
+        return 0;
+    }
+
+    return ft->internal_chunk_size;
+}
+
+size_t sftp_ft_get_requests_count(sftp_ft ft)
+{
+    if (ft == NULL) {
+        return 0;
+    }
+
+    return ft->in_flight_requests;
+}
+
+const char * sftp_ft_get_source_path(sftp_ft ft)
+{
+    if (ft == NULL) {
+        return NULL;
+    }
+
+    return ft->source_path;
+}
+
+const char * sftp_ft_get_target_path(sftp_ft ft)
+{
+    if (ft == NULL) {
+        return NULL;
+    }
+
+    return ft->target_path;
+}
+
+void * sftp_ft_get_user_data(sftp_ft ft)
+{
+    if (ft == NULL) {
+        return NULL;
+    }
+
+    return ft->user_data;
+}
+
+uint64_t sftp_ft_get_bytes_transferred(sftp_ft ft)
+{
+    if (ft == NULL) {
+        return 0;
+    }
+
+    return ft->bytes_transferred;
+}
+
+uint64_t sftp_ft_get_bytes_total(sftp_ft ft)
+{
+    if (ft == NULL) {
+        return 0;
+    }
+
+    return ft->bytes_total;
+}
+
+uint64_t sftp_ft_get_bytes_skipped(sftp_ft ft)
+{
+    if (ft == NULL) {
+        return 0;
+    }
+
+    return ft->bytes_skipped;
 }
 
 #endif /* WITH_SFTP */
