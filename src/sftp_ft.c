@@ -268,4 +268,50 @@ static int ft_set_internal_chunk_size(sftp_ft ft)
     return SSH_OK;
 }
 
+/*
+ * @brief Helper to lseek from the start of a file using an uin64_t offset.
+ *
+ * This avoids the possible overflow due to an implicit uint64_t -> off_t
+ * conversion if an uint64_t is passed directly to lseek().
+ *
+ * In case the uint64_t type value specified by the caller can't fit into an
+ * off_t, this function will return SSH_ERROR with errno set to EOVERFLOW.
+ *
+ * @param[in] fd          File descriptor to use for seeking.
+ *
+ * @param[in] off         Offset to seek from start
+ *
+ * @returns               SSH_OK on success, SSH_ERROR on error with errno set
+ *                        to indicate the error.
+ */
+static int ft_lseek_from_start(int fd, uint64_t offset) __attr_unused__;
+static int ft_lseek_from_start(int fd, uint64_t offset)
+{
+    uint64_t left = offset;
+    off_t off, to_seek;
+
+    if (fd < 0) {
+        errno = EINVAL;
+        return SSH_ERROR;
+    }
+
+    /* Set the file offset to 0 initially */
+    off = lseek(fd, 0, SEEK_SET);
+    if (off == -1) {
+        return SSH_ERROR;
+    }
+
+    do {
+        to_seek = (left > INT32_MAX ? INT32_MAX : left);
+        off = lseek(fd, to_seek, SEEK_CUR);
+        if (off == -1) {
+            return SSH_ERROR;
+        }
+
+        left -= (uint64_t)to_seek;
+    } while (left > 0);
+
+    return SSH_OK;
+}
+
 #endif /* WITH_SFTP */
