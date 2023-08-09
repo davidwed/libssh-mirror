@@ -314,4 +314,99 @@ static int ft_lseek_from_start(int fd, uint64_t offset)
     return SSH_OK;
 }
 
+#ifdef _WIN32
+
+/**
+ * @internal
+ *
+ * @brief Convert Windows style permissions to POSIX style permissions.
+ *
+ * @param win[in]           Windows style permissions.
+ *
+ * @param posix_ptr[out]    Pointer to the location to store the POSIX style
+ *                          permissions corresponding to the caller supplied
+ *                          Windows style permissions.
+ *
+ * @returns                 SSH_OK on success, SSH_ERROR on error with errno
+ *                          set to indicate the error.
+ */
+static int ft_win_to_posix_perm(mode_t win, mode_t *posix_ptr) __attr_unused__;
+static int ft_win_to_posix_perm(mode_t win, mode_t *posix_ptr)
+{
+    if (posix_ptr == NULL) {
+        errno = EINVAL;
+        return SSH_ERROR;
+    }
+
+    *posix_ptr = 0;
+    if ((win & _S_IREAD) == _S_IREAD) {
+        /* Enable read permission for user, group and others */
+        *posix_ptr |= 0444;
+    }
+
+    if ((win & _S_IWRITE) == _S_IWRITE) {
+        /* Enable write permission for user, group and others */
+        *posix_ptr |= 0222;
+    }
+
+    if ((win & _S_IEXEC) == _S_IEXEC) {
+        /* Enable execute permission for user, group and others */
+        *posix_ptr |= 0111;
+    }
+
+    return SSH_OK;
+}
+
+/**
+ * @internal
+ *
+ * @brief Convert POSIX style permissions to Windows style permissions
+ *
+ * @param posix[in]         Posix style permissions.
+ *
+ * @param win_ptr[out]      Pointer to the location to store the Windows style
+ *                          permissions corresponding to the caller supplied
+ *                          POSIX style permissions.
+ *
+ * @returns                 SSH_OK on success, SSH_ERROR on error with errno
+ *                          set to indicate the error.
+ */
+static int ft_posix_to_win_perm(mode_t posix, mode_t *win_ptr) __attr_unused__;
+static int ft_posix_to_win_perm(mode_t posix, mode_t *win_ptr)
+{
+    if (win_ptr == NULL) {
+        errno = EINVAL;
+        return SSH_ERROR;
+    }
+
+    *win_ptr = 0;
+    if ((posix & 0444) != 0) {
+        /*
+         * If read permission is set for user or group or others then enable
+         * read permission for windows.
+         */
+        *win_ptr |= _S_IREAD;
+    }
+
+    if ((posix & 0222) != 0) {
+        /*
+         * If write permission is set for user or group or others then enable
+         * write permission for windows.
+         */
+        *win_ptr |= _S_IWRITE;
+    }
+
+    if ((posix & 0111) != 0) {
+        /*
+         * If execute permission is set for user or group or others then enable
+         * execute permission for windows.
+         */
+        *win_ptr |= _S_IEXEC;
+    }
+
+    return SSH_OK;
+}
+
+#endif /* _WIN32 */
+
 #endif /* WITH_SFTP */
