@@ -599,8 +599,8 @@ int ssh_connect(ssh_session session)
     if (session->opts.control_master == SSH_CONTROL_MASTER_AUTO) {
         ret = mux_client(session);
         if (ret == SSH_ERROR) {
-            // mux_listener_setup(session);
-            printf("mux failure! :(\n");
+            ret = mux_listener_setup(session);
+            printf("mux failure! set up socket %d\n", ret);
         }else{
             printf("mux success! :) %d\n", ret);
             session->mux_sock = ret;

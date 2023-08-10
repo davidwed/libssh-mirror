@@ -6,3 +6,4 @@
 #include "buffer.h"
 
 int mux_client(ssh_session session);
+int mux_listener_setup(ssh_session session);
