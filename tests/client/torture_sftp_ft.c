@@ -546,6 +546,12 @@ static void torture_sftp_ft_download(void **state)
     test_sftp_ft_transfer(state, type);
 }
 
+static void torture_sftp_ft_remote_copy(void **state)
+{
+    enum sftp_ft_type_e type = SFTP_FT_TYPE_REMOTE_COPY;
+    test_sftp_ft_transfer(state, type);
+}
+
 int torture_run_tests(void)
 {
     int rc;
@@ -572,6 +578,9 @@ int torture_run_tests(void)
                                         session_setup,
                                         session_teardown),
         cmocka_unit_test_setup_teardown(torture_sftp_ft_download,
+                                        session_setup,
+                                        session_teardown),
+        cmocka_unit_test_setup_teardown(torture_sftp_ft_remote_copy,
                                         session_setup,
                                         session_teardown),
     };
