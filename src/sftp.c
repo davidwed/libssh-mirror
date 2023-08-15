@@ -499,6 +499,9 @@ sftp_packet sftp_packet_read(sftp_session sftp)
                 sftp_set_error(sftp, SSH_FX_EOF);
                 goto error;
             }
+            if (ssh_is_blocking(sftp->session)) {
+                goto timeout;
+            }
         } else {
             nread += s;
         }
@@ -523,6 +526,9 @@ sftp_packet sftp_packet_read(sftp_session sftp)
                               "Received EOF while reading sftp packet type");
                 sftp_set_error(sftp, SSH_FX_EOF);
                 goto error;
+            }
+            if (ssh_is_blocking(sftp->session)) {
+                goto timeout;
             }
         }
     } while (nread < 1);
@@ -559,10 +565,18 @@ sftp_packet sftp_packet_read(sftp_session sftp)
                 sftp_set_error(sftp, SSH_FX_EOF);
                 goto error;
             }
+            if (ssh_is_blocking(sftp->session)) {
+                goto timeout;
+            }
         }
     }
 
     return packet;
+timeout:
+    ssh_set_error(sftp->session,
+                  SSH_FATAL,
+                  "No response from server in blocking mode");
+    sftp_set_error(sftp, SSH_FX_TIMEOUT);
 error:
     ssh_buffer_reinit(packet->payload);
     return NULL;
