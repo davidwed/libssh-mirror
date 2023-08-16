@@ -219,6 +219,9 @@ void ssh_free(ssh_session session)
   ssh_socket_free(session->socket);
   session->socket = NULL;
 
+  ssh_socket_free(session->mux_socket);
+  session->mux_socket = NULL;
+
   if (session->default_poll_ctx) {
       ssh_poll_ctx_free(session->default_poll_ctx);
   }

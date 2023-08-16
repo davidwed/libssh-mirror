@@ -29,7 +29,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <pwd.h>
 
 #ifndef _WIN32
 # include <dirent.h>
@@ -1121,25 +1120,9 @@ void torture_setup_ssh_mux_server()
 {
     char ssh_mux_server_start_cmd[1024];
     int rc;
-    // struct passwd *pwd = getpwuid(getuid());
-    // char *homedir = pwd->pw_dir;
-    // char rsa_key[1024];
-    // char controlpath[1024];
-
-    // sprintf(rsa_key, "-i %s/bob/.ssh/id_rsa", homedir);
-    // sprintf(controlpath, "-S %s/alice/.ssh/ssh-alice@127.0.0.10:22", homedir);
-    
-    // execlp(SSH_EXECUTABLE, "ssh", "-vvv", "-i", "../home/bob/.ssh/id_rsa", "-S", "../home/alice/.ssh/ssh-alice@127.0.0.10:22", "-M", "-N", "-f", "alice@127.0.0.10", NULL);
 
     snprintf(ssh_mux_server_start_cmd, sizeof(ssh_mux_server_start_cmd), 
-             "su -c \"" SSH_EXECUTABLE " -vvv -i ../home/bob/.ssh/id_rsa -S ../home/alice/.ssh/ssh-alice@127.0.0.10:22 -M -N -f alice@" TORTURE_SSH_SERVER "\"");
-
-    // snprintf(ssh_mux_server_start_cmd, sizeof(ssh_mux_server_start_cmd), 
-    //          "runuser -l root -c 'pwd'");
-
-    // system("whoami");
-    // system("id");
-    // printf("uid: %d\n", getuid());
+             SSH_EXECUTABLE " -vvv -i ../home/bob/.ssh/id_rsa -S ../home/alice/.ssh/ssh-alice@127.0.0.10:22 -M -N -f alice@" TORTURE_SSH_SERVER);
 
     rc = system(ssh_mux_server_start_cmd);
     assert_return_code(rc, errno);
@@ -1147,15 +1130,9 @@ void torture_setup_ssh_mux_server()
 
 void torture_teardown_ssh_mux_server()
 {
-    char ssh_mux_server_exit_cmd[1024];
     int rc;
 
-    // execlp(SSH_EXECUTABLE, "ssh", "-S", "../home/alice/.ssh/ssh-alice@127.0.0.10:22", "-O", "exit", "alice@127.0.0.10", NULL);
-
-    snprintf(ssh_mux_server_exit_cmd, sizeof(ssh_mux_server_exit_cmd),
-             "su -c \"" SSH_EXECUTABLE " -vvv -S ../home/alice/.ssh/ssh-alice@127.0.0.10:22 -O exit alice@" TORTURE_SSH_SERVER "\"");
-
-    rc = system(ssh_mux_server_exit_cmd);
+    rc = system("pkill '^ssh$'");
     assert_return_code(rc, errno);
 }
 

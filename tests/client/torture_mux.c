@@ -54,8 +54,6 @@ static int session_setup(void **state)
     struct torture_state *s = *state;
     int verbosity = torture_libssh_verbosity();
     int control = SSH_CONTROL_MASTER_AUTO;
-    struct passwd *pwd;
-    int rc;
 
     s->ssh.session = ssh_new();
     assert_non_null(s->ssh.session);

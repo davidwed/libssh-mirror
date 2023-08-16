@@ -541,6 +541,8 @@ int ssh_connect(ssh_session session)
         return SSH_ERROR;
     }
 
+    printf("begin ssh_connect\n");
+
     if (session == NULL) {
         return SSH_ERROR;
     }
@@ -559,6 +561,8 @@ int ssh_connect(ssh_session session)
     session->alive = 0;
     session->client = 1;
 
+    printf("here 1\n");
+
     if (session->opts.fd == SSH_INVALID_SOCKET &&
         session->opts.host == NULL &&
         session->opts.ProxyCommand == NULL)
@@ -566,6 +570,8 @@ int ssh_connect(ssh_session session)
         ssh_set_error(session, SSH_FATAL, "Hostname required");
         return SSH_ERROR;
     }
+
+    printf("here 2\n");
 
     /* If the system configuration files were not yet processed, do it now */
     if (!session->opts.config_processed) {
@@ -576,6 +582,8 @@ int ssh_connect(ssh_session session)
             return SSH_ERROR;
         }
     }
+
+    printf("here 3\n");
 
     ret = ssh_options_apply(session);
     if (ret < 0) {
@@ -588,6 +596,8 @@ int ssh_connect(ssh_session session)
             ssh_copyright(),
             ssh_threads_get_type());
 
+    printf("here 4\n");
+
     session->ssh_connection_callback = ssh_client_connection_callback;
     session->session_state = SSH_SESSION_STATE_CONNECTING;
     ssh_socket_set_callbacks(session->socket, &session->socket_callbacks);
@@ -596,11 +606,17 @@ int ssh_connect(ssh_session session)
     session->socket_callbacks.exception = ssh_socket_exception_callback;
     session->socket_callbacks.userdata = session;
 
+    printf("here 5\n");
+
+#ifndef _WIN32
+
     if (session->opts.control_master == SSH_CONTROL_MASTER_AUTO) {
+        printf("trying mux\n");
         ret = mux_client(session);
         if (ret == SSH_ERROR) {
+            printf("mux failure! going to setup socket");
             ret = mux_listener_setup(session);
-            printf("mux failure! set up socket %d\n", ret);
+            printf("socket setup status %d\n", ret);
         }else{
             printf("mux success! :) %d\n", ret);
             session->mux_sock = ret;
@@ -609,7 +625,11 @@ int ssh_connect(ssh_session session)
 
     if (session->mux_sock) {
         ret = ssh_socket_connect_mux(session->socket);
-    } else if (session->opts.fd != SSH_INVALID_SOCKET) {
+    } else
+
+#endif
+
+    if (session->opts.fd != SSH_INVALID_SOCKET) {
         session->session_state = SSH_SESSION_STATE_SOCKET_CONNECTED;
         ssh_socket_set_fd(session->socket, session->opts.fd);
         ret = SSH_OK;
@@ -799,6 +819,10 @@ ssh_disconnect(ssh_session session)
 
     if (session == NULL) {
         return;
+    }
+
+    if (session->mux_sock) {
+        ssh_socket_reset(session->mux_socket);
     }
 
     if (session->disconnect_message == NULL) {
