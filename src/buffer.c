@@ -866,6 +866,7 @@ static int ssh_buffer_pack_allocate_va(struct ssh_buffer_struct *buffer,
             va_arg(ap, void *);
             count++; /* increase argument count */
             break;
+        case 'U':
         case 'B':
             va_arg(ap, bignum);
             /*
@@ -993,9 +994,14 @@ ssh_buffer_pack_va(struct ssh_buffer_struct *buffer,
             rc = ssh_buffer_add_data(buffer, o.data, len);
             o.data = NULL;
             break;
+        case 'U':
         case 'B':
             b = va_arg(ap, bignum);
-            o.string = ssh_make_bignum_string(b);
+            if (*p == 'U') {
+                o.string = ssh_make_unpadded_bignum_string(b);
+            } else {
+                o.string = ssh_make_bignum_string(b);
+            }
             if(o.string == NULL){
                 rc = SSH_ERROR;
                 break;
@@ -1047,6 +1053,7 @@ ssh_buffer_pack_va(struct ssh_buffer_struct *buffer,
  *                         'P': size_t, void * (len of data, pointer to data)
  *                              only pushes data.
  *                         'B': bignum (pushed as SSH string)
+ *                         'U': unpadded bignum (pushed as SSH string)
  * @returns             SSH_OK on success
  *                      SSH_ERROR on error
  * @warning             when using 'P' with a constant size (e.g. 8), do not
