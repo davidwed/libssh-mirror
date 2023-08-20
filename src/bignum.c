@@ -27,7 +27,7 @@
 #include "libssh/bignum.h"
 #include "libssh/string.h"
 
-ssh_string ssh_make_bignum_string(bignum num) {
+static ssh_string make_bignum_string(bignum num, int add_padding) {
   ssh_string ptr = NULL;
   size_t pad = 0;
   size_t len = bignum_num_bytes(num);
@@ -38,7 +38,7 @@ ssh_string ssh_make_bignum_string(bignum num) {
   }
 
   /* If the first bit is set we have a negative number */
-  if (!(bits % 8) && bignum_is_bit_set(num, bits - 1)) {
+  if (add_padding && !(bits % 8) && bignum_is_bit_set(num, bits - 1)) {
     pad++;
   }
 
@@ -61,6 +61,16 @@ ssh_string ssh_make_bignum_string(bignum num) {
   bignum_bn2bin(num, len, ptr->data + pad);
 
   return ptr;
+}
+
+ssh_string ssh_make_bignum_string(bignum num)
+{
+    return make_bignum_string (num, 1);
+}
+
+ssh_string ssh_make_unpadded_bignum_string(bignum num)
+{
+    return make_bignum_string (num, 0);
 }
 
 bignum ssh_make_string_bn(ssh_string string)
