@@ -38,10 +38,12 @@
 static int sshd_setup(void **state)
 {
     torture_setup_sshd_server(state, false);
+    torture_setup_ssh_mux_server();
     return 0;
 }
 
 static int sshd_teardown(void **state) {
+    torture_teardown_ssh_mux_server();
     torture_teardown_sshd_server(state);
 
     return 0;
@@ -55,25 +57,13 @@ static int session_setup(void **state)
     struct passwd *pwd;
     int rc;
 
-    // unsetenv("UID_WRAPPER_ROOT");
-    // setenv("LD_PRELOAD", "/lib/x86_64-linux-gnu/libnss_sss.so.2", 1);
-
-    pwd = getpwnam("bob");
-    assert_non_null(pwd);
-
-    rc = setuid(pwd->pw_uid);
-    assert_return_code(rc, errno);
-
-    torture_setup_ssh_mux_server();
-
     s->ssh.session = ssh_new();
     assert_non_null(s->ssh.session);
 
     ssh_options_set(s->ssh.session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
     ssh_options_set(s->ssh.session, SSH_OPTIONS_HOST, BLACKHOLE);
     ssh_options_set(s->ssh.session, SSH_OPTIONS_CONTROL_MASTER, &control);
-    ssh_options_set(s->ssh.session, SSH_OPTIONS_CONTROL_PATH, "~/.ssh/ssh-%r@%h:%p");
-
+    ssh_options_set(s->ssh.session, SSH_OPTIONS_CONTROL_PATH, "..home/alice/.ssh/ssh-%r@%h:%p");
 
     return 0;
 }

@@ -134,6 +134,7 @@ int torture_update_sshd_config(void **state, const char *config);
 #endif /* SSHD_EXECUTABLE */
 
 void torture_setup_ssh_mux_server(void);
+void torture_teardown_ssh_mux_server(void);
 
 #ifdef WITH_PKCS11_URI
 void torture_setup_tokens(const char *temp_dir,
