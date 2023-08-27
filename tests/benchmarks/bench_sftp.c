@@ -815,3 +815,14 @@ int benchmarks_sftp_ft_up(ssh_session session,
     rc = benchmarks_sftp_ft_common(session, args, bps, type);
     return rc;
 }
+
+int benchmarks_sftp_ft_down(ssh_session session,
+                            struct argument_s *args,
+                            float *bps)
+{
+    enum sftp_ft_type_e type = SFTP_FT_TYPE_DOWNLOAD;
+    int rc;
+
+    rc = benchmarks_sftp_ft_common(session, args, bps, type);
+    return rc;
+}

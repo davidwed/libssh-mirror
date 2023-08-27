@@ -80,6 +80,11 @@ struct benchmark benchmarks[] = {
         .name = "benchmark_sftp_ft_upload",
         .fct  = benchmarks_sftp_ft_up,
         .enabled = 0
+    },
+    {
+        .name = "benchmark_sftp_ft_download",
+        .fct  = benchmarks_sftp_ft_down,
+        .enabled = 0
     }
 #endif /* WITH_SFTP */
 };
@@ -187,6 +192,14 @@ static struct argp_option options[] = {
         .group = 0
     },
     {
+        .name  = "sftp-ft-download",
+        .key   = 'E',
+        .arg   = NULL,
+        .flags = 0,
+        .doc   = "Download data using SFTP FT API",
+        .group = 0
+    },
+    {
         .name  = "host",
         .key   = 'h',
         .arg   = "HOST",
@@ -255,6 +268,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
         arguments->ntests++;
         break;
     case 'D':
+    case 'E':
         benchmarks[key - 'D' + 9].enabled = 1;
         arguments->ntests++;
         break;
