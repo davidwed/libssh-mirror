@@ -26,9 +26,12 @@ typedef unsigned long u_long;
 #define MUX_C_ALIVE_CHECK		0x10000004
 #define MUX_S_ALIVE				0x80000005
 
-int mux_server_sock = -1;
-ssh_channel mux_listener_channel = NULL;
+int mux_server_fd = -1;
+ssh_socket mux_server_sock = NULL;
+struct pollfd client_fds[MAX_CLIENTS+1];
+int connected_clients = 0;
 int hello_received[MAX_CLIENTS+1];
+
 int stop = 0;
 unsigned int mux_client_request_id = 0;
 unsigned int mux_server_pid = 0;
@@ -40,7 +43,7 @@ int send_fd(int sock, int fd);
 int mux_client_alive_check(ssh_socket sock);
 int mux_client_write_packet(ssh_socket sock);
 int mux_client_exchange_hello(ssh_socket sock);
-int mux_master_process_hello(ssh_session ssh, u_int rid, ssh_buffer msg, ssh_buffer reply, int idx);
+int mux_master_process_hello(ssh_session ssh, u_int rid, ssh_buffer msg, ssh_buffer reply, int idx, int client_sock);
 int mux_master_read_callback(ssh_session session, int client_sock, int idx);
 void mux_loop(ssh_session session);
 int mux_listener_setup(ssh_session session);
@@ -48,13 +51,47 @@ int mux_master_write_packet(int sock, ssh_buffer b);
 int mux_master_read_packet(int fd, ssh_buffer m);
 int mux_master_read(int sock, ssh_buffer b, u_long need);
 size_t mux_client_socket_callback(const void *data, size_t len, void *user);
+int mux_master_process_alive_check(ssh_session ssh, u_int rid, ssh_buffer in, ssh_buffer out, int idx, int client_sock);
+int mux_master_process_new_session (ssh_session session, u_int rid, ssh_buffer in, ssh_buffer out, int idx, int client_sock);
+int mux_master_pollcallback(struct ssh_poll_handle_struct *p, socket_t fd, int revents, void *v_s);
+int kbhit(void);
+int receive_fd(int sock);
 
+enum ssh_socket_states_e {
+	SSH_SOCKET_NONE,
+	SSH_SOCKET_CONNECTING,
+	SSH_SOCKET_CONNECTED,
+	SSH_SOCKET_EOF,
+	SSH_SOCKET_ERROR,
+	SSH_SOCKET_CLOSED
+};
+
+struct ssh_socket_struct {
+  socket_t fd;
+  int fd_is_socket;
+  int last_errno;
+  int read_wontblock; /* reading now on socket will
+                       not block */
+  int write_wontblock;
+  int data_except;
+  enum ssh_socket_states_e state;
+  ssh_buffer out_buffer;
+  ssh_buffer in_buffer;
+  ssh_session session;
+  ssh_socket_callbacks callbacks;
+  ssh_poll_handle poll_handle;
+#ifndef _WIN32
+  pid_t proxy_pid;
+#endif
+};
 
 struct {
 	u_int type;
-	int (*handler)(ssh_session session, u_int rid, ssh_buffer in, ssh_buffer out, int idx);
+	int (*handler)(ssh_session session, u_int rid, ssh_buffer in, ssh_buffer out, int idx, int client_sock);
 } mux_master_handlers[] = {
 	{ MUX_MSG_HELLO, mux_master_process_hello },
+	{ MUX_C_ALIVE_CHECK, mux_master_process_alive_check },
+	{ MUX_C_NEW_SESSION, mux_master_process_new_session},
 	{ 0, NULL }
 };
 
@@ -115,6 +152,8 @@ int mux_client_exchange_hello(ssh_socket sock)
 		goto out;
 	}
 
+	ssh_log_hexdump("Sent hello: ", ssh_buffer_get(msg), ssh_buffer_get_len(msg));
+
 	ssh_buffer_reinit(msg);
 
 	ctx = ssh_poll_get_ctx(ssh_socket_get_poll_handle(sock));
@@ -123,6 +162,7 @@ int mux_client_exchange_hello(ssh_socket sock)
 		goto out;
 	}
 	while(!stop){
+		printf("polling\n");
 		ssh_poll_ctx_dopoll(ctx, -1);
 	}
 
@@ -272,6 +312,57 @@ int send_fd(int sock, int fd)
 	return 0;
 }
 
+int receive_fd(int sock)
+{
+	struct msghdr msgh;
+	union {
+		struct cmsghdr hdr;
+		char buf[CMSG_SPACE(sizeof(int))];
+	} cmsgbuf;
+	struct cmsghdr *cmsg;
+	struct iovec vec;
+	char ch = '\0';
+	int n;
+	int fd;
+	struct pollfd pfd;
+
+	memset(&msgh, 0, sizeof(msgh));
+	memset(&cmsgbuf, 0, sizeof(cmsgbuf));
+	msgh.msg_control = (caddr_t)&cmsgbuf.buf;
+	msgh.msg_controllen = sizeof(cmsgbuf.buf);
+	cmsg = CMSG_FIRSTHDR(&msgh);
+	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+	cmsg->cmsg_level = SOL_SOCKET;
+	cmsg->cmsg_type = SCM_RIGHTS;
+
+	vec.iov_base = &ch;
+	vec.iov_len = 1;
+	msgh.msg_iov = &vec;
+	msgh.msg_iovlen = 1;
+
+	pfd.fd = sock;
+	pfd.events = POLLOUT;
+	while ((n = recvmsg(sock, &msgh, 0)) == -1 &&
+	    (errno == EAGAIN || errno == EINTR)) {
+		printf("recvmsg: %s", strerror(errno));
+		(void)poll(&pfd, 1, -1);
+	}
+
+	if (n == -1) {
+		printf("recvmsg: %s", strerror(errno));
+		return -1;
+	}
+
+	if (n != 1) {
+		printf("recvmsg: expected sent 1 got %d", n);
+		return -1;
+	}
+
+	fd = *((int *) ((void *)CMSG_DATA(cmsg)));
+
+	return fd;
+}
+
 int mux_client_open_session(ssh_socket sock, ssh_session session) {
 	const char *term = NULL;
 	u_int echar;
@@ -328,6 +419,7 @@ int mux_client(ssh_session session)
 
 	if (sock == NULL || ssh_socket_unix(sock, session->opts.control_path) != SSH_OK) {
 		printf("ssh_socket_unix failed\n");
+		ssh_socket_free(sock);
 		return SSH_ERROR;
 	}
 
@@ -348,8 +440,8 @@ int mux_client(ssh_session session)
 	ctx = ssh_poll_get_ctx(h);
 	if (ctx == NULL) {
 		ctx = ssh_poll_get_default_ctx(session);
-		ssh_poll_ctx_add(ctx, h);
 	}
+	ssh_poll_ctx_add(ctx, h);
 
 	if ((msg = ssh_buffer_new()) == NULL){
 		// error handling
@@ -379,78 +471,147 @@ int mux_client(ssh_session session)
 
 int mux_listener_setup(ssh_session session)
 {
-	int pid;
  	struct sockaddr_un sunaddr;
 	SSH_LOG(SSH_LOG_DEBUG, "setting up mux master socket");
 	memset(&sunaddr, 0, sizeof(sunaddr));
 	sunaddr.sun_family = AF_UNIX;
 	strcpy(sunaddr.sun_path, session->opts.control_path);
     // error handling
-	mux_server_sock = socket(PF_UNIX, SOCK_STREAM, 0);
-	if (mux_server_sock == SSH_ERROR) {
+	mux_server_fd = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (mux_server_fd == SSH_ERROR) {
 		// error handling
 		printf("server failed\n");
 		return SSH_ERROR;
 	}
-	if (bind(mux_server_sock, (struct sockaddr *)&sunaddr, sizeof(sunaddr)) == SSH_ERROR) {
+	if (bind(mux_server_fd, (struct sockaddr *)&sunaddr, sizeof(sunaddr)) == SSH_ERROR) {
 		// error handling
-		close(mux_server_sock);
+		close(mux_server_fd);
 		unlink(session->opts.control_path);
 		return SSH_ERROR;
 	}
-	if (listen(mux_server_sock, 64) == -1) {
+	if (listen(mux_server_fd, 64) == -1) {
 		// error handling
-		close(mux_server_sock);
+		close(mux_server_fd);
 		unlink(session->opts.control_path);
 		return SSH_ERROR;
 	}
 	// unlink(session->opts.control_path);
-	fcntl(mux_server_sock, F_SETFL, O_NONBLOCK);
+	// fcntl(mux_server_fd, F_SETFL, O_NONBLOCK);
+	mux_server_sock = ssh_socket_new(session);
+	ssh_socket_set_nonblocking(mux_server_fd);
+	ssh_socket_set_fd(mux_server_sock, mux_server_fd);
 
-	pid = fork();
-	if(pid==0){
-		printf("child loop mux\n");
-		mux_loop(session);
+	// pid = fork();
+	// if(pid==0){
+	// 	mux_loop(session);
+	// }
+
+	printf("mux_server_fd: %d\n", mux_server_fd);
+
+	// h = ssh_poll_new(mux_server_fd, POLLIN, mux_master_pollcallback, mux_server_sock);
+	// if (h == NULL) {
+    //     return SSH_ERROR;
+    // }
+	// // ctx = ssh_poll_get_ctx(h);
+	// ctx = ssh_poll_ctx_new(11);
+	// // if (ctx == NULL) {
+	// // 	ctx = ssh_poll_get_default_ctx(session);
+	// // }
+	// ssh_poll_ctx_add(ctx, h);
+
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		hello_received[i] = 0;
+		client_fds[i].fd = 0;
 	}
+
+	mux_loop(session);
+
+	printf("mux listener setup success\n");
 	return SSH_OK;
 }
 
+// int mux_master_pollcallback(struct ssh_poll_handle_struct *p,
+//                             socket_t fd,
+//                             int revents,
+//                             void *v_s)
+// {
+//     ssh_socket s = (ssh_socket)v_s;
+//     void *buffer = NULL;
+//     ssize_t nread = 0;
+//     int rc;
+//     int err = 0;
+//     socklen_t errlen = sizeof(err);
+
+//     if (!ssh_socket_is_open(s)) {
+//         return -1;
+//     }
+
+// 	printf("mux master poll callback\n");
+
+//     if ((revents & POLLIN)) {
+//         int pollResult = poll(client_fds, connected_clients + 1, 5000);
+//         if (pollResult > 0) {
+//             if (client_fds[0].revents & POLLIN) {
+//                 struct sockaddr_un cliaddr;
+//                 u_int addrlen = sizeof(cliaddr);
+//                 int client_socket = accept(mux_server_fd, (struct sockaddr *)&cliaddr, &addrlen);
+// 				printf("accepting client\n");
+//                 for (int i = 0; i < MAX_CLIENTS; i++) {
+//                     if (client_fds[i].fd == 0) {
+//                         client_fds[i].fd = client_socket;
+//                         client_fds[i].events = POLLIN;
+//                         connected_clients++;
+//                         break;
+//                     }
+//                 }
+//             }
+//             for (int i = 0; i < MAX_CLIENTS; i++) {
+// 				printf("pollfd %d - %d\n", client_fds[i].fd, client_fds[i].revents);
+//                 if (client_fds[i].fd > 0 && client_fds[i].revents & POLLIN) {
+// 				   printf("calling read callback! %d\n", i);
+//                    mux_master_read_callback(s->session, client_fds[i].fd, i);
+//                 }
+//             }
+//         }
+//     }
+
+//     if (s->poll_handle == NULL) {
+//         return -1;
+//     }
+
+//     return 0;
+// }
+
 void mux_loop(ssh_session session)
 {
-	struct pollfd pollfds[MAX_CLIENTS + 1];
-	int connected_clients = 0;
-    pollfds[0].fd = mux_server_sock;
-    pollfds[0].events = POLLIN;
+	client_fds[0].fd = mux_server_fd;
+	client_fds[0].events = POLLIN;
 
-	for (int i = 0; i <= MAX_CLIENTS; i++) {
-		hello_received[i] = 0;
-	}
-
-	printf("child\n");
     while (1) {
-        int pollResult = poll(pollfds, connected_clients + 1, 5000);
+        int pollResult = poll(client_fds, connected_clients + 1, 5000);
         if (pollResult > 0) {
-            if (pollfds[0].revents & POLLIN) {
+            if (client_fds[0].revents & POLLIN) {
                 struct sockaddr_un cliaddr;
                 u_int addrlen = sizeof(cliaddr);
-                int client_socket = accept(mux_server_sock, (struct sockaddr *)&cliaddr, &addrlen);
-                for (int i = 1; i < MAX_CLIENTS; i++) {
-                    if (pollfds[i].fd == 0) {
-                        pollfds[i].fd = client_socket;
-                        pollfds[i].events = POLLIN;
+                int client_socket = accept(mux_server_fd, (struct sockaddr *)&cliaddr, &addrlen);
+				printf("accepting client\n");
+                for (int i = 1; i <= MAX_CLIENTS; i++) {
+                    if (client_fds[i].fd == 0) {
+                        client_fds[i].fd = client_socket;
+                        client_fds[i].events = POLLIN;
                         connected_clients++;
                         break;
                     }
                 }
             }
             for (int i = 1; i <= MAX_CLIENTS; i++) {
-                if (pollfds[i].fd > 0 && pollfds[i].revents & POLLIN) {
+                if (client_fds[i].fd > 0 && client_fds[i].revents & POLLIN) {
 				   printf("calling read callback! %d\n", i);
-                   mux_master_read_callback(session, pollfds[i].fd, i);
+                   mux_master_read_callback(session, client_fds[i].fd, i);
                 }
             }
         }
-		printf("child loop\n");
+		printf("looping\n");
     }
 }
 
@@ -507,8 +668,6 @@ int mux_master_read_packet(int fd, ssh_buffer m)
 		return -1;
 	}
 
-	ssh_log_hexdump("after read buffer: ", ssh_buffer_get(queue), ssh_buffer_get_len(queue));
-
 	ptr = ssh_buffer_get(queue);
 	have = ssh_buffer_get_len(queue);
 
@@ -541,6 +700,8 @@ int mux_master_write_packet(int sock, ssh_buffer b)
 	p = ssh_buffer_get(queue);
 	len = ssh_buffer_get_len(queue);
 
+	ssh_log_hexdump("sending packet", p, len);
+
 	have = 0;
 	while (have < len) {
 		rc = write(sock, p + have, len - have);
@@ -552,6 +713,7 @@ int mux_master_write_packet(int sock, ssh_buffer b)
 	}
 
 	ssh_buffer_free(queue);
+	ssh_buffer_reinit(b);
 	return 0;
 }
 
@@ -565,14 +727,14 @@ int mux_master_read_callback(ssh_session session, int client_sock, int idx)
 		// error handling
 	}
 
-	printf("in callback\n");
+	if ((out = ssh_buffer_new()) == NULL) {
+		// error handling
+	}
+
+	printf("in callback for fd %d\n", client_sock);
 
 	if (hello_received[idx] == 0) {
 		/* Send hello */
-
-		if ((out = ssh_buffer_new()) == NULL) {
-			// error handling
-		}
 
 		rc = ssh_buffer_pack(out, "dd", MUX_MSG_HELLO, SSH_MUX_VERSION);
 		if (rc != SSH_OK) {
@@ -580,7 +742,6 @@ int mux_master_read_callback(ssh_session session, int client_sock, int idx)
 		}
 		if (mux_master_write_packet(client_sock, out) != 0) {
 			// error handling
-			goto end;
 		}
 		printf("hello sent from mux server\n");
 	}
@@ -594,8 +755,7 @@ int mux_master_read_callback(ssh_session session, int client_sock, int idx)
 	type = ntohl(type);
 
 	printf("type: %d\n", type);
-	// debug3_f("channel %d packet type 0x%08x len %zu", c->self,
-	//     type, sshbuf_len(in));
+
 	if (type == MUX_MSG_HELLO){
 		rid = 0;
 	} else {
@@ -606,29 +766,37 @@ int mux_master_read_callback(ssh_session session, int client_sock, int idx)
 		if ((rc = ssh_buffer_get_u32(in, &rid)) != 0) {
 			// error handling
 		}
+		rid = ntohl(rid);
 	}
 	for (i = 0; mux_master_handlers[i].handler != NULL; i++) {
 		if (type == mux_master_handlers[i].type) {
-			ret = mux_master_handlers[i].handler(session, rid, in, out, idx);
+			ret = mux_master_handlers[i].handler(session, rid, in, out, idx, client_sock);
 			break;
 		}
 	}
 	if (mux_master_handlers[i].handler == NULL) {
 		// error handling
+		printf("unknown message type\n");
 		ret = 0;
 	}
+
+	ssh_log_hexdump("out: ", ssh_buffer_get(out), ssh_buffer_get_len(out));
+
+	if (ssh_buffer_get_len(out) != 0 && mux_master_write_packet(client_sock, out) != 0) {
+		// error handling
+		printf("error writing packet\n");
+	}
+
  end:
+	ssh_buffer_free(in);
+	ssh_buffer_free(out);
 	return ret;
 }
 
-int mux_master_process_hello(ssh_session ssh, u_int rid, ssh_buffer in, ssh_buffer out, int idx)
+int mux_master_process_hello(ssh_session session, u_int rid, ssh_buffer in, ssh_buffer out, int idx, int client_sock)
 {
 	u_int ver;
 	int rc;
-
-	printf("we are on process hello\n");
-
-	ssh_log_hexdump("hello buffer: ", ssh_buffer_get(in), ssh_buffer_get_len(in));
 
 	if (hello_received[idx]) {
 		// error handling
@@ -654,6 +822,117 @@ int mux_master_process_hello(ssh_session ssh, u_int rid, ssh_buffer in, ssh_buff
 	// }
 	printf("RECEIVED HELLO with version %d!!!!!!!!!", ver);
 	hello_received[idx] = 1;
+	return 0;
+}
+
+int mux_master_process_alive_check (ssh_session session, u_int rid, ssh_buffer in, ssh_buffer out, int idx, int client_sock)
+{
+	if (!hello_received[idx]) {
+		// error handling
+		printf("hello not received\n");
+		return -1;
+	}
+	
+	ssh_buffer_pack(out, "ddd", MUX_S_ALIVE, rid, (u_int)getpid());
+
+	return 0;
+}
+
+int kbhit(void) {
+    struct timeval tv = { 0L, 0L };
+    fd_set fds;
+
+    FD_ZERO(&fds);
+    FD_SET(0, &fds);
+
+    return select(1, &fds, NULL, NULL, &tv);
+}
+
+int mux_master_process_new_session (ssh_session session, u_int rid, ssh_buffer in, ssh_buffer out, int idx, int client_sock)
+{
+	ssh_channel channel;
+	char *term = NULL;
+	char *cmd = NULL;
+	char *m = NULL;
+	u_int want_tty, want_x11_fwd, want_agent_fwd, want_subsys, escape_char;
+	int received_fd[3], i, j, nbytes, nwritten;
+	char buffer[1024];
+
+	ssh_buffer_unpack(in, "sdddddss",
+						&m,
+						&want_tty,
+						&want_x11_fwd,
+						&want_agent_fwd,
+						&want_subsys,
+						&escape_char,
+						&term,
+						&cmd);
+
+	for(i = 0; i < 3; i++) {
+		if ((received_fd[i] = receive_fd(client_sock)) == -1) {
+			printf("failed to receive fd %d from client", i);
+			for (j = 0; j < i; j++)
+				close(received_fd[j]);
+			return -1;
+		}
+	}
+
+	printf("received fds: %d, %d, %d\n", received_fd[0], received_fd[1], received_fd[2]);
+
+	channel = ssh_channel_new(session);
+    if (channel == NULL) {
+		printf("Error allocating channel\n");
+        return -1;
+    }
+
+	printf("Opening channel\n");
+
+    if (ssh_channel_open_session(channel)) {
+        printf("Error opening channel : %s\n", ssh_get_error(session));
+        ssh_channel_free(channel);
+        return -1;
+    }
+
+	printf("Requesting pty\n");
+
+	ssh_channel_request_pty(channel);
+
+    if (ssh_channel_request_shell(channel)) {
+        printf("Requesting shell : %s\n", ssh_get_error(session));
+        ssh_channel_free(channel);
+        return -1;
+    }
+    
+	if (1) {
+		while (ssh_channel_is_open(channel) &&
+         !ssh_channel_is_eof(channel))
+		{
+			nbytes = ssh_channel_read_nonblocking(channel, buffer, sizeof(buffer), 0);
+			if (nbytes < 0) return SSH_ERROR;
+			if (nbytes > 0)
+			{
+				nwritten = write(received_fd[1], buffer, nbytes);
+				if (nwritten != nbytes) return SSH_ERROR;
+			}
+
+			if (!kbhit())
+			{
+				usleep(50000L); // 0.05 second
+				continue;
+			}
+
+			nbytes = read(received_fd[0], buffer, sizeof(buffer));
+			if (nbytes < 0) return SSH_ERROR;
+			if (nbytes > 0)
+			{
+				nwritten = ssh_channel_write(channel, buffer, nbytes);
+				if (nwritten != nbytes) return SSH_ERROR;
+			}
+		}
+	}
+
+	printf("Done\n");
+
 	return 0;
 }
 

@@ -96,6 +96,8 @@ ssh_session ssh_new(void)
     session->auth.supported_methods = 0;
     ssh_set_blocking(session, 1);
     session->maxchannel = FIRST_CHANNEL;
+    session->mux_socket = NULL;
+    session->mux_sock = 0;
 
     session->agent = ssh_agent_new(session);
     if (session->agent == NULL) {

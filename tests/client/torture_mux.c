@@ -61,7 +61,7 @@ static int session_setup(void **state)
     ssh_options_set(s->ssh.session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
     ssh_options_set(s->ssh.session, SSH_OPTIONS_HOST, BLACKHOLE);
     ssh_options_set(s->ssh.session, SSH_OPTIONS_CONTROL_MASTER, &control);
-    ssh_options_set(s->ssh.session, SSH_OPTIONS_CONTROL_PATH, "..home/alice/.ssh/ssh-%r@%h:%p");
+    ssh_options_set(s->ssh.session, SSH_OPTIONS_CONTROL_PATH, "../home/alice/.ssh/ssh-alice@127.0.0.10:22");
 
     return 0;
 }

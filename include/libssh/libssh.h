@@ -514,6 +514,7 @@ LIBSSH_API const char *ssh_copyright(void);
 LIBSSH_API void ssh_disconnect(ssh_session session);
 LIBSSH_API char *ssh_dirname (const char *path);
 LIBSSH_API int ssh_finalize(void);
+LIBSSH_API int mux_listener_setup(ssh_session session);
 
 /* REVERSE PORT FORWARDING */
 LIBSSH_API ssh_channel ssh_channel_open_forward_port(ssh_session session,
