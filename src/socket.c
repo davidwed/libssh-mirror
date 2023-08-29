@@ -1008,7 +1008,7 @@ ssh_socket_connect_mux(ssh_socket s)
         return SSH_ERROR;
     }
 
-    printf("connecting using mux\n");
+    SSH_LOG(SSH_LOG_DEBUG, "connecting using mux socket %d", s->session->mux_sock);
 
     ssh_socket_set_fd(s, s->session->mux_sock);
     h = ssh_socket_get_poll_handle(s);

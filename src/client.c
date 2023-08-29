@@ -541,8 +541,6 @@ int ssh_connect(ssh_session session)
         return SSH_ERROR;
     }
 
-    printf("begin ssh_connect\n");
-
     if (session == NULL) {
         return SSH_ERROR;
     }
@@ -601,12 +599,12 @@ int ssh_connect(ssh_session session)
 #ifndef _WIN32
 
     if (session->opts.control_master == SSH_CONTROL_MASTER_AUTO) {
-        printf("trying mux\n");
+        SSH_LOG(SSH_LOG_DEBUG, "Trying to find a mux master socket");
         ret = mux_client(session);
         if (ret == SSH_ERROR) {
-            printf("mux failure!\n");
+            SSH_LOG(SSH_LOG_DEBUG, "Could not find a mux master socket, falling back to normal connection");
         }else{
-            printf("mux success! :) %d\n", ret);
+            SSH_LOG(SSH_LOG_DEBUG, "Found a mux master socket");
             session->mux_sock = ret;
         }
     }
@@ -681,8 +679,6 @@ pending:
     {
         return SSH_ERROR;
     }
-
-    printf("ssh_connect end\n");
 
     return SSH_OK;
 }

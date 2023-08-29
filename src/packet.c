@@ -1780,8 +1780,8 @@ int ssh_packet_send(ssh_session session)
     if (session->mux_sock) {
         if (type >= 80 && type <= 127) {
             rc = ssh_packet_write(session);
-	    } else {
-            printf("Not a supported MUX packet!\n");
+        } else {
+            SSH_LOG(SSH_LOG_DEBUG, "Not a supported MUX packet!");
             rc = SSH_ERROR;
         }
         if (rc == SSH_ERROR) {
@@ -1790,7 +1790,6 @@ int ssh_packet_send(ssh_session session)
         if (rc == SSH_AGAIN) {
             return rc;
         }
-        /* rc == SSH_OK */
         rc = ssh_buffer_reinit(session->out_buffer);
         if (rc < 0) {
             return SSH_ERROR;
