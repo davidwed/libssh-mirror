@@ -3,6 +3,7 @@
 #define LIBSSH_STATIC
 
 #include "torture.h"
+#include "libssh/libssh.h"
 #include "sftp.c"
 
 #include <sys/types.h>
@@ -45,6 +46,92 @@ static void session_setup(void **state)
     assert_non_null(s->ssh.tsftp);
 }
 
+static void torture_no_more_sessions(void **state)
+{
+    struct torture_state *s = *state;
+    ssh_session session = s->ssh.session;
+    ssh_channel extra_channel = NULL;
+    int rc;
+
+    /* Make sure we can't open a channel after doing a no more sessions request */
+    do {
+        rc = ssh_request_no_more_sessions(session);
+    } while (rc == SSH_AGAIN);
+    assert_ssh_return_code(session, rc);
+    extra_channel = ssh_channel_new(session);
+    assert_non_null(extra_channel);
+    do {
+        rc = ssh_channel_open_session(extra_channel);
+    } while (rc == SSH_AGAIN);
+    assert_int_equal(rc, SSH_ERROR);
+    ssh_channel_free(extra_channel);
+}
+
+static void session_setup_nonblocking(void **state)
+{
+    struct torture_state *s = *state;
+    struct passwd *pwd = NULL;
+    ssh_session session = NULL;
+    struct torture_sftp *t;
+    int rc;
+
+    pwd = getpwnam("bob");
+    assert_non_null(pwd);
+
+    rc = setuid(pwd->pw_uid);
+    assert_return_code(rc, errno);
+
+    session = ssh_new();
+    assert_non_null(s->ssh.session);
+    s->ssh.session = session;
+
+    rc = ssh_options_set(session, SSH_OPTIONS_HOST, TORTURE_SSH_SERVER);
+    assert_ssh_return_code(session, rc);
+
+    rc = ssh_options_set(session, SSH_OPTIONS_USER, TORTURE_SSH_USER_ALICE);
+    assert_ssh_return_code(session, rc);
+
+    ssh_set_blocking(session,0);
+    do {
+        rc = ssh_connect(session);
+        assert_ssh_return_code_not_equal(session, rc, SSH_ERROR);
+    } while(rc == SSH_AGAIN);
+
+    do {
+        rc = ssh_userauth_publickey_auto(session, NULL, NULL);
+    } while (rc == SSH_AUTH_AGAIN);
+    assert_ssh_return_code_equal(session, rc, SSH_AUTH_SUCCESS);
+
+    t = malloc(sizeof(struct torture_sftp));
+    assert_non_null(t);
+    s->ssh.tsftp = t;
+
+    t->sftp = NULL;
+
+    /* An error will be expected if we give a nullptr as parameter */
+    rc = sftp_nonblocking_new(NULL, &t->sftp);
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+    rc = sftp_nonblocking_new(session, NULL);
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+
+    do {
+        /* If successful, it will create and initialize a new sftp session */
+        rc = sftp_nonblocking_new(session, &t->sftp);
+        assert_ssh_return_code_not_equal(session, rc, SSH_ERROR);
+    } while (rc == SSH_AGAIN);
+
+    assert_non_null(t->sftp);
+    assert_non_null(t->sftp->session);
+    assert_non_null(t->sftp->channel);
+
+    rc = sftp_init(t->sftp);
+    assert_ssh_return_code_not_equal(session, rc, -1);
+
+    t->testdir = NULL;
+
+    torture_no_more_sessions(state);
+}
+
 static void session_setup_channel(void **state)
 {
     struct torture_state *s = *state;
@@ -70,17 +157,20 @@ static void session_setup_channel(void **state)
 
     s->ssh.tsftp = torture_sftp_session_channel(s->ssh.session, c);
     assert_non_null(s->ssh.tsftp);
+
+    torture_no_more_sessions(state);
 }
 
 static int session_teardown(void **state)
 {
     struct torture_state *s = *state;
 
-    torture_rmdirs(s->ssh.tsftp->testdir);
+    if (s->ssh.tsftp->testdir) {
+        torture_rmdirs(s->ssh.tsftp->testdir);
+    }
     torture_sftp_close(s->ssh.tsftp);
     ssh_disconnect(s->ssh.session);
     ssh_free(s->ssh.session);
-
     return 0;
 }
 
@@ -90,9 +180,12 @@ int torture_run_tests(void) {
         cmocka_unit_test_setup_teardown(session_setup,
                                         NULL,
                                         session_teardown),
+        cmocka_unit_test_setup_teardown(session_setup_nonblocking,
+                                        NULL,
+                                        session_teardown),
         cmocka_unit_test_setup_teardown(session_setup_channel,
                                         NULL,
-                                        session_teardown)
+                                        session_teardown),
     };
 
     ssh_init();
