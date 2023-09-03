@@ -197,7 +197,7 @@ int mux_client_alive_check(ssh_socket sock) {
     len = ntohl(len);
     SSH_LOG(SSH_LOG_DEBUG, "Received packet size: %u", len);
 
-    if ((rc = ssh_buffer_get_u32(msg, &type)) != 0){
+    if ((rc = ssh_buffer_get_u32(msg, &type)) != 4){
         return SSH_ERROR;
     }
     type = ntohl(type);
@@ -206,7 +206,7 @@ int mux_client_alive_check(ssh_socket sock) {
         return SSH_ERROR;
     }
 
-    if ((rc = ssh_buffer_get_u32(msg, &rid)) != 0){
+    if ((rc = ssh_buffer_get_u32(msg, &rid)) != 4){
         return SSH_ERROR;
     }
     rid = ntohl(rid);
@@ -215,7 +215,7 @@ int mux_client_alive_check(ssh_socket sock) {
         return SSH_ERROR;
     }
 
-    if ((rc = ssh_buffer_get_u32(msg, &pid)) != 0){
+    if ((rc = ssh_buffer_get_u32(msg, &pid)) != 4){
         return SSH_ERROR;
     }
     pid = ntohl(pid);
@@ -395,6 +395,8 @@ int mux_client(ssh_session session)
 
     h = ssh_socket_get_poll_handle(sock);
     if (h == NULL) {
+        SAFE_FREE(mux_client_callbacks);
+        ssh_socket_free(sock);
         return SSH_ERROR;
     }
     ctx = ssh_poll_get_ctx(h);
@@ -405,30 +407,34 @@ int mux_client(ssh_session session)
 
     if ((msg = ssh_buffer_new()) == NULL){
         SSH_LOG(SSH_LOG_DEBUG, "Could not create buffer");
-        ssh_socket_close(sock);
+        SAFE_FREE(mux_client_callbacks);
+        ssh_socket_free(sock);
         return SSH_ERROR;
     }
 
     if (mux_client_exchange_hello(sock) != 0) {
         SSH_LOG(SSH_LOG_DEBUG, "mux hello exchange failed");
-        ssh_socket_close(sock);
-        return SSH_ERROR;
+        goto error;
     }
 
     if (mux_client_alive_check(sock) == SSH_ERROR) {
         SSH_LOG(SSH_LOG_DEBUG, "mux alive check failed");
-        ssh_socket_close(sock);
-        return SSH_ERROR;
+        goto error;
     }
 
     if (mux_client_open_session(sock, session) == SSH_ERROR) {
         SSH_LOG(SSH_LOG_DEBUG, "mux open session failed");
-        ssh_socket_close(sock);
-        return SSH_ERROR;
+        goto error;
     }
 
     session->mux_socket = sock;
     return ssh_socket_get_fd(sock);
+
+error:
+    ssh_buffer_free(msg);
+    SAFE_FREE(mux_client_callbacks);
+    ssh_socket_free(sock);
+    return SSH_ERROR;
 }
 
 int mux_listener_setup(ssh_session session)

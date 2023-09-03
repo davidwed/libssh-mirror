@@ -1122,7 +1122,7 @@ void torture_setup_ssh_mux_server()
     int rc;
 
     snprintf(ssh_mux_server_start_cmd, sizeof(ssh_mux_server_start_cmd), 
-             SSH_EXECUTABLE " -vvv -i ../home/bob/.ssh/id_rsa -S ../home/alice/.ssh/ssh-alice@127.0.0.10:22 -M -N -f alice@" TORTURE_SSH_SERVER);
+             SSH_EXECUTABLE " -vvv -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -F /dev/null -i ../home/bob/.ssh/id_rsa -S ../home/alice/.ssh/ssh-alice@127.0.0.10:22 -M -N -f alice@" TORTURE_SSH_SERVER);
 
     rc = system(ssh_mux_server_start_cmd);
     assert_return_code(rc, errno);

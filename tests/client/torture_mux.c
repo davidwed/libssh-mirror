@@ -54,6 +54,14 @@ static int session_setup(void **state)
     struct torture_state *s = *state;
     int verbosity = torture_libssh_verbosity();
     int control = SSH_CONTROL_MASTER_AUTO;
+    struct passwd *pwd;
+    int rc;
+
+    pwd = getpwnam("bob");
+    assert_non_null(pwd);
+
+    rc = setuid(pwd->pw_uid);
+    assert_return_code(rc, errno);
 
     s->ssh.session = ssh_new();
     assert_non_null(s->ssh.session);
@@ -87,6 +95,10 @@ static void torture_connect_mux(void **state) {
 
     rc = ssh_connect(session);
     assert_ssh_return_code(session, rc);
+    assert_non_null(session->mux_socket);
+
+    rc = ssh_userauth_none(session,NULL);
+    assert_int_equal(rc, SSH_AUTH_SUCCESS);
 }
 
 int torture_run_tests(void) {
