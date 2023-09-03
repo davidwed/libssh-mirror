@@ -145,7 +145,6 @@ sftp_session sftp_new(ssh_session session)
     sftp->session = session;
     sftp->channel = ssh_channel_new(session);
     if (sftp->channel == NULL) {
-        ssh_set_error_oom(session);
         goto error;
     }
 
