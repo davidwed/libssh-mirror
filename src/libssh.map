@@ -464,6 +464,7 @@ LIBSSH_AFTER_4_9_0
     global:
         sftp_channel_default_data_callback;
         sftp_channel_default_subsystem_request;
-        sftp_nonblocking_new;
+        sftp_new2;
+        sftp_init2;
 } LIBSSH_4_9_0;
 

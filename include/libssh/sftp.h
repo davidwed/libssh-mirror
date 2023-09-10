@@ -219,22 +219,19 @@ LIBSSH_API sftp_session sftp_new(ssh_session session);
 /**
  * @brief Creates a new sftp session.
  *
- * This function does the same thing as sftp_new except that it operates in
- * non-blocking mode.
+ * This function creates a new sftp session and does NOT allocate a new sftp
+ * channel. This function call is usually followed by the sftp_init2() which
+ * uses an existing sftp channel or allocates a new one with the server and 
+ * initializes SFTP protocol itself.
  *
  * @param session       The ssh session to use.
- * @param asftp         An address to a sftp session.
  *
- * @return              SSH_OK on success,
- *                      SSH_ERROR if an error occurred,
- *                      SSH_AGAIN if in nonblocking mode and call has
- *                      to be done again.
+ * @return              A new sftp session or NULL on error.
  *
- * @see sftp_new()
  * @see sftp_free()
- * @see sftp_init()
+ * @see sftp_init2()
  */
-LIBSSH_API int sftp_nonblocking_new(ssh_session session, sftp_session* asftp);
+LIBSSH_API sftp_session sftp_new2(ssh_session session);
 
 /**
  * @brief Start a new sftp session with an existing channel.
@@ -268,6 +265,24 @@ LIBSSH_API void sftp_free(sftp_session sftp);
  * @see sftp_new()
  */
 LIBSSH_API int sftp_init(sftp_session sftp);
+
+/**
+ * @brief Initialize the sftp protocol with the server.
+ *
+ * This function involves the SFTP protocol initialization (as described
+ * in the SFTP specification), including the version and extensions negotiation.
+ * If no sftp channel is supplied to the function, it creates a new one.
+ *
+ * @param sftp          The sftp session to initialize.
+ * @param channel       The sftp channel or NULL to create a new one
+ *
+ * @return              SSH_OK on success, SSH_ERROR on error with ssh error set,
+ *                      SSH_AGAIN if the socket is opened in nonblocking mode and 
+ *                      the request hasn't been completed yet
+ *
+ * @see sftp_new2()
+ */
+LIBSSH_API int sftp_init2(sftp_session sftp, ssh_channel channel);
 
 /**
  * @brief Get the last sftp error.
