@@ -1,0 +1,590 @@
+/**
+
+@page libssh_tutor_sftp_ft Chapter 11: The SFTP File Transfer API
+
+@section sftp_ft_api The SFTP File Transfer API
+
+Note: Please read @ref libssh_tutor_sftp and @ref libssh_tutor_sftp_aio
+before reading this page.
+
+SFTP File Transfer API contains functions which aid the user in performing a
+file transfer. This is a high-level API which internally uses the libssh low
+level sftp asynchronous API discussed in @ref libssh_tutor_sftp_aio
+
+This API can be used for performing four kinds of transfers :
+  - Local to Remote (Uploading a file from the client side to the server
+    side)
+  - Remote to Local (Downloading a file from the server side to the client
+    side)
+  - Remote to Remote (Copying a file on the server side)
+  - Local to Local (Copying a file on the client side)
+
+@subsection sftp_ft_new Creating a file transfer structure
+
+To use the libssh File Transfer API, the first step is to create a new sftp file transfer structure. sftp_ft_new() creates a new file transfer
+structure and returns an sftp_ft type handle to the newly created file
+transfer structure.
+
+This file transfer structure is associated with the sftp_session passed to
+sftp_ft_new(). By using this file transfer structure, the user can perform
+file transfers with the server associated with that sftp_session.
+
+After performing one or multiple transfers using the file transfer
+structure, the memory corresponding to it should be released using
+sftp_ft_free().
+
+@code
+
+void print_sftp_error(sftp_session sftp)
+{
+    fprintf(stderr, "ssh error : %s\n", ssh_get_error(sftp->session));
+    fprintf(stderr, "sftp error : %d\n", sftp_get_error(sftp));
+}
+
+void perform_transfer(sftp_session sftp)
+{
+    sftp_ft ft = NULL;
+
+    if (sftp == NULL) {
+        return;
+    }
+
+    ft = sftp_ft_new(sftp);
+    if (ft == NULL) {
+        print_sftp_error(sftp);
+        return;
+    }
+
+    ... // Code to perform file transfers
+
+    sftp_ft_free(ft);
+}
+
+@endcode
+
+@subsection sftp_ft_options_setter Setting the options for a file transfer
+
+After creating a file transfer structure using sftp_ft_new(), it must be
+prepared for the file transfer which is to be performed. This preparation
+involves setting certain mandatory options and certain optional options,
+callbacks which will be used by sftp_ft_transfer() while performing the
+transfer.
+
+These options are set using sftp_ft_options_set().
+
+Setting certain options for the file transfer is mandatory, these
+include :
+
+  - Direction of the transfer.
+  - Path of source file.
+  - Path of target file.
+
+Setting the other options is optional, these options have defaults but those
+defaults can be changed by the user. Please view the function documentation of
+sftp_ft_options_set() for information about the default values. The
+optional options are :
+
+  - Permissions for the target file, these are applied on the target file
+    when a new file needs to be created at the target path.
+  - Chunk size to use for the transfer.
+  - In flight request count to use for the transfer. (@ref
+    libssh_tutor_sftp_aio explains the meaning of the term "in flight request")
+  - Option to resume a transfer.
+
+Optionally, the user can also set a callback function that gets called from
+sftp_ft_transfer() as the transfer progresses. sftp_ft_set_pgrs_callback()
+is used to set this callback. Inside the callback function,
+sftp_ft_get_user_data() can be used to get the user data passed while
+calling sftp_ft_set_pgrs_callback().
+
+The following example code shows how to set the options and a callback for
+the file transfer.
+
+@code
+
+void print_sftp_error(sftp_session sftp)
+{
+    fprintf(stderr, "ssh error : %s\n", ssh_get_error(sftp->session));
+    fprintf(stderr, "sftp error : %d\n", sftp_get_error(sftp));
+}
+
+// Assume that there is a GUI related datatype "struct gui_related_struct"
+// that can be used to display the progress bar for the file transfer.
+
+int progress_callback(sftp_ft ft)
+{
+    struct gui_related_struct *gui_ptr = sftp_ft_get_user_data(ft);
+
+    uint64_t bytes_transferred = sftp_ft_get_bytes_transferred(ft);
+    uint64_t bytes_total = sftp_ft_get_bytes_total(ft);
+    uint64_t bytes_skipped = sftp_ft_get_bytes_skipped(ft);
+
+    // Use gui_ptr and the bytes transferred, bytes total, bytes skipped
+    // metrics to display the progress bar on the GUI. If something fails
+    // here and say the transfer isn't wished to be continued, the callback
+    // can return a non zero value to make sftp_ft_transfer() stop the
+    // transfer.
+
+    // On success, when the callback doesn't want the sftp_ft_transfer() to
+    // stop the transfer.
+    return 0;
+}
+
+void perform_upload(sftp_session sftp, const char *src, const char *target)
+{
+    sftp_ft ft = NULL;
+
+    // Chunk size to use for the upload
+    size_t chunk_size = 16 * 1024; // 16 KB
+
+    // Number of in flight requests to use for the upload
+    size_t ifr = 10;
+
+    struct gui_related_struct gui = {0};
+
+    // Direction of transfer to perform an upload
+    sftp_ft_dxn_e dxn = SFTP_FT_DXN_LOCAL_TO_REMOTE;
+
+    if (sftp == NULL || src == NULL || dst == NULL) {
+        return;
+    }
+
+    ft = sftp_ft_new(sftp);
+    if (ft == NULL) {
+        print_sftp_error(sftp);
+        return;
+    }
+
+    // Following code sets the mandatory options for the transfers which would
+    // be performed using the sftp_ft handle named ft.
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_DXN, &dxn);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_SOURCE_PATH, src);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_TARGET_PATH, target);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    // Following code sets some of the optional options for the transfers
+    // which would be performed using the sftp_ft handle named ft.
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_CHUNK_SIZE, &chunk_size);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    rc = sftp_ft_options_set(ft,
+                             SFTP_FT_OPTIONS_IN_FLIGHT_REQUEST_COUNT,
+                             &ifr);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    ... // Code to initialize the gui related structure
+
+    // Following code sets the callback function to use for the transfers
+    // which would be performed using the sftp_ft handle named ft.
+    //
+    // As the user data (the third argument), the code passes the address
+    // of the gui related structure which can be used by the callback to
+    // display the progress
+    rc = sftp_ft_set_pgrs_callback(ft, progress_callback, &gui);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    fprintf(stdout, "Starting the upload of source : %s to target : %s\n",
+            sftp_ft_get_source_path(ft), sftp_ft_get_target_path(ft));
+
+    fprintf(stdout, "Chunk size for upload: %zu\n",
+            sftp_ft_get_chunk_size(ft));
+    fprintf(stdout, "In flight request count for upload : %zu\n",
+            sftp_ft_get_in_flight_request_count(ft));
+
+    ... // Code to perform a file transfer using ft
+
+out :
+    sftp_ft_free(ft);
+}
+
+@endcode
+
+Note: Be careful about the datatype of the argument passed to
+sftp_ft_options_set() corresponding to a certain option type. For example,
+the option type SFTP_FT_OPTIONS_CHUNK_SIZE expects a (size_t *) type for
+its third argument, passing an (int *) here can lead to unexpected
+behaviours. The function documentation for the sftp_ft_options_set()
+describes the type of the third argument corresponding to each option type.
+
+The progress_callback() in the above code example uses
+sftp_ft_get_bytes_transferred(), sftp_ft_get_bytes_total(),
+sftp_ft_get_bytes_skipped() to get various metrics related to the transfer.
+Please view their function documentation to understand the metrics returned
+by them. To obtain the information about the state of the transfer, these
+functions should be called inside the progress callback (called by
+sftp_ft_transfer()) or after sftp_ft_transfer() returns. Calling them
+before calling sftp_ft_transfer() is not a good idea since its
+sftp_ft_transfer() that sets and updates the metrics those functions return.
+
+@subsection sftp_ft_resume Resuming a transfer
+
+libssh File Transfer API provides a resume transfer option, this can be set
+by using sftp_ft_options_set() as shown below. The resume transfer option
+is disabled by default.
+
+@code
+
+// Non zero value used to enable/set the resume transfer option
+int resume_transfer = 1;
+
+sftp_ft ft = NULL;
+
+... // Code to allocate a new file transfer structure
+    // using sftp_ft_new() and store the returned sftp_ft
+    // handle in ft
+
+rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_RESUME_TRANSFER, &resume_transfer);
+if (rc == SSH_ERROR) {
+    // handle error
+}
+
+... // Code to set other options
+... // Code to perform transfer using sftp_ft_transfer()
+
+@endcode
+
+The following example describes a scenario where this option can be used.
+
+Assume that a source file of 1000 bytes has to be transferred from the client
+side to the server side. Say after transferring 900 bytes the connection breaks
+down due to some reason. At this point the target file contains 900 bytes of
+the source file.
+
+After the connection is up again, instead of attempting to transfer the
+entire source file from the beginning, the resume transfer can be set while
+keeping the other mandatory options (src path, target path and direction)
+same as before and then the previous transfer can be resumed by calling
+sftp_ft_transfer(). This will cause just the last 100 bytes of the source
+file (which weren't transferred earlier) to be transferred to the target file.
+
+For normal transfers (i.e when resume transfer option is not set) the
+return value of sftp_ft_get_bytes_skipped() (called from the progress
+callback or after sftp_ft_transfer() returns) would be 0 as no bytes are
+skipped from the source file before beginning these transfers. But for
+resumed transfers, this value could be non zero. In our example above, this
+value will be 900, as the first 900 bytes of the source file are skipped
+by sftp_ft_transfer() before beginning the transfer.
+
+@subsection sftp_ft_transferring Performing a transfer
+
+After allocating a file transfer structure and setting the file transfer
+options, sftp_ft_transfer() must be used to perform the transfer.
+
+sftp_ft_transfer() returning SSH_OK means that the transfer was successful,
+if it returns SSH_ERROR there is a possibility that either the transfer
+never began or failed after occurring partially. Such a partial transfer
+can be detected by calculating the difference between the return values of
+sftp_ft_get_bytes_transferred() and sftp_ft_get_bytes_skipped() after
+sftp_ft_transfer() returns.
+
+@code
+int rc;
+sftp_ft ft = NULL;
+uint64_t bytes;
+
+... // Code to allocate a file transfer structure and store its
+    // handle in ft.
+... // Code to set the options, callbacks for the file transfer
+
+// Performing a transfer
+rc = sftp_ft_transfer(ft);
+if (rc == SSH_ERROR) {
+    // transfer failed
+    bytes = sftp_ft_get_bytes_transferred(ft) - sftp_ft_get_bytes_skipped(ft);
+    if (bytes != 0) {
+        // partial transfer
+        fprintf(stderr,
+                "sftp_ft_transfer() failed after "
+                "transferring %"PRIu64" bytes.\n"
+                "%"PRIu64"/ %"PRIu64" bytes of source file transferred\n",
+                bytes,
+                sftp_ft_get_bytes_transferred(ft),
+                sftp_ft_get_bytes_total(ft));
+    } else {
+        fprintf(stderr,
+                "sftp_ft_transfer() failed before transferring "
+                "a single byte\n");
+    }
+}
+
+// else the transfer was successful
+
+@endcode
+
+@subsection sftp_ft_transfer_example Example code containing all steps for usage
+
+The following example code performs all the steps described above
+to perform a file transfer using the libssh File Transfer API.
+
+@code
+
+void print_sftp_error(sftp_session sftp)
+{
+    fprintf(stderr, "ssh error : %s\n", ssh_get_error(sftp->session));
+    fprintf(stderr, "sftp error : %d\n", sftp_get_error(sftp));
+}
+
+int progress_callback(sftp_ft ft)
+{
+    fprintf(stdout, "Transferred %"PRIu64" / %"PRIu64" bytes\n",
+            sftp_ft_get_bytes_transferred(ft), sftp_ft_get_bytes_total(ft));
+}
+
+void perform_upload(sftp_session sftp,
+                    const char *src,
+                    const char *target,
+                    int resume_flag)
+{
+    sftp_ft ft = NULL;
+    sftp_ft_dxn_e dxn = SFTP_FT_DXN_LOCAL_TO_REMOTE;
+    struct timeval start_time = {0}, end_time = {0};
+
+    float ms, bps;
+    uint64_t bytes_transferred, bytes_total, bytes_skipped;
+    uint64_t bytes_actual;
+    int rc;
+
+    if (sftp == NULL || src == NULL || target == NULL) {
+        return;
+    }
+
+    rc = sftp_ft_new(sftp);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        return;
+    }
+
+    // Set the options for the transfer
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_DXN, &dxn);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_SOURCE_PATH, src);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_TARGET_PATH, target);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_RESUME_TRANSFER, &resume_flag);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    rc = sftp_ft_set_pgrs_callback(ft, progress_callback, NULL);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    if (resume_flag == 0) {
+        fprintf(stdout, "Beginning ");
+    } else {
+        fprintf(stdout, "Resuming ");
+    }
+
+    fprintf(stdout,
+            "upload of %s to %s with a chunk size of %zu "
+            "and an in flight request count of %zu\n",
+            sftp_ft_get_source_path(ft),
+            sftp_ft_get_target_path(ft),
+            sftp_ft_get_chunk_size(ft),
+            sftp_ft_get_in_flight_request_count(ft));
+
+    gettimeofday(&start_time, NULL);
+
+    // Perform the transfer
+    rc = sftp_ft_transfer(ft);
+
+    gettimeofday(&end_time, NULL);
+
+    bytes_transferred = sftp_ft_get_bytes_transferred(ft);
+    bytes_total = sftp_ft_get_bytes_total(ft);
+    bytes_skipped = sftp_ft_get_bytes_skipped(ft);
+
+    // Actual number of bytes transferred due to
+    // the above sftp_ft_transfer() call
+    bytes_actual = bytes_transferred - bytes_skipped;
+
+    if (rc == SSH_ERROR) {
+        if (bytes_actual > 0) {
+            fprintf(stderr,
+                    "sftp_ft_transfer() failed after transferring %"PRIu64
+                    " bytes, %"PRIu64" / %"PRIu64" bytes of the source file "
+                    "have been transferred\n",
+                    bytes_actual,
+                    bytes_transferred,
+                    bytes_total);
+        } else {
+            fprintf(stderr,
+                    "sftp_ft_transfer() failed before transferring a "
+                    "single byte\n");
+        }
+
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    ms = (float)((start_time.tv_sec - end_time.tv_sec) * 1000) +
+         (float)(end_time.tv_usec - start_time.tv_usec) / 1000;
+
+    bps = 8000 * (float)(actual_bytes) / ms;
+    fprintf(stdout,
+            "Upload took %f ms for %"PRIu64" bytes at %f bps\n",
+            ms, bytes_actual, bps);
+
+out:
+    sftp_ft_free(ft);
+}
+
+@endcode
+
+@subsection sftp_ft_multiple Multiple file transfers
+
+A file transfer structure is not limited to just one transfer.
+
+A single file transfer structure can be used for multiple file transfers with
+the server associated with the sftp_session passed during allocation the file
+transfer structure using sftp_ft_new(). An example of this has been provided
+below.
+
+@code
+
+void print_sftp_error(sftp_session sftp)
+{
+    fprintf(stderr, "ssh error : %s\n", ssh_get_error(sftp->session));
+    fprintf(stderr, "sftp error : %d\n", sftp_get_error(sftp));
+}
+
+struct transfer_info
+{
+    char *src;
+    char *target;
+    sftp_ft_dxn_e dxn;
+};
+
+void perform_transfers(sftp_session sftp,
+                       const struct transfer_info *info_arr,
+                       size_t info_arr_len)
+{
+    int rc;
+    size_t i;
+    sftp_ft ft = NULL;
+
+    // Assume this function will perform all transfers with this chunk size
+    size_t chunk_size = 16 * 1024;
+
+    ft = sftp_ft_new(sftp);
+    if (ft == NULL) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    // Set options are not changed by sftp_ft_transfer() in any way, hence
+    // this option will be used for all transfers performed inside the
+    // upcoming loop.
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_CHUNK_SIZE, &chunk_size);
+    if (rc == SSH_ERROR) {
+        print_sftp_error(sftp);
+        goto out;
+    }
+
+    for (i = 0; i < info_arr_len; ++i) {
+        rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_DXN, &(info_arr[i].dxn));
+        if (rc == SSH_ERROR) {
+            print_sftp_error(sftp);
+            goto out;
+        }
+
+        rc = sftp_ft_options_set(ft,
+                                 SFTP_FT_OPTIONS_SOURCE_PATH,
+                                 info_arr[i].src);
+        if (rc == SSH_ERROR) {
+            print_sftp_error(sftp);
+            goto out;
+        }
+
+        rc = sftp_ft_options_set(ft,
+                                 SFTP_FT_OPTIONS_TARGET_PATH,
+                                 info_arr[i].target);
+        if (rc == SSH_ERROR) {
+            print_sftp_error(sftp);
+            goto out;
+        }
+
+        switch (info_arr[i].dxn) {
+        case SFTP_FT_DXN_LOCAL_TO_LOCAL:
+            fprintf(stdout, "Local copy: ");
+            break;
+
+        case SFTP_FT_DXN_LOCAL_TO_REMOTE:
+            fprintf(stdout, "Upload: ");
+            break;
+
+        case SFTP_FT_DXN_REMOTE_TO_LOCAL:
+            fprintf(stdout, "Download: ");
+            break;
+
+        case SFTP_FT_DXN_REMOTE_TO_REMOTE:
+            fprintf(stdout, "Remote copy: ");
+            break;
+
+            // Any other direction besides these are
+            // invalid and invalid dxn error will be reported by
+            // sftp_ft_options_set() if the code tries to set an
+            // invalid direction
+        }
+
+        fprintf(stdout,
+                "Transferring %s to %s\n",
+                info_arr[i].src,
+                info_arr[i].target);
+
+        rc = sftp_ft_transfer(ft);
+        if (rc == SSH_ERROR) {
+            print_sftp_error(sftp);
+            goto out;
+        }
+
+        fprintf(stdout, "Transfer was successful\n");
+    }
+
+out:
+    sftp_ft_free(ft);
+}
+
+@endcode
+
+*/
