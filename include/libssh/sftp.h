@@ -228,6 +228,23 @@ struct sftp_limits_struct {
 LIBSSH_API sftp_session sftp_new(ssh_session session);
 
 /**
+ * @brief Creates a new sftp session.
+ *
+ * This function creates a new sftp session and does NOT allocate a new sftp
+ * channel. This function call is usually followed by the sftp_init2() which
+ * uses an existing sftp channel or allocates a new one with the server and 
+ * initializes SFTP protocol itself.
+ *
+ * @param session       The ssh session to use.
+ *
+ * @return              A new sftp session or NULL on error.
+ *
+ * @see sftp_free()
+ * @see sftp_init2()
+ */
+LIBSSH_API sftp_session sftp_new2(ssh_session session);
+
+/**
  * @brief Start a new sftp session with an existing channel.
  *
  * @param session       The ssh session to use.
@@ -238,7 +255,6 @@ LIBSSH_API sftp_session sftp_new(ssh_session session);
  * @see sftp_free()
  */
 LIBSSH_API sftp_session sftp_new_channel(ssh_session session, ssh_channel channel);
-
 
 /**
  * @brief Close and deallocate a sftp session.
@@ -260,6 +276,24 @@ LIBSSH_API void sftp_free(sftp_session sftp);
  * @see sftp_new()
  */
 LIBSSH_API int sftp_init(sftp_session sftp);
+
+/**
+ * @brief Initialize the sftp protocol with the server.
+ *
+ * This function involves the SFTP protocol initialization (as described
+ * in the SFTP specification), including the version and extensions negotiation.
+ * If no sftp channel is supplied to the function, it creates a new one.
+ *
+ * @param sftp          The sftp session to initialize.
+ * @param channel       The sftp channel or NULL to create a new one
+ *
+ * @return              SSH_OK on success, SSH_ERROR on error with ssh error set,
+ *                      SSH_AGAIN if the socket is opened in nonblocking mode and 
+ *                      the request hasn't been completed yet
+ *
+ * @see sftp_new2()
+ */
+LIBSSH_API int sftp_init2(sftp_session sftp, ssh_channel channel);
 
 /**
  * @brief Get the last sftp error.
