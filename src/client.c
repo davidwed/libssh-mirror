@@ -46,6 +46,7 @@
 #include "libssh/misc.h"
 #include "libssh/pki.h"
 #include "libssh/kex.h"
+#include "libssh/mux.h"
 
 #define set_status(session, status) do {\
         if (session->common.callbacks && session->common.callbacks->connect_status_function) \
@@ -74,9 +75,9 @@ static void socket_callback_connected(int code, int errno_code, void *user)
 	}
 
 	SSH_LOG(SSH_LOG_TRACE,"Socket connection callback: %d (%d)",code, errno_code);
-	if(code == SSH_SOCKET_CONNECTED_OK)
+	if(code == SSH_SOCKET_CONNECTED_OK) {
 		session->session_state=SSH_SESSION_STATE_SOCKET_CONNECTED;
-	else {
+	} else {
         char err_msg[SSH_ERRNO_MSG_MAX] = {0};
 		session->session_state=SSH_SESSION_STATE_ERROR;
 		ssh_set_error(session,SSH_FATAL,"%s",
@@ -402,7 +403,15 @@ static void ssh_client_connection_callback(ssh_session session)
         break;
     case SSH_SESSION_STATE_SOCKET_CONNECTED:
         ssh_set_fd_towrite(session);
-        ssh_send_banner(session, 0);
+        if (session->mux_sock) {
+            ssh_packet_register_socket_callback(session, session->socket);
+            ssh_packet_set_default_callbacks(session);
+            set_status(session, 1.0f);
+            session->connected = 1;
+            session->session_state = SSH_SESSION_STATE_AUTHENTICATING;
+        } else {
+            ssh_send_banner(session, 0);
+        }
 
         break;
     case SSH_SESSION_STATE_BANNER_RECEIVED:
@@ -587,7 +596,20 @@ int ssh_connect(ssh_session session)
     session->socket_callbacks.exception = ssh_socket_exception_callback;
     session->socket_callbacks.userdata = session;
 
-    if (session->opts.fd != SSH_INVALID_SOCKET) {
+    if (session->opts.control_master == SSH_CONTROL_MASTER_AUTO) {
+        ret = mux_client(session);
+        if (ret == SSH_ERROR) {
+            // mux_listener_setup(session);
+            printf("mux failure! :(\n");
+        }else{
+            printf("mux success! :) %d\n", ret);
+            session->mux_sock = ret;
+        }
+    }
+
+    if (session->mux_sock) {
+        ret = ssh_socket_connect_mux(session->socket);
+    } else if (session->opts.fd != SSH_INVALID_SOCKET) {
         session->session_state = SSH_SESSION_STATE_SOCKET_CONNECTED;
         ssh_socket_set_fd(session->socket, session->opts.fd);
         ret = SSH_OK;
@@ -651,6 +673,8 @@ pending:
     {
         return SSH_ERROR;
     }
+
+    printf("ssh_connect end\n");
 
     return SSH_OK;
 }

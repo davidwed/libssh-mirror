@@ -130,6 +130,7 @@ set(libssh_SRCS
   match.c
   messages.c
   misc.c
+  mux.c
   options.c
   packet.c
   packet_cb.c

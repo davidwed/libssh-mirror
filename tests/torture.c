@@ -1110,6 +1110,21 @@ void torture_setup_sshd_server(void **state, bool pam)
     assert_int_equal(rc, 0);
 }
 
+void torture_setup_ssh_mux_server()
+{
+    char ssh_mux_server_start_cmd[1024];
+    int rc;
+    int temp;
+
+    snprintf(ssh_mux_server_start_cmd, sizeof(ssh_mux_server_start_cmd),
+             SSH_EXECUTABLE " -vvv -i ../home/bob/.ssh/id_rsa bob@" TORTURE_SSH_SERVER);
+
+    // system("ssh-copy-id -i ../home/bob/.ssh/id_rsa.pub bob@127.0.0.10");
+
+    rc = system(ssh_mux_server_start_cmd);
+    assert_return_code(rc, errno);
+}
+
 void torture_free_state(struct torture_state *s)
 {
     free(s->srv_config);
