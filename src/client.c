@@ -46,6 +46,7 @@
 #include "libssh/misc.h"
 #include "libssh/pki.h"
 #include "libssh/kex.h"
+#include "libssh/mux.h"
 
 #define set_status(session, status) do {\
         if (session->common.callbacks && session->common.callbacks->connect_status_function) \
@@ -402,7 +403,15 @@ static void ssh_client_connection_callback(ssh_session session)
         break;
     case SSH_SESSION_STATE_SOCKET_CONNECTED:
         ssh_set_fd_towrite(session);
-        ssh_send_banner(session, 0);
+        if (session->mux_sock) {
+            ssh_packet_register_socket_callback(session, session->socket);
+            ssh_packet_set_default_callbacks(session);
+            set_status(session, 1.0f);
+            session->connected = 1;
+            session->session_state = SSH_SESSION_STATE_AUTHENTICATING;
+        } else {
+            ssh_send_banner(session, 0);
+        }
 
         break;
     case SSH_SESSION_STATE_BANNER_RECEIVED:
@@ -586,6 +595,25 @@ int ssh_connect(ssh_session session)
     session->socket_callbacks.data = callback_receive_banner;
     session->socket_callbacks.exception = ssh_socket_exception_callback;
     session->socket_callbacks.userdata = session;
+
+#ifndef _WIN32
+
+    if (session->opts.control_master == SSH_CONTROL_MASTER_AUTO) {
+        SSH_LOG(SSH_LOG_DEBUG, "Trying to find a mux master socket");
+        ret = mux_client(session);
+        if (ret == SSH_ERROR) {
+            SSH_LOG(SSH_LOG_DEBUG, "Could not find a mux master socket, falling back to normal connection");
+        }else{
+            SSH_LOG(SSH_LOG_DEBUG, "Found a mux master socket");
+            session->mux_sock = ret;
+        }
+    }
+
+    if (session->mux_sock) {
+        ret = ssh_socket_connect_mux(session->socket);
+    } else
+
+#endif
 
     if (session->opts.fd != SSH_INVALID_SOCKET) {
         session->session_state = SSH_SESSION_STATE_SOCKET_CONNECTED;
@@ -805,6 +833,10 @@ ssh_disconnect(ssh_session session)
     }
 
 error:
+    if (session->mux_sock) {
+        ssh_socket_reset(session->mux_socket);
+    }
+    
     session->recv_seq = 0;
     session->send_seq = 0;
     session->alive = 0;

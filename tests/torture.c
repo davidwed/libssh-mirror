@@ -1110,6 +1110,26 @@ void torture_setup_sshd_server(void **state, bool pam)
     assert_int_equal(rc, 0);
 }
 
+void torture_setup_ssh_mux_server()
+{
+    char ssh_mux_server_start_cmd[1024];
+    int rc;
+
+    snprintf(ssh_mux_server_start_cmd, sizeof(ssh_mux_server_start_cmd), 
+             SSH_EXECUTABLE " -vvv -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -F /dev/null -i ../home/bob/.ssh/id_rsa -S ../home/alice/.ssh/ssh-alice@127.0.0.10:22 -M -N -f alice@" TORTURE_SSH_SERVER);
+
+    rc = system(ssh_mux_server_start_cmd);
+    assert_return_code(rc, errno);
+}
+
+void torture_teardown_ssh_mux_server()
+{
+    int rc;
+
+    rc = system("pkill '^ssh$'");
+    assert_return_code(rc, errno);
+}
+
 void torture_free_state(struct torture_state *s)
 {
     free(s->srv_config);

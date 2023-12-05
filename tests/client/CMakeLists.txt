@@ -13,6 +13,7 @@ set(LIBSSH_CLIENT_TESTS
     torture_forward
     torture_knownhosts
     torture_knownhosts_verify
+    torture_mux
     torture_proxycommand
     torture_session
     torture_request_env

@@ -1801,6 +1801,27 @@ int ssh_packet_send(ssh_session session)
 
     payload = (uint8_t *)ssh_buffer_get(session->out_buffer);
     type = payload[0]; /* type is the first byte of the packet now */
+
+    if (session->mux_sock) {
+        if (type >= 80 && type <= 127) {
+            rc = ssh_packet_write(session);
+        } else {
+            SSH_LOG(SSH_LOG_DEBUG, "Not a supported MUX packet!");
+            rc = SSH_ERROR;
+        }
+        if (rc == SSH_ERROR) {
+            return rc;
+        }
+        if (rc == SSH_AGAIN) {
+            return rc;
+        }
+        rc = ssh_buffer_reinit(session->out_buffer);
+        if (rc < 0) {
+            return SSH_ERROR;
+        }
+        return rc;
+    }
+
     need_rekey = ssh_packet_need_rekey(session, payloadsize);
     in_rekey = ssh_packet_in_rekey(session);
 

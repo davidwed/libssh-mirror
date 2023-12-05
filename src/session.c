@@ -96,6 +96,8 @@ ssh_session ssh_new(void)
     session->auth.supported_methods = 0;
     ssh_set_blocking(session, 1);
     session->maxchannel = FIRST_CHANNEL;
+    session->mux_socket = NULL;
+    session->mux_sock = 0;
 
     session->agent = ssh_agent_new(session);
     if (session->agent == NULL) {
@@ -218,6 +220,9 @@ void ssh_free(ssh_session session)
 
   ssh_socket_free(session->socket);
   session->socket = NULL;
+
+  ssh_socket_free(session->mux_socket);
+  session->mux_socket = NULL;
 
   if (session->default_poll_ctx) {
       ssh_poll_ctx_free(session->default_poll_ctx);
