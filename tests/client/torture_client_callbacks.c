@@ -232,6 +232,52 @@ static void torture_request_failure(void **state)
     free(cb_state);
 }
 
+ssh_channel mock_x11_request(ssh_session session, const char *originator_address, int originator_port, void *userdata) 
+{
+    check_expected(originator_port);
+    check_expected_ptr(originator_address);
+    return (ssh_channel) mock();
+}
+
+int setup(void **state)
+{
+    ssh_session session;
+    ssh_channel channel;
+
+    session = ssh_new();
+    assert_non_null(session);
+
+
+    channel = ssh_channel_new(session);
+    assert_non_null(channel);
+
+    ssh_set_channel_callbacks(channel, &mock_x11_request);
+
+    *state = channel;
+
+    return 0;
+}
+
+void test_x11_callback(void **state)
+{
+    ssh_channel channel = *state;
+
+    expect_value(mock_x11_request, originator_port, 6000);
+    expect_string(mock_x11_request, originator_address, "localhost");
+
+    will_return(mock_x11_request, channel);
+
+    int rc = ssh_channel_open_x11(channel, "localhost", 6000);
+    assert_int_equal(rc, SSH_OK);
+}
+
+int teardown(void **state)
+{    
+    ssh_channel channel = *state;
+    return 0;
+}
+
+
 int torture_run_tests(void)
 {
     int rc;
@@ -248,6 +294,9 @@ int torture_run_tests(void)
         cmocka_unit_test_setup_teardown(torture_request_failure,
                                         session_setup,
                                         session_teardown),
+        cmocka_unit_test_setup_teardown(test_x11_callback, 
+                                        setup, 
+                                        teardown),
     };
 
     ssh_init();
