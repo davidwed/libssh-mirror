@@ -79,11 +79,19 @@ set(TORTURE_CLIENT_ENVIRONMENT ${TORTURE_ENVIRONMENT})
 list(APPEND TORTURE_CLIENT_ENVIRONMENT NSS_WRAPPER_HOSTS=${CMAKE_BINARY_DIR}/tests/etc/hosts)
 
 foreach(_CLI_TEST ${LIBSSH_CLIENT_TESTS})
-    add_cmocka_test(${_CLI_TEST}
-                    SOURCES ${_CLI_TEST}.c
-                    COMPILE_OPTIONS ${DEFAULT_C_COMPILE_FLAGS}
-                    LINK_LIBRARIES ${TORTURE_LIBRARY} util
-    )
+    if (WITH_NO_TEST_DEPRECATION)
+        add_cmocka_test(${_CLI_TEST}
+                        SOURCES ${_CLI_TEST}.c
+                        COMPILE_OPTIONS ${DEFAULT_C_COMPILE_FLAGS} ${DEFAULT_C_NO_DEPRECATION_FLAGS}
+                        LINK_LIBRARIES ${TORTURE_LIBRARY} util
+        )
+    else ()
+        add_cmocka_test(${_CLI_TEST}
+                        SOURCES ${_CLI_TEST}.c
+                        COMPILE_OPTIONS ${DEFAULT_C_COMPILE_FLAGS}
+                        LINK_LIBRARIES ${TORTURE_LIBRARY} util
+        )
+    endif (WITH_NO_TEST_DEPRECATION)
 
     if (OSX)
         set_property(
