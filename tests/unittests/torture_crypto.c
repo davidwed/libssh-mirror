@@ -304,6 +304,7 @@ static void torture_crypto_chacha20poly1305_bad_tag(void **state)
     rc = get_cipher(&cipher, "chacha20-poly1305@openssh.com");
     assert_int_equal(rc, SSH_OK);
 
+    assert_non_null(cipher.set_decrypt_key);
     rc = cipher.set_decrypt_key(&cipher, chacha20poly1305_key, NULL);
     assert_int_equal(rc, SSH_OK);
 
