@@ -45,6 +45,16 @@
     assert_true(code >= 0)
 #endif /* assert_return_code */
 
+/* clang does not like the cmocka assert */
+#ifdef __clang_analyzer__
+#undef assert_non_null
+#include <assert.h>
+#define assert_non_null(expr)                   \
+        ((expr != NULL)                         \
+         ? __ASSERT_VOID_CAST (0)               \
+         : __assert_fail (#expr, __FILE__, __LINE__, __ASSERT_FUNCTION))
+#endif /* __clang_analyzer__ */
+
 #define TORTURE_SSH_SERVER "127.0.0.10"
 #define TORTURE_SSH_SERVER_IP6 "fd00::5357:5f0a"
 #define TORTURE_SSH_USER_BOB "bob"
