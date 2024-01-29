@@ -56,6 +56,7 @@ if (WITH_SFTP)
         torture_sftp_rename
         torture_sftp_expand_path
         torture_sftp_aio
+	torture_sftp_copy_data
         ${SFTP_BENCHMARK_TESTS})
 endif (WITH_SFTP)
 
