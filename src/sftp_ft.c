@@ -169,4 +169,103 @@ static int ft_validate(sftp_ft ft)
     return SSH_OK;
 }
 
+/**
+ * @internal
+ *
+ * @brief Set an internal chunk size based on the chunk size and the transfer
+ * type specified by the user. This is the chunk size which would
+ * actually be used by the API for the transfer.
+ *
+ * @param[in] ft          sftp ft handle to the file transfer structure.
+ *
+ * @return                SSH_OK for a valid file transfer structure,
+ *                        SSH_ERROR for an invalid file transfer structure
+ */
+static int ft_set_internal_chunk_size(sftp_ft ft) __attr_unused__;
+static int ft_set_internal_chunk_size(sftp_ft ft)
+{
+    int rc;
+    uint64_t cap;
+    sftp_session sftp = NULL;
+
+    rc = ft_validate(ft);
+    if (rc == SSH_ERROR) {
+        return SSH_ERROR;
+    }
+
+    sftp = ft->sftp;
+
+    /* Get the cap as per the transfer type */
+    switch (ft->type) {
+    case SFTP_FT_TYPE_UPLOAD:
+        /* Cap for uploads */
+        cap = sftp->limits->max_write_length;
+        break;
+
+    case SFTP_FT_TYPE_DOWNLOAD:
+        /* Cap for downloads */
+        cap = sftp->limits->max_read_length;
+        break;
+
+    case SFTP_FT_TYPE_REMOTE_COPY:
+        /*
+         * Cap for remote copy = min(max read limit, max write limit)
+         *
+         * In case of remote copy, when the copy-data extension isn't supported,
+         * data chunks have to be downloaded from source and then uploaded to
+         * the target. Hence cap for downloading (max read limit) and cap for
+         * uploading (max write limit) both get involved in the formula to
+         * calculate the cap for remote copy.
+         */
+        cap = MIN(sftp->limits->max_read_length,
+                  sftp->limits->max_write_length);
+
+        break;
+
+    case SFTP_FT_TYPE_LOCAL_COPY:
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "The feature to perform a local copy is "
+                      "currently not provided by the libssh sftp ft API");
+        sftp_set_error(sftp, SSH_FX_OP_UNSUPPORTED);
+        return SSH_ERROR;
+
+    case SFTP_FT_TYPE_NONE:
+        /*
+         * Never reached, as this case is handled by ft_validate()
+         * called at the beginning.
+         */
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "No transfer type specified for the transfer");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+
+    default:
+        /*
+         * Never reached, as this case is handled by ft_validate()
+         * called at the beginning.
+         */
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Invalid transfer type %d", ft->type);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return SSH_ERROR;
+    }
+
+    /* Set the internal chunk size */
+    if (ft->chunk_size == 0) {
+        /*
+         * User wants the API to use the default chunk size for transfer,
+         * so use the cap as the default.
+         */
+        ft->internal_chunk_size = cap;
+    } else {
+        /*
+         * Cap the chunk size specified by the user and use that as the chunk
+         * size for the transfer
+         */
+        ft->internal_chunk_size = MIN(ft->chunk_size, cap);
+    }
+
+    return SSH_OK;
+}
+
 #endif /* WITH_SFTP */
