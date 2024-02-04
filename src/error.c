@@ -55,18 +55,18 @@ void _ssh_set_error(void *error,
                     const char *function,
                     const char *descr, ...)
 {
-    struct ssh_common_struct *err = error;
+    struct error_struct *err = error;
     va_list va;
 
     va_start(va, descr);
-    vsnprintf(err->error.error_buffer, ERROR_BUFFERLEN, descr, va);
+    vsnprintf(err->error_buffer, ERROR_BUFFERLEN, descr, va);
     va_end(va);
 
-    err->error.error_code = code;
+    err->error_code = code;
     if (ssh_get_log_level() == SSH_LOG_TRACE) {
         ssh_log_function(SSH_LOG_TRACE,
                          function,
-                         err->error.error_buffer);
+                         err->error_buffer);
     }
 }
 
@@ -112,10 +112,10 @@ void _ssh_set_error_invalid(void *error, const char *function)
  */
 void ssh_reset_error(void *error)
 {
-    struct ssh_common_struct *err = error;
+    struct error_struct *err = error;
 
-    ZERO_STRUCT(err->error.error_buffer);
-    err->error.error_code = 0;
+    ZERO_STRUCT(err->error_buffer);
+    err->error_code = 0;
 }
 
 /**
