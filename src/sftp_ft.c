@@ -79,7 +79,6 @@ struct sftp_ft_struct {
  * @return                SSH_OK for a valid file transfer structure,
  *                        SSH_ERROR for an invalid file transfer structure
  */
-static int ft_validate(sftp_ft ft) __attr_unused__;
 static int ft_validate(sftp_ft ft)
 {
     sftp_session sftp = NULL;
@@ -183,7 +182,6 @@ static int ft_validate(sftp_ft ft)
  * @return                SSH_OK for a valid file transfer structure,
  *                        SSH_ERROR for an invalid file transfer structure
  */
-static int ft_set_internal_chunk_size(sftp_ft ft) __attr_unused__;
 static int ft_set_internal_chunk_size(sftp_ft ft)
 {
     int rc;
@@ -286,7 +284,6 @@ static int ft_set_internal_chunk_size(sftp_ft ft)
  * @returns               SSH_OK on success, SSH_ERROR on error with errno set
  *                        to indicate the error.
  */
-static int ft_lseek_from_start(int fd, uint64_t offset) __attr_unused__;
 static int ft_lseek_from_start(int fd, uint64_t offset)
 {
     uint64_t left = offset;
@@ -332,7 +329,6 @@ static int ft_lseek_from_start(int fd, uint64_t offset)
  * @returns                 SSH_OK on success, SSH_ERROR on error with errno
  *                          set to indicate the error.
  */
-static int ft_win_to_posix_perm(mode_t win, mode_t *posix_ptr) __attr_unused__;
 static int ft_win_to_posix_perm(mode_t win, mode_t *posix_ptr)
 {
     if (posix_ptr == NULL) {
@@ -373,7 +369,6 @@ static int ft_win_to_posix_perm(mode_t win, mode_t *posix_ptr)
  * @returns                 SSH_OK on success, SSH_ERROR on error with errno
  *                          set to indicate the error.
  */
-static int ft_posix_to_win_perm(mode_t posix, mode_t *win_ptr) __attr_unused__;
 static int ft_posix_to_win_perm(mode_t posix, mode_t *win_ptr)
 {
     if (win_ptr == NULL) {
@@ -619,7 +614,6 @@ static int ft_wait_l2r(sftp_ft ft, sftp_aio *aio)
  * @return                SSH_OK on a successful transfer,
  *                        SSH_ERROR on error.
  */
-static int ft_transfer_l2r(sftp_ft ft) __attr_unused__;
 static int ft_transfer_l2r(sftp_ft ft)
 {
     /*
@@ -1143,7 +1137,6 @@ static int ft_wait_r2l(sftp_ft ft, sftp_aio *aio, int local_fd)
  *
  * @returns               SSH_OK on success, SSH_ERROR on error.
  */
-static int ft_transfer_r2l(sftp_ft ft) __attr_unused__;
 static int ft_transfer_r2l(sftp_ft ft)
 {
     sftp_session sftp = NULL;
@@ -1598,7 +1591,6 @@ static int ft_wait_begin_r2r(sftp_ft ft,
  *
  * @returns           SSH_OK on success, SSH_ERROR on error.
  */
-static int ft_transfer_r2r(sftp_ft ft) __attr_unused__;
 static int ft_transfer_r2r(sftp_ft ft)
 {
     sftp_session sftp = NULL;
