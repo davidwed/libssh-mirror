@@ -230,6 +230,28 @@ static void torture_auth_none_nonblocking(void **state) {
 
 }
 
+static void torture_auth_none_success(void **state) {
+    struct torture_state *s = *state;
+    const char *additional_config = "AuthenticationMethods \"none\"";
+    ssh_session session = s->ssh.session;
+    int rc;
+
+    torture_update_sshd_config(state, additional_config);
+
+    rc = ssh_options_set(session, SSH_OPTIONS_USER, TORTURE_SSH_USER_ALICE);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_connect(session);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_userauth_none(session,NULL);
+
+    assert_int_equal(rc, SSH_AUTH_SUCCESS);
+
+    // revert the changes for future tests
+    torture_update_sshd_config(state, NULL);
+}
+
 /* Setting MaxAuthTries 0 makes libssh hang. The option is not practical,
  * but simulates setting low value and requiring multiple authentication
  * methods to succeed (T233)
@@ -1254,6 +1276,9 @@ int torture_run_tests(void) {
                                         session_setup,
                                         session_teardown),
         cmocka_unit_test_setup_teardown(torture_auth_none_nonblocking,
+                                        session_setup,
+                                        session_teardown),
+        cmocka_unit_test_setup_teardown(torture_auth_none_success,
                                         session_setup,
                                         session_teardown),
         cmocka_unit_test_setup_teardown(torture_auth_none_max_tries,
