@@ -19,7 +19,6 @@ static void* client_thread(void* userdata){
 
     ssh_session session;
     int port = TEST_PORT;
-    int method;
     int rc;
 
     session = ssh_new();
@@ -31,8 +30,6 @@ static void* client_thread(void* userdata){
 
     rc = ssh_connect(session);
     assert_int_equal(rc, SSH_OK);
-
-    method = ssh_userauth_list(session, NULL);
 
     rc = ssh_userauth_password(session, "foo", "bar");
     assert_int_equal(rc, SSH_AUTH_SUCCESS);
@@ -51,7 +48,7 @@ static void torture_x11_callback_check(void **state){
     ssh_bind bind;
     ssh_session session;
     int rc;
-    char *testkey;
+    const char *testkey;
     char testkey_path[] = "/tmp/libssh_hostkey_XXXXXX";
     int port = TEST_PORT;
     ssh_event event;
