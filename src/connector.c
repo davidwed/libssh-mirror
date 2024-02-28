@@ -166,7 +166,7 @@ int ssh_connector_set_out_channel(ssh_connector connector,
 
     /* Fallback to default value for invalid flags */
     if (!(flags & SSH_CONNECTOR_STDOUT) && !(flags & SSH_CONNECTOR_STDERR)) {
-        connector->in_flags = SSH_CONNECTOR_STDOUT;
+        connector->out_flags = SSH_CONNECTOR_STDOUT;
     }
 
     return ssh_add_channel_callbacks(channel, &connector->out_channel_cb);
@@ -425,7 +425,6 @@ static int ssh_connector_channel_data_cb(ssh_session session,
 {
     ssh_connector connector = userdata;
     int w;
-    uint32_t window;
 
     (void) session;
     (void) channel;
@@ -444,37 +443,27 @@ static int ssh_connector_channel_data_cb(ssh_session session,
         return 0;
     }
 
-    if (connector->out_wontblock) {
+    if (connector->out_wontblock || connector->out_channel != NULL) {
         if (connector->out_channel != NULL) {
-            uint32_t window_len;
-
-            window = ssh_channel_window_size(connector->out_channel);
-            window_len = MIN(window, len);
+            /* Note that window len might be zero at this point, so we have to go ahead */
+            /* and call write in order for a new window to be negotiated and not stall  */
 
             /* Route the data to the right exception channel */
-            if (is_stderr && (connector->out_flags & SSH_CONNECTOR_STDERR)) {
-                w = ssh_channel_write_stderr(connector->out_channel,
-                                             data,
-                                             window_len);
-            } else if (!is_stderr &&
-                       (connector->out_flags & SSH_CONNECTOR_STDOUT)) {
+            if ((connector->out_flags & SSH_CONNECTOR_STDOUT) &&
+                 !(is_stderr && (connector->out_flags & SSH_CONNECTOR_STDERR))) {
                 w = ssh_channel_write(connector->out_channel,
                                       data,
-                                      window_len);
-            } else if (connector->out_flags & SSH_CONNECTOR_STDOUT) {
-                w = ssh_channel_write(connector->out_channel,
-                                      data,
-                                      window_len);
+                                      len);
             } else {
                 w = ssh_channel_write_stderr(connector->out_channel,
                                              data,
-                                             window_len);
+                                             len);
             }
             if (w == SSH_ERROR) {
                 ssh_connector_except_channel(connector, connector->out_channel);
             }
         } else if (connector->out_fd != SSH_INVALID_SOCKET) {
-                w = ssh_connector_fd_write(connector, data, len);
+            w = ssh_connector_fd_write(connector, data, len);
             if (w < 0)
                 ssh_connector_except(connector, connector->out_fd);
         } else {
@@ -520,7 +509,7 @@ static int ssh_connector_channel_write_wontblock_cb(ssh_session session,
     (void) channel;
 
     SSH_LOG(SSH_LOG_TRACE, "Channel write won't block");
-    if (connector->in_available) {
+    if (connector->in_available || connector->in_channel != NULL) {
         if (connector->in_channel != NULL) {
             uint32_t len = MIN(CHUNKSIZE, bytes);
 
