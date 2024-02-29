@@ -147,7 +147,6 @@ SSH_PACKET_CALLBACK(ssh_packet_newkeys)
 
     if (session->server) {
         /* server things are done in server.c */
-        session->dh_handshake_state=DH_STATE_FINISHED;
     } else {
         ssh_key server_key = NULL;
 
@@ -264,6 +263,10 @@ SSH_PACKET_CALLBACK(ssh_packet_ext_info)
 
     SSH_LOG(SSH_LOG_PACKET, "Follows %" PRIu32 " extensions", nr_extensions);
 
+    /* resetting extension flags */
+    session->extensions = 0;
+    session->extensions |= SSH_EXT_NEGOTIATION;
+
     for (i = 0; i < nr_extensions; i++) {
         char *name = NULL;
         char *value = NULL;
@@ -275,19 +278,38 @@ SSH_PACKET_CALLBACK(ssh_packet_ext_info)
             return SSH_PACKET_USED;
         }
 
-        cmp = strcmp(name, "server-sig-algs");
-        if (cmp == 0) {
-            /* TODO check for NULL bytes */
-            SSH_LOG(SSH_LOG_PACKET, "Extension: %s=<%s>", name, value);
-            if (ssh_match_group(value, "rsa-sha2-512")) {
-                session->extensions |= SSH_EXT_SIG_RSA_SHA512;
+        if (session->client) {
+            cmp = strcmp(name, "server-sig-algs");
+            if (cmp == 0) {
+                SSH_LOG(SSH_LOG_PACKET, "Extension: %s=<%s>", name, value);
+                if (ssh_match_group(value, "rsa-sha2-512")) {
+                    session->extensions |= SSH_EXT_SIG_RSA_SHA512;
+                }
+                if (ssh_match_group(value, "rsa-sha2-256")) {
+                    session->extensions |= SSH_EXT_SIG_RSA_SHA256;
+                }
+                goto cleanup;
             }
-            if (ssh_match_group(value, "rsa-sha2-256")) {
-                session->extensions |= SSH_EXT_SIG_RSA_SHA256;
+        } else { /* session->server */
+            cmp = strcmp(name, "ext-info-in-auth@openssh.com");
+            if (cmp == 0) {
+                puts("ext-info-in-auth received");
+                SSH_LOG(SSH_LOG_PACKET, "Extension: %s=<%s>", name, value);
+                if (session->server){
+                    session->extensions |= SSH_EXT_INFO_IN_USER_AUTH;
+                }
+                goto cleanup;
             }
-        } else {
-            SSH_LOG(SSH_LOG_PACKET, "Unknown extension: %s", name);
         }
+
+        /* TODO check for NULL bytes in value (RFC 8308, 2.5)
+         * (hard to do because ssh_buffer_unpack doesn't return length of value)
+         * this is why we can't fully print value here.
+         */
+
+        SSH_LOG(SSH_LOG_PACKET, "Unknown extension: %s", name);
+
+cleanup:
         free(name);
         free(value);
     }
