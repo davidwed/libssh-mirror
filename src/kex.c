@@ -533,8 +533,8 @@ SSH_PACKET_CALLBACK(ssh_packet_kexinit)
             session->flags |= SSH_SESSION_FLAG_KEX_STRICT;
         }
     }
-#ifdef WITH_SERVER
     if (server_kex) {
+        #ifdef WITH_SERVER
         /*
          * If client sent a ext-info-c message in the kex list, it supports
          * RFC 8308 extension negotiation.
@@ -606,8 +606,8 @@ SSH_PACKET_CALLBACK(ssh_packet_kexinit)
                     session->extensions & SSH_EXT_SIG_RSA_SHA256 ? "SHA256" : "",
                     session->extensions & SSH_EXT_SIG_RSA_SHA512 ? " SHA512" : "");
         }
-    } else {
-        /* client kex */
+#endif /* WITH_SERVER */
+    } else { /* client */
         ok = ssh_match_group(crypto->server_kex.methods[SSH_KEX],
                              KEX_EXTENSION_SERVER);
         if (ok) {
@@ -615,9 +615,8 @@ SSH_PACKET_CALLBACK(ssh_packet_kexinit)
             session->extensions |= SSH_EXT_NEGOTIATION;
         }
     }
-#endif /* WITH_SERVER */
 
-    /* Note, that his overwrites authenticated state in case of rekeying */
+    /* Note, that this overwrites authenticated state in case of rekeying */
     session->session_state = SSH_SESSION_STATE_KEXINIT_RECEIVED;
     /* if we already sent our initial key exchange packet, do not reset the
      * DH state. We will know if we were right with our guess only in
@@ -833,8 +832,8 @@ int ssh_kex_append_extensions(ssh_session session, struct ssh_kex_struct *pkex)
     size_t kex_len, len;
 
     /* Here we append ext-info-c and kex-strict-c-v00@openssh.com for client
-     * and ext-info-s and kex-strict-s-v00@openssh.com for server to the list
-     * of kex algorithms
+     * and ext-info-s and kex-strict-s-v00@openssh.com for server (in that
+     * order) to the list of kex algorithms
      */
     kex = pkex->methods[SSH_KEX];
     len = strlen(kex);
@@ -981,7 +980,7 @@ int ssh_kex_select_methods (ssh_session session)
         }
     }
     if (session->server) {
-        ext_start = strstr(server->methods[SSH_KEX], "," KEX_STRICT_SERVER);
+        ext_start = strstr(server->methods[SSH_KEX], "," KEX_EXTENSION_SERVER);
         if (ext_start != NULL) {
             ext_start[0] = '\0';
         }
@@ -990,6 +989,21 @@ int ssh_kex_select_methods (ssh_session session)
     for (i = 0; i < SSH_KEX_METHODS; i++) {
         crypto->kex_methods[i] = ssh_find_matching(server->methods[i],
                                                    client->methods[i]);
+
+        if (i == SSH_KEX) {
+            char misnegotiations[] = KEX_EXTENSION_CLIENT "," KEX_EXTENSION_SERVER "," \
+                                        KEX_STRICT_CLIENT "," KEX_STRICT_SERVER;
+            char *match = NULL;
+
+            match = ssh_find_matching(misnegotiations, crypto->kex_methods[i]);
+            if (match != NULL) {
+                ssh_set_error(session, SSH_FATAL,
+                              "kex error : %s was (mis)negotiated as method: "
+                              "server [%s], client [%s]", crypto->kex_methods[i],
+                              server->methods[i], client->methods[i]);
+                return SSH_ERROR;
+            }
+        }
 
         if (i == SSH_MAC_C_S || i == SSH_MAC_S_C) {
             aead_hmac = ssh_find_aead_hmac(crypto->kex_methods[i - 2]);

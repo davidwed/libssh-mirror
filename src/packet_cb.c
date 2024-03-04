@@ -290,7 +290,7 @@ SSH_PACKET_CALLBACK(ssh_packet_ext_info)
                 }
                 goto cleanup;
             }
-        } else { /* session->server */
+        } else { /* server */
             cmp = strcmp(name, "ext-info-in-auth@openssh.com");
             if (cmp == 0) {
                 puts("ext-info-in-auth received");

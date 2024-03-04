@@ -239,7 +239,8 @@ end:
     return rc;
 }
 
-static int ssh_client_send_extensions(ssh_session session) {
+static int ssh_client_send_extensions(ssh_session session)
+{
     int rc;
 
     SSH_LOG(SSH_LOG_PACKET, "Sending SSH_MSG_EXT_INFO");
@@ -254,7 +255,8 @@ static int ssh_client_send_extensions(ssh_session session) {
         goto error;
     }
 
-    if (ssh_packet_send(session) == SSH_ERROR) {
+    rc = ssh_packet_send(session);
+    if (rc == SSH_ERROR) {
         goto error;
     }
 
