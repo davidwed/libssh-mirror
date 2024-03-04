@@ -268,6 +268,7 @@ static void torture_auth_pubkey(void **state) {
     ssh_key privkey = NULL;
     struct passwd *pwd = NULL;
     int rc;
+    bool option_value;
 
     pwd = getpwnam("bob");
     assert_non_null(pwd);
@@ -311,6 +312,19 @@ static void torture_auth_pubkey(void **state) {
     rc = ssh_userauth_publickey(session, NULL, NULL);
     assert_int_equal(rc, SSH_AUTH_ERROR);
 
+    /* testing to see if SSH_OPTIONS_PUBKEY_AUTH option works properly */
+    option_value = false;
+    ssh_options_set(session, SSH_OPTIONS_PUBKEY_AUTH, &option_value);
+
+    rc = ssh_userauth_try_publickey(session, NULL, privkey);
+    assert_int_equal(rc, SSH_AUTH_DENIED);
+    rc = ssh_userauth_publickey(session, NULL, privkey);
+    assert_int_equal(rc, SSH_AUTH_DENIED);
+
+    option_value = true;
+    ssh_options_set(session, SSH_OPTIONS_PUBKEY_AUTH, &option_value);
+
+    /* positive test */
     rc = ssh_userauth_publickey(session, NULL, privkey);
     assert_int_equal(rc, SSH_AUTH_SUCCESS);
 
