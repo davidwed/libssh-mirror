@@ -998,7 +998,7 @@ int ssh_kex_select_methods (ssh_session session)
             match = ssh_find_matching(misnegotiations, crypto->kex_methods[i]);
             if (match != NULL) {
                 ssh_set_error(session, SSH_FATAL,
-                              "kex error : %s was (mis)negotiated as method: "
+                              "kex error : %s was misnegotiated as method: "
                               "server [%s], client [%s]", crypto->kex_methods[i],
                               server->methods[i], client->methods[i]);
                 return SSH_ERROR;
