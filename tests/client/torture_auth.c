@@ -268,7 +268,7 @@ static void torture_auth_pubkey(void **state) {
     ssh_key privkey = NULL;
     struct passwd *pwd = NULL;
     int rc;
-    bool option_value;
+    int option_value;
 
     pwd = getpwnam("bob");
     assert_non_null(pwd);
