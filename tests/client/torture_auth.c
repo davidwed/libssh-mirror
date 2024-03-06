@@ -313,7 +313,7 @@ static void torture_auth_pubkey(void **state) {
     assert_int_equal(rc, SSH_AUTH_ERROR);
 
     /* testing to see if SSH_OPTIONS_PUBKEY_AUTH option works properly */
-    option_value = false;
+    option_value = 0;
     ssh_options_set(session, SSH_OPTIONS_PUBKEY_AUTH, &option_value);
 
     rc = ssh_userauth_try_publickey(session, NULL, privkey);
@@ -321,7 +321,7 @@ static void torture_auth_pubkey(void **state) {
     rc = ssh_userauth_publickey(session, NULL, privkey);
     assert_int_equal(rc, SSH_AUTH_DENIED);
 
-    option_value = true;
+    option_value = 1;
     ssh_options_set(session, SSH_OPTIONS_PUBKEY_AUTH, &option_value);
 
     /* positive test */
@@ -385,6 +385,7 @@ static void torture_auth_autopubkey(void **state) {
     struct torture_state *s = *state;
     ssh_session session = s->ssh.session;
     int rc;
+    int option_value;
 
     /* Authenticate as alice with bob his pubkey */
     rc = ssh_options_set(session, SSH_OPTIONS_USER, TORTURE_SSH_USER_ALICE);
@@ -400,6 +401,16 @@ static void torture_auth_autopubkey(void **state) {
     }
     rc = ssh_userauth_list(session, NULL);
     assert_true(rc & SSH_AUTH_METHOD_PUBLICKEY);
+
+    /* testing to see if SSH_OPTIONS_PUBKEY_AUTH option works properly */
+    option_value = 0;
+    ssh_options_set(session, SSH_OPTIONS_PUBKEY_AUTH, &option_value);
+
+    rc = ssh_userauth_publickey_auto(session, NULL, NULL);
+    assert_int_equal(rc, SSH_AUTH_DENIED);
+
+    option_value = 1;
+    ssh_options_set(session, SSH_OPTIONS_PUBKEY_AUTH, &option_value);
 
     rc = ssh_userauth_publickey_auto(session, NULL, NULL);
     assert_int_equal(rc, SSH_AUTH_SUCCESS);
@@ -533,6 +544,7 @@ torture_auth_kbdint(void **state,
     struct torture_state *s = *state;
     ssh_session session = s->ssh.session;
     int rc;
+    int option_value;
 
     rc = ssh_options_set(session, SSH_OPTIONS_USER, TORTURE_SSH_USER_BOB);
     assert_int_equal(rc, SSH_OK);
@@ -547,6 +559,16 @@ torture_auth_kbdint(void **state,
     }
     rc = ssh_userauth_list(session, NULL);
     assert_true(rc & SSH_AUTH_METHOD_INTERACTIVE);
+
+    /* testing SSH_OPTIONS_KBDINT_AUTH option */
+    option_value = 0;
+    ssh_options_set(session, SSH_OPTIONS_KBDINT_AUTH, &option_value);
+
+    rc = ssh_userauth_kbdint(session, NULL, NULL);
+    assert_int_equal(rc, SSH_AUTH_DENIED);
+
+    option_value = 1;
+    ssh_options_set(session, SSH_OPTIONS_KBDINT_AUTH, &option_value);
 
     rc = ssh_userauth_kbdint(session, NULL, NULL);
     assert_int_equal(rc, SSH_AUTH_INFO);
@@ -646,6 +668,7 @@ torture_auth_password(void **state, const char *password, enum ssh_auth_e res)
     struct torture_state *s = *state;
     ssh_session session = s->ssh.session;
     int rc;
+    int option_value;
 
     rc = ssh_options_set(session, SSH_OPTIONS_USER, TORTURE_SSH_USER_BOB);
     assert_int_equal(rc, SSH_OK);
@@ -660,6 +683,16 @@ torture_auth_password(void **state, const char *password, enum ssh_auth_e res)
     }
     rc = ssh_userauth_list(session, NULL);
     assert_true(rc & SSH_AUTH_METHOD_PASSWORD);
+
+    /* testing SSH_OPTIONS_PASSWORD_AUTH option */
+    option_value = 0;
+    ssh_options_set(session, SSH_OPTIONS_PASSWORD_AUTH, &option_value);
+
+    rc = ssh_userauth_password(session, NULL, password);
+    assert_int_equal(rc, SSH_AUTH_DENIED);
+
+    option_value = 1;
+    ssh_options_set(session, SSH_OPTIONS_PASSWORD_AUTH, &option_value);
 
     rc = ssh_userauth_password(session, NULL, password);
     assert_int_equal(rc, res);
@@ -745,6 +778,7 @@ static void torture_auth_agent_identities_only(void **state)
     int rc;
     int identities_only = 1;
     char *id = NULL;
+    int option_value;
 
     pwd = getpwnam("bob");
     assert_non_null(pwd);
@@ -787,6 +821,16 @@ static void torture_auth_agent_identities_only(void **state)
     /* Re-add a key */
     rc = ssh_list_append(session->opts.identity, strdup(bob_ssh_key));
     assert_int_equal(rc, SSH_OK);
+
+    /* testing SSH_OPTIONS_PUBKEY_AUTH option */
+    option_value = 0;
+    ssh_options_set(session, SSH_OPTIONS_PUBKEY_AUTH, &option_value);
+
+    rc = ssh_userauth_agent(session, NULL);
+    assert_int_equal(rc, SSH_AUTH_DENIED);
+
+    option_value = 1;
+    ssh_options_set(session, SSH_OPTIONS_PUBKEY_AUTH, &option_value);
 
     /* Should succeed as key now in config/options */
     rc = ssh_userauth_agent(session, NULL);
