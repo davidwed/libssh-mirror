@@ -26,10 +26,13 @@ add_library(${TORTURE_LIBRARY}
                 torture_key.c
                 torture_pki.c
                 torture_cmocka.c)
-target_link_libraries(${TORTURE_LIBRARY} ${TORTURE_LINK_LIBRARIES})
+target_link_libraries(${TORTURE_LIBRARY} PRIVATE ${TORTURE_LINK_LIBRARIES})
 target_compile_options(${TORTURE_LIBRARY} PRIVATE
                        -DSSH_PING_EXECUTABLE="${CMAKE_CURRENT_BINARY_DIR}/ssh_ping"
 )
+if (WITH_COVERAGE)
+    append_coverage_compiler_flags_to_target(${TORTURE_LIBRARY})
+endif (WITH_COVERAGE)
 
 # The shared version of the library is only useful when client testing is
 # enabled
@@ -60,7 +63,7 @@ if (CLIENT_TESTING)
                     torture_pki.c
                     torture_cmocka.c
                )
-    target_link_libraries(${TORTURE_SHARED_LIBRARY}
+    target_link_libraries(${TORTURE_SHARED_LIBRARY} PUBLIC
                           ${CMOCKA_LIBRARY}
                           ssh::static
                           ${WRAP_SYMBOLS}
@@ -69,11 +72,14 @@ if (CLIENT_TESTING)
                            -DSSH_PING_EXECUTABLE="${CMAKE_CURRENT_BINARY_DIR}/ssh_ping"
                            -DTORTURE_SHARED
     )
+    if (WITH_COVERAGE)
+        append_coverage_compiler_flags_to_target(${TORTURE_SHARED_LIBRARY})
+    endif (WITH_COVERAGE)
 endif ()
 
 if (ARGP_LIBRARIES)
     target_link_libraries(${TORTURE_LIBRARY}
-        ${ARGP_LIBRARIES}
+        PUBLIC ${ARGP_LIBRARIES}
     )
 endif()
 
@@ -234,6 +240,16 @@ if (CLIENT_TESTING OR SERVER_TESTING)
         set(CHROOT_WRAPPER "${CHROOT_WRAPPER_LIBRARY}")
     endif()
 
+    # chown wrapper
+    add_library(chown_wrapper SHARED chown_wrapper.c)
+    set(CHOWN_WRAPPER_LIBRARY
+        ${libssh_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}chown_wrapper${CMAKE_SHARED_LIBRARY_SUFFIX})
+    set(TEST_TARGET_LIBRARIES
+        ${TEST_TARGET_LIBRARIES}
+        chown_wrapper
+    )
+    set(CHOWN_WRAPPER "${CHOWN_WRAPPER_LIBRARY}")
+
     # ssh_ping
     add_executable(ssh_ping ssh_ping.c)
     target_compile_options(ssh_ping PRIVATE ${DEFAULT_C_COMPILE_FLAGS})
@@ -253,7 +269,8 @@ if (CLIENT_TESTING OR SERVER_TESTING)
     configure_file(etc/pam.d/sshd.in ${CMAKE_CURRENT_BINARY_DIR}/etc/pam.d/sshd @ONLY)
 
 
-    set(TORTURE_ENVIRONMENT "LD_PRELOAD=${SOCKET_WRAPPER_LIBRARY}:${NSS_WRAPPER_LIBRARY}:${UID_WRAPPER_LIBRARY}:${PAM_WRAPPER_LIBRARY}:${CHROOT_WRAPPER}")
+    set(TORTURE_ENVIRONMENT
+        "LD_PRELOAD=${SOCKET_WRAPPER_LIBRARY}:${NSS_WRAPPER_LIBRARY}:${UID_WRAPPER_LIBRARY}:${PAM_WRAPPER_LIBRARY}:${CHROOT_WRAPPER}:${CHOWN_WRAPPER}")
     if (priv_wrapper_FOUND)
         list(APPEND TORTURE_ENVIRONMENT PRIV_WRAPPER=1 PRIV_WRAPPER_CHROOT_DISABLE=1)
         list(APPEND TORTURE_ENVIRONMENT PRIV_WRAPPER_PRCTL_DISABLE="ALL" PRIV_WRAPPER_SETRLIMIT_DISABLE="ALL")
