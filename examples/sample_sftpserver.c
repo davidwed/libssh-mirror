@@ -238,6 +238,17 @@ struct session_data_struct
     int authenticated;
 };
 
+static int auth_none(ssh_session session, const char *user,
+                     void *userdata)
+{
+    struct session_data_struct *sdata = (struct ssh_data_struct *)(userdata);
+
+    sdata->authenticated = 1;
+    sdata->auth_attempts++;
+
+    return SSH_AUTH_SUCCESS;
+}
+
 static int auth_password(ssh_session session, const char *user,
                          const char *pass, void *userdata)
 {
@@ -342,6 +353,7 @@ static void handle_session(ssh_event event, ssh_session session)
 
     struct ssh_server_callbacks_struct server_cb = {
         .userdata = &sdata,
+        .auth_none_function = auth_none,
         .auth_password_function = auth_password,
         .channel_open_request_session_function = channel_open,
     };
@@ -352,7 +364,7 @@ static void handle_session(ssh_event event, ssh_session session)
         ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD | SSH_AUTH_METHOD_PUBLICKEY);
     }
     else
-        ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD);
+        ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD | SSH_AUTH_METHOD_NONE);
 
     ssh_callbacks_init(&server_cb);
     ssh_callbacks_init(&channel_cb);
