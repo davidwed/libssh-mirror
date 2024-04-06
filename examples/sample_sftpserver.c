@@ -138,6 +138,12 @@ static struct argp_option options[] = {
      .flags = 0,
      .doc = "Get verbose output.",
      .group = 0},
+     {.name = "config",
+      .key = 'f',
+      .arg = "FILE",
+      .flags = 0,
+      .doc = "Configuration file to use.",
+      .group = 0},
     {NULL, 0, NULL, 0, NULL, 0}};
 
 /* Parse a single option. */
@@ -178,6 +184,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
     case 'v':
         ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_LOG_VERBOSITY_STR,
                              "3");
+        break;
+    case 'f':
+        ssh_bind_options_parse_config(sshbind,arg);
         break;
     case ARGP_KEY_ARG:
         if (state->arg_num >= 1)
