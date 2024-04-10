@@ -10,3 +10,5 @@ tags
 /build
 /obj*
 doc/tags.xml
+/.idea
+/cmake-build-debug
