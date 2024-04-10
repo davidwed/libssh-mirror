@@ -241,7 +241,7 @@ struct session_data_struct
 static int auth_none(ssh_session session, const char *user,
                      void *userdata)
 {
-    struct session_data_struct *sdata = (struct ssh_data_struct *)(userdata);
+    struct session_data_struct *sdata = (struct session_data_struct *)(userdata);
 
     sdata->authenticated = 1;
     sdata->auth_attempts++;
