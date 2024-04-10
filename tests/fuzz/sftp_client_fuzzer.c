@@ -53,8 +53,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size){
     char *lnk = NULL;
     int rc;
     int count;
+    long timeout = 1;
 
-    printf("Code running!");
+    if (size > 219264) {
+        return -1;
+    }
+
     rc = socketpair(AF_UNIX,SOCK_STREAM,0,socket_fds);
     assert(rc==0);
 
