@@ -1109,6 +1109,9 @@ LIBSSH_API sftp_limits_t sftp_limits(sftp_session sftp);
  */
 LIBSSH_API void sftp_limits_free(sftp_limits_t limits);
 
+LIBSSH_API int sftp_copy_data(sftp_session sftp, const char *read_from_handle, uint64_t read_from_offset,
+    uint64_t read_data_length, const char *write_to_handle, uint64_t write_to_offset);
+
 /**
  * @brief Canonicalize a sftp path.
  *

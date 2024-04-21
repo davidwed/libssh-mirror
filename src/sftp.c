@@ -2752,6 +2752,94 @@ sftp_limits_t sftp_limits(sftp_session sftp)
     return limits;
 }
 
+int sftp_copy_data(sftp_session sftp, const char *read_from_handle, uint64_t read_from_offset,
+    uint64_t read_data_length, const char *write_to_handle, uint64_t write_to_offset)
+{
+    sftp_status_message status = NULL;
+    sftp_message msg = NULL;
+    ssh_buffer buffer;
+    uint32_t id;
+    int rc;
+    int temp;
+
+    if (sftp == NULL)
+        return -1;
+
+    buffer = ssh_buffer_new();
+    if (buffer == NULL) {
+        ssh_set_error_oom(sftp->session);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return -2;
+    }
+
+    id = sftp_get_new_id(sftp);
+
+    rc = ssh_buffer_pack(buffer,
+                         "bdssqqsq",
+                         SSH_FXP_EXTENDED,
+                         id,
+                         "copy-data",
+                         read_from_handle,
+                         read_from_offset,
+                         read_data_length,
+                         write_to_handle,
+                         write_to_offset);
+
+    if (rc != SSH_OK) {
+        ssh_set_error_oom(sftp->session);
+        SSH_BUFFER_FREE(buffer);
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return -3;
+    }
+
+    rc = sftp_packet_write(sftp, SSH_FXP_EXTENDED, buffer);
+    SSH_BUFFER_FREE(buffer);
+    if (rc < 0) {
+        return -4;
+    }
+
+    while (msg == NULL) {
+        if (sftp_read_and_dispatch(sftp) < 0) {
+            return -5;
+        }
+        msg = sftp_dequeue(sftp, id);
+    }
+
+    /* By specification, this command only returns SSH_FXP_STATUS */
+    if (msg->packet_type == SSH_FXP_STATUS) {
+        status = parse_status_msg(msg);
+        sftp_message_free(msg);
+        if (status == NULL) {
+            return -6;
+        }
+        sftp_set_error(sftp, status->status);
+        switch (status->status) {
+            case SSH_FX_OK:
+                status_msg_free(status);
+                return 0;
+            default:
+                break;
+        }
+        /*
+         * Status should be SSH_FX_OK if the command was successful,
+         * if it didn't, then there was an error
+         */
+        temp = status->status;
+        ssh_set_error(sftp->session, SSH_REQUEST_DENIED,
+                      "SFTP server: %s", status->errormsg);
+        status_msg_free(status);
+        return (temp);
+    } else {
+        ssh_set_error(sftp->session, SSH_FATAL,
+                      "Received message %d when attempting to copy data",
+                      msg->packet_type);
+        sftp_message_free(msg);
+        sftp_set_error(sftp, SSH_FX_BAD_MESSAGE);
+    }
+
+    return -7;
+}
+
 void sftp_limits_free(sftp_limits_t limits)
 {
     if (limits == NULL) {
