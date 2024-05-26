@@ -100,6 +100,7 @@ typedef struct ssh_buffer_struct* ssh_buffer;
 typedef struct ssh_channel_struct* ssh_channel;
 typedef struct ssh_message_struct* ssh_message;
 typedef struct ssh_pcap_file_struct* ssh_pcap_file;
+typedef struct ssh_key_cert_struct* ssh_cert;
 typedef struct ssh_key_struct* ssh_key;
 typedef struct ssh_scp_struct* ssh_scp;
 typedef struct ssh_session_struct* ssh_session;
@@ -720,6 +721,12 @@ LIBSSH_API int ssh_key_cmp(const ssh_key k1,
                            const ssh_key k2,
                            enum ssh_keycmp_e what);
 LIBSSH_API ssh_key ssh_key_dup(const ssh_key key);
+
+/* Certificate APIs */
+LIBSSH_API ssh_cert ssh_cert_new(void);
+LIBSSH_API void ssh_cert_free(ssh_cert cert);
+#define SSH_CERT_FREE(x) \
+    do { if ((x) != NULL) { ssh_cert_free(x); x = NULL; } } while(0)
 
 LIBSSH_API int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
         ssh_key *pkey);

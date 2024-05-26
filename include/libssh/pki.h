@@ -76,6 +76,7 @@ struct ssh_key_struct {
     ssh_string sk_application;
     ssh_buffer cert;
     enum ssh_keytypes_e cert_type;
+    ssh_cert cert_data;
 };
 
 struct ssh_signature_struct {
@@ -100,6 +101,36 @@ struct ssh_signature_struct {
 };
 
 typedef struct ssh_signature_struct *ssh_signature;
+
+struct ssh_key_cert_opts {
+    char *force_command;
+    char *source_address;
+    bool verify_required;
+};
+typedef struct ssh_key_cert_opts *cert_opt;
+
+struct ssh_key_cert_exts {
+    bool no_touch_required;
+    bool permit_X11_forwarding;
+    bool permit_agent_forwarding;
+    bool permit_port_forwarding;
+    bool permit_pty;
+    bool permit_user_rc;
+};
+typedef struct ssh_key_cert_exts *cert_ext;
+
+struct ssh_key_cert_struct {
+    unsigned int    type;
+    uint64_t        serial;
+    char            *key_id;
+    unsigned int    n_principals;
+    char            **principals;
+    uint64_t        valid_after, valid_before;
+    cert_opt        critical_options;
+    cert_ext        extensions;
+    ssh_key         signature_key;
+    ssh_signature   signature;
+};
 
 #ifdef __cplusplus
 extern "C" {
@@ -126,6 +157,9 @@ enum ssh_digest_e ssh_key_hash_from_name(const char *name);
      (kt) == SSH_KEYTYPE_SK_ED25519_CERT01 ||\
     ((kt) >= SSH_KEYTYPE_ECDSA_P256_CERT01 &&\
      (kt) <= SSH_KEYTYPE_ED25519_CERT01))
+
+/* SSH Certificate Functions */
+void ssh_cert_clean(ssh_cert cert);
 
 /* SSH Signature Functions */
 ssh_signature ssh_signature_new(void);

@@ -158,6 +158,11 @@ void ssh_key_clean (ssh_key key)
     if (key->cert != NULL) {
         SSH_BUFFER_FREE(key->cert);
     }
+
+    if (key->cert_data != NULL) {
+        SSH_CERT_FREE(key->cert_data);
+    }
+
     if (key->type == SSH_KEYTYPE_SK_ECDSA ||
         key->type == SSH_KEYTYPE_SK_ED25519 ||
         key->type == SSH_KEYTYPE_SK_ECDSA_CERT01 ||
@@ -181,6 +186,95 @@ void ssh_key_free (ssh_key key)
     if (key) {
         ssh_key_clean(key);
         SAFE_FREE(key);
+    }
+}
+
+/**
+ * @brief creates a new empty SSH certificate.
+ *
+ * @returns an empty ssh_cert handle, or NULL on error.
+ */
+ssh_cert
+ssh_cert_new(void)
+{
+    ssh_cert ptr = calloc(1, sizeof(struct ssh_key_cert_struct));
+    if (ptr == NULL) {
+        return NULL;
+    }
+
+    ptr->critical_options = calloc(1, sizeof(struct ssh_key_cert_opts));
+    if (ptr->critical_options == NULL) {
+        SAFE_FREE(ptr);
+        return NULL;
+    }
+
+    ptr->extensions = calloc(1, sizeof(struct ssh_key_cert_exts));
+    if (ptr->extensions == NULL) {
+        SAFE_FREE(ptr->critical_options);
+        SAFE_FREE(ptr);
+        return NULL;
+    }
+
+    return ptr;
+}
+
+/**
+ * @brief clean up the certificate and deallocate existing keys and signatures
+ * @param[in] cert ssh_cert to clean
+ */
+void
+ssh_cert_clean(ssh_cert cert)
+{
+    unsigned int i;
+
+    if (cert == NULL) {
+        return;
+    }
+
+    /* Clean critical options */
+    if (cert->critical_options != NULL) {
+        SAFE_FREE(cert->critical_options->force_command);
+        SAFE_FREE(cert->critical_options->source_address);
+        ZERO_STRUCTP(cert->critical_options);
+        SAFE_FREE(cert->critical_options);
+    }
+
+    /* Clean extensions */
+    if (cert->extensions != NULL) {
+        ZERO_STRUCTP(cert->extensions);
+        SAFE_FREE(cert->extensions);
+    }
+
+    /* Clean principals */
+    if (cert->principals != NULL) {
+        for (i = 0; i < cert->n_principals; i++) {
+            SAFE_FREE(cert->principals[i]);
+        }
+        SAFE_FREE(cert->principals);
+    }
+
+    /* Clean signature key and signature */
+    if (cert->signature_key != NULL) {
+        SSH_KEY_FREE(cert->signature_key);
+    }
+    if (cert->signature != NULL) {
+        SSH_SIGNATURE_FREE(cert->signature);
+    }
+
+    /* Clean all the remaining fields */
+    ZERO_STRUCTP(cert);
+}
+
+/**
+ * @brief deallocate a SSH cert
+ * @param[in] cert ssh_cert handle to free
+ */
+void
+ssh_cert_free(ssh_cert cert)
+{
+    if (cert != NULL) {
+        ssh_cert_clean(cert);
+        SAFE_FREE(cert);
     }
 }
 
@@ -1532,6 +1626,351 @@ fail:
     return SSH_ERROR;
 }
 
+#define CRITICAL_OPTIONS 1
+#define EXTENSIONS 2
+
+/**
+ * @brief Parse certificate authentication options packed strings (e.g. critical
+ * options or extensions).
+ *
+ * @param[out]  cert   The certificate structure being updated.
+ *
+ * @param[in]   field  The authentication options field where the packed strings
+ *                     are located.
+ *
+ * @param[in]   what   The target option (e.g. CRITICAL_OPTIONS or EXTENSIONS).
+ *
+ * @return  0 on parsing success or empty field.
+ * @return  -1 on failure.
+ *
+ */
+static int
+pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
+{
+    ssh_buffer buffer = NULL;
+    char *tmp_s = NULL;
+    uint32_t size;
+    int rc;
+
+    buffer = ssh_buffer_new();
+    if (buffer == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Buffer initialization failed");
+        rc = -1;
+        goto out;
+    }
+
+    rc = ssh_buffer_add_data(buffer,
+                             ssh_string_data(field),
+                             ssh_string_len(field));
+    if (rc < 0) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while adding data to the buffer");
+        goto out;
+    }
+
+    switch (what) {
+    case CRITICAL_OPTIONS:
+        while (ssh_buffer_get_len(buffer) != 0) {
+            rc = ssh_buffer_unpack(buffer, "sd", &tmp_s, &size);
+            if (rc != SSH_OK) {
+                SSH_LOG(SSH_LOG_TRACE, "Unpack critical option error");
+                break;
+            }
+
+            if (strcmp(tmp_s, "force-command") == 0) {
+                rc = ssh_buffer_unpack(buffer, "s", &tmp_s);
+                if (rc < 0) {
+                    SSH_LOG(SSH_LOG_TRACE, "Unpack force-command field error");
+                    break;
+                }
+
+                if (cert->critical_options->force_command != NULL) {
+                    SSH_LOG(SSH_LOG_TRACE,
+                            "Certificate contains multiple"
+                            "force-command options");
+                    rc = -1;
+                    break;
+                }
+                cert->critical_options->force_command = tmp_s;
+            } else if (strcmp(tmp_s, "source-address") == 0) {
+#ifdef _WIN32
+                SSH_LOG(SSH_LOG_TRACE,
+                        "Critical option source-address is not"
+                        "supported on Windows");
+#endif
+                rc = ssh_buffer_unpack(buffer, "s", &tmp_s);
+                if (rc < 0) {
+                    SSH_LOG(SSH_LOG_TRACE, "Unpack source-address field error");
+                    break;
+                }
+
+                if (cert->critical_options->source_address != NULL) {
+                    SSH_LOG(SSH_LOG_TRACE,
+                            "Certificate contains multiple"
+                            "source-address options");
+                    rc = -1;
+                    break;
+                }
+#ifndef _WIN32
+                rc = match_cidr_address_list(NULL, tmp_s, -1);
+                if (rc == -1) {
+                    SSH_LOG(SSH_LOG_TRACE,
+                            "CIDR list \"%.100s\" not valid",
+                            tmp_s);
+                }
+                cert->critical_options->source_address = tmp_s;
+#endif
+            } else if (strcmp(tmp_s, "verify-required") == 0) {
+                cert->critical_options->verify_required = true;
+            } else {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "Critical option \"%s\" not supported",
+                        tmp_s);
+                rc = -1;
+                break;
+            }
+        }
+        break;
+    case EXTENSIONS:
+        while (ssh_buffer_get_len(buffer) != 0) {
+            rc = ssh_buffer_unpack(buffer, "sd", &tmp_s, &size);
+            if (rc != SSH_OK) {
+                SSH_LOG(SSH_LOG_TRACE, "Unpack extension error");
+                break;
+            }
+
+            if (strcmp(tmp_s, "no-touch-required") == 0) {
+                cert->extensions->no_touch_required = true;
+            } else if (strcmp(tmp_s, "permit-X11-forwarding") == 0) {
+                cert->extensions->permit_X11_forwarding = true;
+            } else if (strcmp(tmp_s, "permit-agent-forwarding") == 0) {
+                cert->extensions->permit_agent_forwarding = true;
+            } else if (strcmp(tmp_s, "permit-port-forwarding") == 0) {
+                cert->extensions->permit_port_forwarding = true;
+            } else if (strcmp(tmp_s, "permit-pty") == 0) {
+                cert->extensions->permit_pty = true;
+            } else if (strcmp(tmp_s, "permit-user-rc") == 0) {
+                cert->extensions->permit_user_rc = true;
+            } else {
+                SSH_LOG(SSH_LOG_TRACE, "Extension \"%s\" not supported", tmp_s);
+                rc = -1;
+                break;
+            }
+        }
+        break;
+    default:
+        SSH_LOG(SSH_LOG_TRACE, "Target option not valid");
+        rc = -1;
+        break;
+    }
+
+out:
+    SSH_BUFFER_FREE(buffer);
+    SAFE_FREE(tmp_s);
+    return rc;
+}
+
+/**
+ * @brief Parse certificate principals packed strings. If no entries are found,
+ * the number of principals is set to 0 and the principals list is set to NULL.
+ *
+ * @param[out] cert   The certificate structure being updated.
+ *
+ * @param[in]  field  The principals field where the packed strings are located.
+ *
+ * @return  0 on success.
+ * @return  -1 on failure.
+ *
+ */
+static int
+pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
+{
+    ssh_buffer buffer = NULL;
+    char *tmp_s = NULL, **temp = NULL, **ret = NULL;
+    int rc = 0, n_field = 0, i;
+    size_t len;
+
+    buffer = ssh_buffer_new();
+    if (buffer == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Buffer initialization failed");
+        rc = -1;
+        goto fail;
+    }
+
+    rc = ssh_buffer_add_data(buffer,
+                             ssh_string_data(field),
+                             ssh_string_len(field));
+    if (rc < 0) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while adding data to the buffer");
+        goto fail;
+    }
+
+    while (ssh_buffer_get_len(buffer) != 0) {
+        rc = ssh_buffer_unpack(buffer, "s", &tmp_s);
+        if (rc != SSH_OK) {
+            SSH_LOG(SSH_LOG_TRACE, "Unpack principal error");
+            rc = -1;
+            goto fail;
+        }
+        len = strlen(tmp_s);
+
+        temp = realloc(ret, (n_field + 1) * sizeof(char *));
+        if (temp == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "realloc() failed");
+            rc = -1;
+            goto fail;
+        }
+        ret = temp;
+
+        ret[n_field] = calloc(1, (len + 1) * sizeof(char));
+        if (ret[n_field] == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "calloc() failed");
+            rc = -1;
+            goto fail;
+        }
+        memcpy(ret[n_field], tmp_s, len + 1);
+        n_field += 1;
+    }
+
+    cert->n_principals = n_field;
+    cert->principals = ret;
+
+    SSH_BUFFER_FREE(buffer);
+    SAFE_FREE(tmp_s);
+    return rc;
+
+fail:
+    cert->n_principals = 0;
+    cert->principals = NULL;
+    SSH_BUFFER_FREE(buffer);
+    SAFE_FREE(tmp_s);
+    for (i = 0; i < n_field; i++) {
+        SAFE_FREE(ret[i]);
+    }
+    SAFE_FREE(ret);
+    return rc;
+}
+
+/**
+ * @brief Parse remaining certificate fields up to the signature.
+ *
+ * @param[in]  buffer   The buffer holding certificate fields.
+ *
+ * @param[out] pkey     A pointer where the allocated key can be stored.
+ *
+ * @return  SSH_OK on success.
+ * @return  SSH_ERROR on error.
+ *
+ */
+static int
+pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
+{
+    ssh_cert cert = NULL;
+    ssh_key signature_key = NULL;
+    ssh_signature signature = NULL;
+    ssh_string principals = NULL, ext = NULL, c_opts = NULL, sign_key = NULL,
+               sign = NULL, reserved = NULL;
+    int rc;
+
+    cert = ssh_cert_new();
+    if (cert == NULL) {
+        goto fail;
+    }
+
+    /* Parse serial, type, key_id, principals */
+    rc = ssh_buffer_unpack(buffer,
+                           "qdsS",
+                           &cert->serial,
+                           &cert->type,
+                           &cert->key_id,
+                           &principals);
+
+    if (rc != SSH_OK) {
+        SSH_LOG(SSH_LOG_TRACE, "Unpack error");
+        goto fail;
+    }
+
+    rc = pki_cert_unpack_principals(cert, principals);
+    if (rc == -1) {
+        SSH_LOG(SSH_LOG_TRACE, "Principals unpack error");
+        goto fail;
+    }
+    if (cert->principals == NULL && cert->n_principals == 0) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Principals field is empty - "
+                "The certificate is valid for any principals");
+    }
+    SSH_STRING_FREE(principals);
+
+    /* Parse validity dates, critical options and extensions.
+     * Reserved field can be skipped */
+    rc = ssh_buffer_unpack(buffer,
+                           "qqSSS",
+                           &cert->valid_after,
+                           &cert->valid_before,
+                           &c_opts,
+                           &ext,
+                           &reserved);
+
+    if (rc != SSH_OK) {
+        SSH_LOG(SSH_LOG_TRACE, "Unpack error");
+        goto fail;
+    }
+
+    rc = pki_cert_unpack_auth_options(cert, c_opts, CRITICAL_OPTIONS);
+    if (rc == -1) {
+        SSH_LOG(SSH_LOG_TRACE, "Critical options unpack failed");
+        goto fail;
+    }
+    rc = pki_cert_unpack_auth_options(cert, ext, EXTENSIONS);
+    if (rc == -1) {
+        SSH_LOG(SSH_LOG_TRACE, "Extensions unpack failed");
+        goto fail;
+    }
+
+    SSH_STRING_FREE(c_opts);
+    SSH_STRING_FREE(ext);
+    SSH_STRING_FREE(reserved);
+
+    /* Parse signature key and signature */
+    rc = ssh_buffer_unpack(buffer, "SS", &sign_key, &sign);
+    if (rc != SSH_OK) {
+        SSH_LOG(SSH_LOG_TRACE, "Unpack error");
+        goto fail;
+    }
+
+    /* Key extraction */
+    signature_key = ssh_key_new();
+    if (signature_key == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while initializing signature key");
+        goto fail;
+    }
+    rc = ssh_pki_import_pubkey_blob(sign_key, &signature_key);
+    if (rc != SSH_OK) {
+        SSH_KEY_FREE(signature_key);
+        goto fail;
+    }
+    cert->signature_key = signature_key;
+
+    /* Signature extraction */
+    signature = ssh_signature_new();
+    if (signature == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while initializing signature");
+        goto fail;
+    }
+    rc = ssh_pki_import_signature_blob(sign, signature_key, &signature);
+    if (rc != SSH_OK) {
+        SSH_SIGNATURE_FREE(signature);
+        goto fail;
+    }
+    cert->signature = signature;
+
+    pkey->cert_data = cert;
+    return SSH_OK;
+
+fail:
+    return SSH_ERROR;
+}
+
 static int pki_import_cert_buffer(ssh_buffer buffer,
                                   enum ssh_keytypes_e type,
                                   ssh_key *pkey)
@@ -1602,6 +2041,12 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
             key = ssh_key_new();
     }
     if (rc != 0 || key == NULL) {
+        goto fail;
+    }
+
+    rc = pki_parse_cert_data(buffer, key);
+    if (rc != 0) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while parsing certificate fields");
         goto fail;
     }
 
