@@ -59,6 +59,7 @@ enum ssh_bind_options_e {
     SSH_BIND_OPTIONS_MODULI,
     SSH_BIND_OPTIONS_RSA_MIN_SIZE,
     SSH_BIND_OPTIONS_IMPORT_KEY_STR,
+    SSH_BIND_OPTIONS_USER_CA_FILE
 };
 
 typedef struct ssh_bind_struct* ssh_bind;

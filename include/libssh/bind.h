@@ -54,6 +54,7 @@ struct ssh_bind_struct {
   char *pubkey_accepted_key_types;
   char* moduli_file;
   int rsa_min_size;
+  char *trusted_user_ca_keys_file;
 };
 
 struct ssh_poll_handle_struct *ssh_bind_get_poll(struct ssh_bind_struct

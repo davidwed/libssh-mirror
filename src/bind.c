@@ -397,6 +397,7 @@ void ssh_bind_free(ssh_bind sshbind){
   SAFE_FREE(sshbind->bindaddr);
   SAFE_FREE(sshbind->config_dir);
   SAFE_FREE(sshbind->pubkey_accepted_key_types);
+  SAFE_FREE(sshbind->trusted_user_ca_keys_file);
 
   SAFE_FREE(sshbind->rsakey);
   SAFE_FREE(sshbind->ecdsakey);
@@ -490,6 +491,15 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
     if (sshbind->moduli_file != NULL) {
         session->server_opts.moduli_file = strdup(sshbind->moduli_file);
         if (session->server_opts.moduli_file == NULL) {
+            ssh_set_error_oom(sshbind);
+            return SSH_ERROR;
+        }
+    }
+
+    if (sshbind->trusted_user_ca_keys_file != NULL) {
+        session->opts.trusted_user_ca_keys_file =
+            strdup(sshbind->trusted_user_ca_keys_file);
+        if (session->opts.trusted_user_ca_keys_file == NULL) {
             ssh_set_error_oom(sshbind);
             return SSH_ERROR;
         }

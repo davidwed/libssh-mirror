@@ -2186,6 +2186,12 @@ static int ssh_bind_set_algo(ssh_bind sshbind,
  *                        Default is 1024 bits or 2048 bits in FIPS mode.
  *                        (int)
  *
+ *                       - SSH_BIND_OPTIONS_USER_CA_FILE
+ *                         Set the path to the TrustedUserCAKeys file. This
+ *                         file contains a list (one per line) of public keys
+ *                         of certificate authorities that are trusted to sign
+ *                         user certificates for authentication.
+ *                         (const char *)
  *
  * @param  value        The value to set. This is a generic pointer and the
  *                      datatype which should be used is described at the
@@ -2572,6 +2578,22 @@ ssh_bind_options_set(ssh_bind sshbind,
                 return -1;
             }
             sshbind->rsa_min_size = *x;
+        }
+        break;
+    case SSH_BIND_OPTIONS_USER_CA_FILE:
+        v = value;
+        SAFE_FREE(sshbind->trusted_user_ca_keys_file);
+        if (v == NULL) {
+            break;
+        } else if (v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            sshbind->trusted_user_ca_keys_file = ssh_path_expand_tilde(v);
+            if (sshbind->trusted_user_ca_keys_file == NULL) {
+                ssh_set_error_oom(sshbind);
+                return -1;
+            }
         }
         break;
     default:
