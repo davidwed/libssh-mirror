@@ -155,13 +155,9 @@ void ssh_key_clean (ssh_key key)
         SAFE_FREE(key->ed25519_privkey);
     }
     SAFE_FREE(key->ed25519_pubkey);
-    if (key->cert != NULL) {
-        SSH_BUFFER_FREE(key->cert);
-    }
 
-    if (key->cert_data != NULL) {
-        SSH_CERT_FREE(key->cert_data);
-    }
+    SSH_BUFFER_FREE(key->cert);
+    SSH_CERT_FREE(key->cert_data);
 
     if (key->type == SSH_KEYTYPE_SK_ECDSA ||
         key->type == SSH_KEYTYPE_SK_ED25519 ||
@@ -246,20 +242,14 @@ ssh_cert_clean(ssh_cert cert)
     }
 
     /* Clean principals */
-    if (cert->principals != NULL) {
-        for (i = 0; i < cert->n_principals; i++) {
-            SAFE_FREE(cert->principals[i]);
-        }
-        SAFE_FREE(cert->principals);
+    for (i = 0; i < cert->n_principals; i++) {
+        SAFE_FREE(cert->principals[i]);
     }
+    SAFE_FREE(cert->principals);
 
     /* Clean signature key and signature */
-    if (cert->signature_key != NULL) {
-        SSH_KEY_FREE(cert->signature_key);
-    }
-    if (cert->signature != NULL) {
-        SSH_SIGNATURE_FREE(cert->signature);
-    }
+    SSH_KEY_FREE(cert->signature_key);
+    SSH_SIGNATURE_FREE(cert->signature);
 
     /* Clean all the remaining fields */
     ZERO_STRUCTP(cert);
@@ -1628,6 +1618,8 @@ fail:
 
 #define CRITICAL_OPTIONS 1
 #define EXTENSIONS 2
+#define SSH_CERT_TYPE_USER 1
+#define SSH_CERT_TYPE_HOST 2
 
 /**
  * @brief Parse certificate authentication options packed strings (e.g. critical
@@ -1692,16 +1684,22 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                 }
                 cert->critical_options->force_command = tmp_s;
             } else if (strcmp(tmp_s, "source-address") == 0) {
-#ifdef _WIN32
-                SSH_LOG(SSH_LOG_TRACE,
-                        "Critical option source-address is not"
-                        "supported on Windows");
-#endif
                 rc = ssh_buffer_unpack(buffer, "s", &tmp_s);
                 if (rc < 0) {
                     SSH_LOG(SSH_LOG_TRACE, "Unpack source-address field error");
                     break;
                 }
+
+#ifdef _WIN32
+                SSH_LOG(SSH_LOG_TRACE,
+                        "Critical option source-address is not"
+                        "supported on Windows");
+
+                if (cert->type == SSH_CERT_TYPE_USER) {
+                    rc = -1;
+                    break;
+                }
+#endif
 
                 if (cert->critical_options->source_address != NULL) {
                     SSH_LOG(SSH_LOG_TRACE,
@@ -1716,6 +1714,7 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                     SSH_LOG(SSH_LOG_TRACE,
                             "CIDR list \"%.100s\" not valid",
                             tmp_s);
+                    break;
                 }
                 cert->critical_options->source_address = tmp_s;
 #endif
@@ -1725,8 +1724,10 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                 SSH_LOG(SSH_LOG_TRACE,
                         "Critical option \"%s\" not supported",
                         tmp_s);
-                rc = -1;
-                break;
+                if (cert->type == SSH_CERT_TYPE_USER) {
+                    rc = -1;
+                    break;
+                }
             }
         }
         break;
@@ -1739,21 +1740,19 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
             }
 
             if (strcmp(tmp_s, "no-touch-required") == 0) {
-                cert->extensions->no_touch_required = true;
+                cert->extensions->ext |= NO_TOUCH_REQUIRED;
             } else if (strcmp(tmp_s, "permit-X11-forwarding") == 0) {
-                cert->extensions->permit_X11_forwarding = true;
+                cert->extensions->ext |= PERMIT_X11_FORWARDING;
             } else if (strcmp(tmp_s, "permit-agent-forwarding") == 0) {
-                cert->extensions->permit_agent_forwarding = true;
+                cert->extensions->ext |= PERMIT_AGENT_FORWARDING;
             } else if (strcmp(tmp_s, "permit-port-forwarding") == 0) {
-                cert->extensions->permit_port_forwarding = true;
+                cert->extensions->ext |= PERMIT_PORT_FORWARDING;
             } else if (strcmp(tmp_s, "permit-pty") == 0) {
-                cert->extensions->permit_pty = true;
+                cert->extensions->ext |= PERMIT_PTY;
             } else if (strcmp(tmp_s, "permit-user-rc") == 0) {
-                cert->extensions->permit_user_rc = true;
+                cert->extensions->ext |= PERMIT_USER_RC;
             } else {
                 SSH_LOG(SSH_LOG_TRACE, "Extension \"%s\" not supported", tmp_s);
-                rc = -1;
-                break;
             }
         }
         break;
@@ -1786,7 +1785,7 @@ pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
 {
     ssh_buffer buffer = NULL;
     char *tmp_s = NULL, **temp = NULL, **ret = NULL;
-    int rc = 0, n_field = 0, i;
+    int rc = 0, n_entries = 0, alloc_entries = 0, i;
     size_t len;
 
     buffer = ssh_buffer_new();
@@ -1813,25 +1812,32 @@ pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
         }
         len = strlen(tmp_s);
 
-        temp = realloc(ret, (n_field + 1) * sizeof(char *));
-        if (temp == NULL) {
-            SSH_LOG(SSH_LOG_TRACE, "realloc() failed");
-            rc = -1;
-            goto fail;
+        /*
+         * Re-allocate in chunks. Starting with size 4 and doubling each time
+         * more space is needed.
+         */
+        if (n_entries >= alloc_entries) {
+            alloc_entries = alloc_entries == 0 ? 4 : alloc_entries * 2;
+            temp = realloc(ret, (alloc_entries + 1) * sizeof(char *));
+            if (temp == NULL) {
+                SSH_LOG(SSH_LOG_TRACE, "realloc() failed");
+                rc = -1;
+                goto fail;
+            }
+            ret = temp;
         }
-        ret = temp;
 
-        ret[n_field] = calloc(1, (len + 1) * sizeof(char));
-        if (ret[n_field] == NULL) {
+        ret[n_entries] = calloc(1, (len + 1) * sizeof(char));
+        if (ret[n_entries] == NULL) {
             SSH_LOG(SSH_LOG_TRACE, "calloc() failed");
             rc = -1;
             goto fail;
         }
-        memcpy(ret[n_field], tmp_s, len + 1);
-        n_field += 1;
+        memcpy(ret[n_entries], tmp_s, len + 1);
+        n_entries += 1;
     }
 
-    cert->n_principals = n_field;
+    cert->n_principals = n_entries;
     cert->principals = ret;
 
     SSH_BUFFER_FREE(buffer);
@@ -1843,7 +1849,7 @@ fail:
     cert->principals = NULL;
     SSH_BUFFER_FREE(buffer);
     SAFE_FREE(tmp_s);
-    for (i = 0; i < n_field; i++) {
+    for (i = 0; i < n_entries; i++) {
         SAFE_FREE(ret[i]);
     }
     SAFE_FREE(ret);
@@ -1885,13 +1891,14 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
                            &principals);
 
     if (rc != SSH_OK) {
-        SSH_LOG(SSH_LOG_TRACE, "Unpack error");
+        SSH_LOG(SSH_LOG_TRACE,
+                "Unpack of serial, type, key_id and principals failed");
         goto fail;
     }
 
     rc = pki_cert_unpack_principals(cert, principals);
     if (rc == -1) {
-        SSH_LOG(SSH_LOG_TRACE, "Principals unpack error");
+        SSH_LOG(SSH_LOG_TRACE, "Principals unpack failed");
         goto fail;
     }
     if (cert->principals == NULL && cert->n_principals == 0) {
@@ -1912,7 +1919,9 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
                            &reserved);
 
     if (rc != SSH_OK) {
-        SSH_LOG(SSH_LOG_TRACE, "Unpack error");
+        SSH_LOG(SSH_LOG_TRACE,
+                "Unpack of validity dates, critical options, extensions and "
+                "reserved field failed");
         goto fail;
     }
 
@@ -1934,7 +1943,7 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
     /* Parse signature key and signature */
     rc = ssh_buffer_unpack(buffer, "SS", &sign_key, &sign);
     if (rc != SSH_OK) {
-        SSH_LOG(SSH_LOG_TRACE, "Unpack error");
+        SSH_LOG(SSH_LOG_TRACE, "Unpack of signature key and signature failed");
         goto fail;
     }
 
@@ -1968,6 +1977,7 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
     return SSH_OK;
 
 fail:
+    SSH_CERT_FREE(cert);
     return SSH_ERROR;
 }
 

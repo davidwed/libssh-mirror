@@ -109,13 +109,17 @@ struct ssh_key_cert_opts {
 };
 typedef struct ssh_key_cert_opts *cert_opt;
 
+enum ssh_key_cert_exts_flags {
+    NO_TOUCH_REQUIRED       = 1 << 0,
+    PERMIT_X11_FORWARDING   = 1 << 1,
+    PERMIT_AGENT_FORWARDING = 1 << 2,
+    PERMIT_PORT_FORWARDING  = 1 << 3,
+    PERMIT_PTY              = 1 << 4,
+    PERMIT_USER_RC          = 1 << 5
+};
+
 struct ssh_key_cert_exts {
-    bool no_touch_required;
-    bool permit_X11_forwarding;
-    bool permit_agent_forwarding;
-    bool permit_port_forwarding;
-    bool permit_pty;
-    bool permit_user_rc;
+    uint32_t ext;
 };
 typedef struct ssh_key_cert_exts *cert_ext;
 
