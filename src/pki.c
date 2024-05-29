@@ -227,6 +227,9 @@ ssh_cert_clean(ssh_cert cert)
         return;
     }
 
+    /* Clean key id */
+    SAFE_FREE(cert->key_id);
+
     /* Clean critical options */
     if (cert->critical_options != NULL) {
         SAFE_FREE(cert->critical_options->force_command);
@@ -242,10 +245,12 @@ ssh_cert_clean(ssh_cert cert)
     }
 
     /* Clean principals */
-    for (i = 0; i < cert->n_principals; i++) {
-        SAFE_FREE(cert->principals[i]);
+    if (cert->principals != NULL) {
+        for (i = 0; i < cert->n_principals; i++) {
+            SAFE_FREE(cert->principals[i]);
+        }
+        SAFE_FREE(cert->principals);
     }
-    SAFE_FREE(cert->principals);
 
     /* Clean signature key and signature */
     SSH_KEY_FREE(cert->signature_key);
@@ -1616,10 +1621,8 @@ fail:
     return SSH_ERROR;
 }
 
-#define CRITICAL_OPTIONS 1
-#define EXTENSIONS 2
-#define SSH_CERT_TYPE_USER 1
-#define SSH_CERT_TYPE_HOST 2
+#define SSH_CERT_PARSE_CRITICAL_OPTIONS 1
+#define SSH_CERT_PARSE_EXTENSIONS 2
 
 /**
  * @brief Parse certificate authentication options packed strings (e.g. critical
@@ -1660,7 +1663,7 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
     }
 
     switch (what) {
-    case CRITICAL_OPTIONS:
+    case SSH_CERT_PARSE_CRITICAL_OPTIONS:
         while (ssh_buffer_get_len(buffer) != 0) {
             rc = ssh_buffer_unpack(buffer, "sd", &tmp_s, &size);
             if (rc != SSH_OK) {
@@ -1669,6 +1672,16 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
             }
 
             if (strcmp(tmp_s, "force-command") == 0) {
+                if (cert->type == SSH_CERT_TYPE_HOST) {
+                    SSH_LOG(SSH_LOG_TRACE,
+                            "Critical options for Host Certificates "
+                            "are not defined - Invalid option: %s",
+                            tmp_s);
+                    rc = -1;
+                    break;
+                }
+
+                SAFE_FREE(tmp_s);
                 rc = ssh_buffer_unpack(buffer, "s", &tmp_s);
                 if (rc < 0) {
                     SSH_LOG(SSH_LOG_TRACE, "Unpack force-command field error");
@@ -1682,8 +1695,19 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                     rc = -1;
                     break;
                 }
-                cert->critical_options->force_command = tmp_s;
+                cert->critical_options->force_command = strdup(tmp_s);
+                SAFE_FREE(tmp_s);
             } else if (strcmp(tmp_s, "source-address") == 0) {
+                if (cert->type == SSH_CERT_TYPE_HOST) {
+                    SSH_LOG(SSH_LOG_TRACE,
+                            "Critical options for Host Certificates "
+                            "are not defined - Invalid option: %s",
+                            tmp_s);
+                    rc = -1;
+                    break;
+                }
+
+                SAFE_FREE(tmp_s);
                 rc = ssh_buffer_unpack(buffer, "s", &tmp_s);
                 if (rc < 0) {
                     SSH_LOG(SSH_LOG_TRACE, "Unpack source-address field error");
@@ -1694,11 +1718,8 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                 SSH_LOG(SSH_LOG_TRACE,
                         "Critical option source-address is not"
                         "supported on Windows");
-
-                if (cert->type == SSH_CERT_TYPE_USER) {
-                    rc = -1;
-                    break;
-                }
+                rc = -1;
+                break;
 #endif
 
                 if (cert->critical_options->source_address != NULL) {
@@ -1708,6 +1729,7 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                     rc = -1;
                     break;
                 }
+
 #ifndef _WIN32
                 rc = match_cidr_address_list(NULL, tmp_s, -1);
                 if (rc == -1) {
@@ -1716,27 +1738,44 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                             tmp_s);
                     break;
                 }
-                cert->critical_options->source_address = tmp_s;
+                cert->critical_options->source_address = strdup(tmp_s);
+                SAFE_FREE(tmp_s);
 #endif
             } else if (strcmp(tmp_s, "verify-required") == 0) {
+                if (cert->type == SSH_CERT_TYPE_HOST) {
+                    SSH_LOG(SSH_LOG_TRACE,
+                            "Critical options for Host Certificates "
+                            "are not defined - Invalid option: %s",
+                            tmp_s);
+                    rc = -1;
+                    break;
+                }
                 cert->critical_options->verify_required = true;
+                SAFE_FREE(tmp_s);
             } else {
                 SSH_LOG(SSH_LOG_TRACE,
                         "Critical option \"%s\" not supported",
                         tmp_s);
-                if (cert->type == SSH_CERT_TYPE_USER) {
-                    rc = -1;
-                    break;
-                }
+                rc = -1;
+                break;
             }
         }
         break;
-    case EXTENSIONS:
+    case SSH_CERT_PARSE_EXTENSIONS:
         while (ssh_buffer_get_len(buffer) != 0) {
             rc = ssh_buffer_unpack(buffer, "sd", &tmp_s, &size);
             if (rc != SSH_OK) {
                 SSH_LOG(SSH_LOG_TRACE, "Unpack extension error");
                 break;
+            }
+
+            if (cert->type == SSH_CERT_TYPE_HOST) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "Extensions for Host Certificates "
+                        "are not defined - Invalid extension: %s",
+                        tmp_s);
+                SAFE_FREE(tmp_s);
+                continue;
             }
 
             if (strcmp(tmp_s, "no-touch-required") == 0) {
@@ -1754,6 +1793,7 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
             } else {
                 SSH_LOG(SSH_LOG_TRACE, "Extension \"%s\" not supported", tmp_s);
             }
+            SAFE_FREE(tmp_s);
         }
         break;
     default:
@@ -1818,7 +1858,7 @@ pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
          */
         if (n_entries >= alloc_entries) {
             alloc_entries = alloc_entries == 0 ? 4 : alloc_entries * 2;
-            temp = realloc(ret, (alloc_entries + 1) * sizeof(char *));
+            temp = realloc(ret, alloc_entries * sizeof(char *));
             if (temp == NULL) {
                 SSH_LOG(SSH_LOG_TRACE, "realloc() failed");
                 rc = -1;
@@ -1835,6 +1875,7 @@ pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
         }
         memcpy(ret[n_entries], tmp_s, len + 1);
         n_entries += 1;
+        SAFE_FREE(tmp_s);
     }
 
     cert->n_principals = n_entries;
@@ -1896,6 +1937,13 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
         goto fail;
     }
 
+    if (cert->type != SSH_CERT_TYPE_HOST && cert->type != SSH_CERT_TYPE_USER) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Unsupported certificate type. It is neither a host certificate"
+                " nor a user certificate");
+        goto fail;
+    }
+
     rc = pki_cert_unpack_principals(cert, principals);
     if (rc == -1) {
         SSH_LOG(SSH_LOG_TRACE, "Principals unpack failed");
@@ -1908,8 +1956,10 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
     }
     SSH_STRING_FREE(principals);
 
-    /* Parse validity dates, critical options and extensions.
-     * Reserved field can be skipped */
+    /*
+     * Parse validity dates, critical options and extensions.
+     * Reserved field can be skipped
+     */
     rc = ssh_buffer_unpack(buffer,
                            "qqSSS",
                            &cert->valid_after,
@@ -1925,12 +1975,14 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
         goto fail;
     }
 
-    rc = pki_cert_unpack_auth_options(cert, c_opts, CRITICAL_OPTIONS);
+    rc = pki_cert_unpack_auth_options(cert,
+                                      c_opts,
+                                      SSH_CERT_PARSE_CRITICAL_OPTIONS);
     if (rc == -1) {
         SSH_LOG(SSH_LOG_TRACE, "Critical options unpack failed");
         goto fail;
     }
-    rc = pki_cert_unpack_auth_options(cert, ext, EXTENSIONS);
+    rc = pki_cert_unpack_auth_options(cert, ext, SSH_CERT_PARSE_EXTENSIONS);
     if (rc == -1) {
         SSH_LOG(SSH_LOG_TRACE, "Extensions unpack failed");
         goto fail;
@@ -1948,36 +2000,34 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
     }
 
     /* Key extraction */
-    signature_key = ssh_key_new();
-    if (signature_key == NULL) {
-        SSH_LOG(SSH_LOG_TRACE, "Error while initializing signature key");
-        goto fail;
-    }
     rc = ssh_pki_import_pubkey_blob(sign_key, &signature_key);
     if (rc != SSH_OK) {
-        SSH_KEY_FREE(signature_key);
         goto fail;
     }
     cert->signature_key = signature_key;
+    SSH_STRING_FREE(sign_key);
 
     /* Signature extraction */
-    signature = ssh_signature_new();
-    if (signature == NULL) {
-        SSH_LOG(SSH_LOG_TRACE, "Error while initializing signature");
-        goto fail;
-    }
     rc = ssh_pki_import_signature_blob(sign, signature_key, &signature);
     if (rc != SSH_OK) {
-        SSH_SIGNATURE_FREE(signature);
         goto fail;
     }
     cert->signature = signature;
+    SSH_STRING_FREE(sign);
 
     pkey->cert_data = cert;
     return SSH_OK;
 
 fail:
     SSH_CERT_FREE(cert);
+    SSH_SIGNATURE_FREE(signature);
+    SSH_KEY_FREE(signature_key);
+    SSH_STRING_FREE(principals);
+    SSH_STRING_FREE(ext);
+    SSH_STRING_FREE(c_opts);
+    SSH_STRING_FREE(sign_key);
+    SSH_STRING_FREE(sign);
+    SSH_STRING_FREE(reserved);
     return SSH_ERROR;
 }
 
@@ -2055,7 +2105,7 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
     }
 
     rc = pki_parse_cert_data(buffer, key);
-    if (rc != 0) {
+    if (rc != SSH_OK) {
         SSH_LOG(SSH_LOG_TRACE, "Error while parsing certificate fields");
         goto fail;
     }

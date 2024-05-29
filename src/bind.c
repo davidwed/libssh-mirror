@@ -497,9 +497,9 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
     }
 
     if (sshbind->trusted_user_ca_keys_file != NULL) {
-        session->opts.trusted_user_ca_keys_file =
+        session->server_opts.trusted_user_ca_keys_file =
             strdup(sshbind->trusted_user_ca_keys_file);
-        if (session->opts.trusted_user_ca_keys_file == NULL) {
+        if (session->server_opts.trusted_user_ca_keys_file == NULL) {
             ssh_set_error_oom(sshbind);
             return SSH_ERROR;
         }

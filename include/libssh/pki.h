@@ -51,6 +51,10 @@
 #define SSH_KEY_FLAG_PRIVATE 0x0002
 #define SSH_KEY_FLAG_PKCS11_URI 0x0004
 
+/* Certificates */
+#define SSH_CERT_TYPE_USER 1
+#define SSH_CERT_TYPE_HOST 2
+
 struct ssh_key_struct {
     enum ssh_keytypes_e type;
     int flags;
