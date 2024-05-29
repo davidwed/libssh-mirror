@@ -483,7 +483,8 @@ ssh_bind_config_parse_line(ssh_bind bind,
             if (rc != 0) {
                 SSH_LOG(SSH_LOG_TRACE,
                         "line %d: Failed to set TrustedUserCaKeys value '%s'",
-                        count, p);
+                        count,
+                        p);
             }
         }
         break;

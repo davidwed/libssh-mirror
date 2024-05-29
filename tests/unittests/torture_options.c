@@ -2079,7 +2079,8 @@ static int ssh_bind_setup_files(void **state)
                        torture_get_openssh_testkey(SSH_KEYTYPE_ECDSA_P521, 0));
 #endif
     torture_write_file(LIBSSH_CUSTOM_BIND_CONFIG_FILE,
-                       "Port 42\n");
+                       "Port 42\n"
+                       "TrustedUserCAKeys=/path/to/user_ca\n");
     return 0;
 }
 
@@ -2712,6 +2713,8 @@ static void torture_bind_options_parse_config(void **state)
     assert_int_equal(rc, 0);
     assert_int_equal(bind->bindport, 42);
 
+    assert_string_equal(bind->trusted_user_ca_keys_file, "/path/to/user_ca");
+
     SAFE_FREE(cwd);
 }
 
@@ -2742,6 +2745,36 @@ static void torture_bind_options_config_dir(void **state)
     assert_int_equal(rc, 0);
     assert_non_null(bind->config_dir);
     assert_string_equal(bind->config_dir, replacement_dir);
+}
+
+static void
+torture_bind_options_user_ca_file(void **state)
+{
+    struct bind_st *test_state;
+    ssh_bind bind = NULL;
+    const char *new_dir_file = "/new/path/to/user_ca";
+    const char *replacement_dir_file = "/replacement/path/to/user_ca_new";
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_USER_CA_FILE,
+                              new_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->trusted_user_ca_keys_file);
+    assert_string_equal(bind->trusted_user_ca_keys_file, new_dir_file);
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_USER_CA_FILE,
+                              replacement_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->trusted_user_ca_keys_file);
+    assert_string_equal(bind->trusted_user_ca_keys_file, replacement_dir_file);
 }
 
 static void torture_bind_options_set_pubkey_accepted_key_types(void **state)
@@ -3049,6 +3082,9 @@ torture_run_tests(void)
                                         sshbind_setup,
                                         sshbind_teardown),
         cmocka_unit_test_setup_teardown(torture_bind_options_config_dir,
+                                        sshbind_setup,
+                                        sshbind_teardown),
+        cmocka_unit_test_setup_teardown(torture_bind_options_user_ca_file,
                                         sshbind_setup,
                                         sshbind_teardown),
         cmocka_unit_test_setup_teardown(
