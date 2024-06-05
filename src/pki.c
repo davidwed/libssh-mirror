@@ -1621,6 +1621,59 @@ fail:
     return SSH_ERROR;
 }
 
+/**
+ * @brief Validate and parse the ssh_string data of an authentication option
+ * (critical or not) containing the value associated to the name of the option.
+ *
+ * @param [in]   data   The ssh_string containing the option value.
+ *
+ * @param [out]  value  The C string null-terminated being updated with the
+ *                      content of the data argument.
+ *
+ * @return 0 and the value updated on success.
+ * @return -1 and the value set to NULL on error.
+ */
+static int
+pki_process_auth_option(ssh_string data, char **value)
+{
+    ssh_string inner_data = NULL;
+    size_t data_size = 0, inner_data_size = 0;
+    char *val = NULL;
+    int rc = 0;
+
+    data_size = ssh_string_len(data);
+    /*
+     * If the data size is 0 then the option is a flag,
+     * otherwise it is of type key=value
+     */
+    if (data_size == 0) {
+        goto out;
+    }
+
+    inner_data = ssh_string_data(data);
+    if (inner_data == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while getting the option value payload");
+        rc = -1;
+    }
+
+    inner_data_size = ssh_string_len(inner_data);
+    if ((data_size - inner_data_size) != 4) {
+        SSH_LOG(SSH_LOG_TRACE, "Corrupted size of the option value");
+        rc = -1;
+    }
+
+    val = ssh_string_to_char(inner_data);
+    if (value == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while unpacking the option value "
+                               "to a C string");
+        rc = -1;
+    }
+
+out:
+    *value = val;
+    return rc;
+}
+
 #define SSH_CERT_PARSE_CRITICAL_OPTIONS 1
 #define SSH_CERT_PARSE_EXTENSIONS 2
 
@@ -1633,18 +1686,18 @@ fail:
  * @param[in]   field  The authentication options field where the packed strings
  *                     are located.
  *
- * @param[in]   what   The target option (e.g. CRITICAL_OPTIONS or EXTENSIONS).
+ * @param[in]   what   The target option (e.g. SSH_CERT_PARSE_CRITICAL_OPTIONS
+ *                                        or SSH_CERT_PARSE_EXTENSIONS).
  *
  * @return  0 on parsing success or empty field.
  * @return  -1 on failure.
- *
  */
 static int
 pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
 {
     ssh_buffer buffer = NULL;
-    char *tmp_s = NULL;
-    uint32_t size;
+    char *name = NULL, *value = NULL;
+    ssh_string data = NULL;
     int rc;
 
     buffer = ssh_buffer_new();
@@ -1665,26 +1718,27 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
     switch (what) {
     case SSH_CERT_PARSE_CRITICAL_OPTIONS:
         while (ssh_buffer_get_len(buffer) != 0) {
-            rc = ssh_buffer_unpack(buffer, "sd", &tmp_s, &size);
+            rc = ssh_buffer_unpack(buffer, "sS", &name, &data);
             if (rc != SSH_OK) {
                 SSH_LOG(SSH_LOG_TRACE, "Unpack critical option error");
                 break;
             }
 
-            if (strcmp(tmp_s, "force-command") == 0) {
+            rc = pki_process_auth_option(data, &value);
+            if (rc == -1) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "Error while processing %s option",
+                        name);
+                break;
+            }
+
+            if (strcmp(name, "force-command") == 0) {
                 if (cert->type == SSH_CERT_TYPE_HOST) {
                     SSH_LOG(SSH_LOG_TRACE,
                             "Critical options for Host Certificates "
                             "are not defined - Invalid option: %s",
-                            tmp_s);
+                            name);
                     rc = -1;
-                    break;
-                }
-
-                SAFE_FREE(tmp_s);
-                rc = ssh_buffer_unpack(buffer, "s", &tmp_s);
-                if (rc < 0) {
-                    SSH_LOG(SSH_LOG_TRACE, "Unpack force-command field error");
                     break;
                 }
 
@@ -1695,22 +1749,22 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                     rc = -1;
                     break;
                 }
-                cert->critical_options->force_command = strdup(tmp_s);
-                SAFE_FREE(tmp_s);
-            } else if (strcmp(tmp_s, "source-address") == 0) {
+
+                cert->critical_options->force_command = strdup(value);
+                if (cert->critical_options->force_command == NULL) {
+                    SSH_LOG(SSH_LOG_TRACE,
+                            "Error while allocating space for "
+                            "force-command option");
+                    rc = -1;
+                    break;
+                }
+            } else if (strcmp(name, "source-address") == 0) {
                 if (cert->type == SSH_CERT_TYPE_HOST) {
                     SSH_LOG(SSH_LOG_TRACE,
                             "Critical options for Host Certificates "
                             "are not defined - Invalid option: %s",
-                            tmp_s);
+                            name);
                     rc = -1;
-                    break;
-                }
-
-                SAFE_FREE(tmp_s);
-                rc = ssh_buffer_unpack(buffer, "s", &tmp_s);
-                if (rc < 0) {
-                    SSH_LOG(SSH_LOG_TRACE, "Unpack source-address field error");
                     break;
                 }
 
@@ -1731,39 +1785,48 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                 }
 
 #ifndef _WIN32
-                rc = match_cidr_address_list(NULL, tmp_s, -1);
+                rc = match_cidr_address_list(NULL, value, -1);
                 if (rc == -1) {
                     SSH_LOG(SSH_LOG_TRACE,
                             "CIDR list \"%.100s\" not valid",
-                            tmp_s);
+                            value);
                     break;
                 }
-                cert->critical_options->source_address = strdup(tmp_s);
-                SAFE_FREE(tmp_s);
+                cert->critical_options->source_address = strdup(value);
+                if (cert->critical_options->source_address == NULL) {
+                    SSH_LOG(SSH_LOG_TRACE,
+                            "Error while allocating space for "
+                            "source-address option");
+                    rc = -1;
+                    break;
+                }
 #endif
-            } else if (strcmp(tmp_s, "verify-required") == 0) {
+            } else if (strcmp(name, "verify-required") == 0) {
                 if (cert->type == SSH_CERT_TYPE_HOST) {
                     SSH_LOG(SSH_LOG_TRACE,
                             "Critical options for Host Certificates "
                             "are not defined - Invalid option: %s",
-                            tmp_s);
+                            name);
                     rc = -1;
                     break;
                 }
                 cert->critical_options->verify_required = true;
-                SAFE_FREE(tmp_s);
             } else {
                 SSH_LOG(SSH_LOG_TRACE,
                         "Critical option \"%s\" not supported",
-                        tmp_s);
+                        name);
                 rc = -1;
                 break;
             }
+
+            SAFE_FREE(name);
+            SAFE_FREE(value);
+            SSH_STRING_FREE(data);
         }
         break;
     case SSH_CERT_PARSE_EXTENSIONS:
         while (ssh_buffer_get_len(buffer) != 0) {
-            rc = ssh_buffer_unpack(buffer, "sd", &tmp_s, &size);
+            rc = ssh_buffer_unpack(buffer, "sS", &name, &data);
             if (rc != SSH_OK) {
                 SSH_LOG(SSH_LOG_TRACE, "Unpack extension error");
                 break;
@@ -1773,27 +1836,38 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                 SSH_LOG(SSH_LOG_TRACE,
                         "Extensions for Host Certificates "
                         "are not defined - Invalid extension: %s",
-                        tmp_s);
-                SAFE_FREE(tmp_s);
+                        name);
+                SAFE_FREE(name);
+                SAFE_FREE(data);
                 continue;
             }
 
-            if (strcmp(tmp_s, "no-touch-required") == 0) {
+            rc = pki_process_auth_option(data, &value);
+            if (rc == -1) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "Error while processing %s option",
+                        name);
+                break;
+            }
+
+            if (strcmp(name, "no-touch-required") == 0) {
                 cert->extensions->ext |= NO_TOUCH_REQUIRED;
-            } else if (strcmp(tmp_s, "permit-X11-forwarding") == 0) {
+            } else if (strcmp(name, "permit-X11-forwarding") == 0) {
                 cert->extensions->ext |= PERMIT_X11_FORWARDING;
-            } else if (strcmp(tmp_s, "permit-agent-forwarding") == 0) {
+            } else if (strcmp(name, "permit-agent-forwarding") == 0) {
                 cert->extensions->ext |= PERMIT_AGENT_FORWARDING;
-            } else if (strcmp(tmp_s, "permit-port-forwarding") == 0) {
+            } else if (strcmp(name, "permit-port-forwarding") == 0) {
                 cert->extensions->ext |= PERMIT_PORT_FORWARDING;
-            } else if (strcmp(tmp_s, "permit-pty") == 0) {
+            } else if (strcmp(name, "permit-pty") == 0) {
                 cert->extensions->ext |= PERMIT_PTY;
-            } else if (strcmp(tmp_s, "permit-user-rc") == 0) {
+            } else if (strcmp(name, "permit-user-rc") == 0) {
                 cert->extensions->ext |= PERMIT_USER_RC;
             } else {
-                SSH_LOG(SSH_LOG_TRACE, "Extension \"%s\" not supported", tmp_s);
+                SSH_LOG(SSH_LOG_TRACE, "Extension \"%s\" not supported", name);
             }
-            SAFE_FREE(tmp_s);
+            SAFE_FREE(name);
+            SAFE_FREE(value);
+            SSH_STRING_FREE(data);
         }
         break;
     default:
@@ -1804,7 +1878,9 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
 
 out:
     SSH_BUFFER_FREE(buffer);
-    SAFE_FREE(tmp_s);
+    SAFE_FREE(name);
+    SAFE_FREE(value);
+    SSH_STRING_FREE(data);
     return rc;
 }
 
@@ -1831,7 +1907,6 @@ pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
     buffer = ssh_buffer_new();
     if (buffer == NULL) {
         SSH_LOG(SSH_LOG_TRACE, "Buffer initialization failed");
-        rc = -1;
         goto fail;
     }
 
@@ -1847,7 +1922,6 @@ pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
         rc = ssh_buffer_unpack(buffer, "s", &tmp_s);
         if (rc != SSH_OK) {
             SSH_LOG(SSH_LOG_TRACE, "Unpack principal error");
-            rc = -1;
             goto fail;
         }
         len = strlen(tmp_s);
@@ -1861,7 +1935,6 @@ pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
             temp = realloc(ret, alloc_entries * sizeof(char *));
             if (temp == NULL) {
                 SSH_LOG(SSH_LOG_TRACE, "realloc() failed");
-                rc = -1;
                 goto fail;
             }
             ret = temp;
@@ -1870,7 +1943,6 @@ pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
         ret[n_entries] = calloc(1, (len + 1) * sizeof(char));
         if (ret[n_entries] == NULL) {
             SSH_LOG(SSH_LOG_TRACE, "calloc() failed");
-            rc = -1;
             goto fail;
         }
         memcpy(ret[n_entries], tmp_s, len + 1);
@@ -1883,7 +1955,7 @@ pki_cert_unpack_principals(ssh_cert cert, ssh_string field)
 
     SSH_BUFFER_FREE(buffer);
     SAFE_FREE(tmp_s);
-    return rc;
+    return 0;
 
 fail:
     cert->n_principals = 0;
@@ -1894,7 +1966,7 @@ fail:
         SAFE_FREE(ret[i]);
     }
     SAFE_FREE(ret);
-    return rc;
+    return -1;
 }
 
 /**
