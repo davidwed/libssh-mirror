@@ -272,6 +272,7 @@ struct ssh_session_struct {
         bool identities_only;
         int control_master;
         char *control_path;
+        char *revoked_host_keys;
     } opts;
 
     /* server options */

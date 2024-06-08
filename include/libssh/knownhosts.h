@@ -26,6 +26,13 @@
 extern "C" {
 #endif
 
+enum host_key_marker {
+    MARK_NONE = 0,
+    MARK_UNKNOWN,
+    MARK_CA,
+    MARK_REVOKED
+};
+
 struct ssh_list *ssh_known_hosts_get_algorithms(ssh_session session);
 char *ssh_known_hosts_get_algorithms_names(ssh_session session);
 enum ssh_known_hosts_e

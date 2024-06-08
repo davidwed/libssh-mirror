@@ -269,12 +269,6 @@ static int ssh_known_hosts_read_entries(const char *match,
             continue;
         }
 
-        /* Skip lines starting with markers (@cert-authority, @revoked):
-         * we do not completely support them anyway */
-        if (p[0] == '@') {
-            continue;
-        }
-
         rc = ssh_known_hosts_parse_line(match,
                                         line,
                                         &entry);
@@ -616,6 +610,30 @@ char *ssh_known_hosts_get_algorithms_names(ssh_session session)
 }
 
 /**
+ * @brief Get the enum type of a marker given a C string.
+ *
+ * @param[in]  marker    The string containing the marker name.
+ *
+ * @return the enum type of the marker on success.
+ * @eturn -1 if the marker argument is NULL.
+ */
+static int
+ssh_known_host_get_marker(const char *marker)
+{
+    if (marker == NULL) {
+        return -1;
+    }
+
+    if (strcmp(marker, "@cert-authority") == 0) {
+        return MARK_CA;
+    } else if (strcmp(marker, "@revoked") == 0) {
+        return MARK_REVOKED;
+    } else {
+        return MARK_UNKNOWN;
+    }
+}
+
+/**
  * @brief Parse a line from a known_hosts entry into a structure
  *
  * This parses a known_hosts entry into a structure with the key in a libssh
@@ -630,36 +648,57 @@ char *ssh_known_hosts_get_algorithms_names(ssh_session session)
  *                          entry structure. The user needs to free the memory
  *                          using SSH_KNOWNHOSTS_ENTRY_FREE().
  *
- * @return SSH_OK on success, SSH_ERROR otherwise.
+ * @return SSH_OK on success, SSH_AGAIN if the hostname does not match the line,
+ * SSH_ERROR otherwise.
  */
 int ssh_known_hosts_parse_line(const char *hostname,
                                const char *line,
                                struct ssh_knownhosts_entry **entry)
 {
     struct ssh_knownhosts_entry *e = NULL;
-    char *known_host = NULL;
-    char *p;
+    char *known_host = NULL, *keyword = NULL;
+    char *p = NULL;
     char *save_tok = NULL;
     enum ssh_keytypes_e key_type;
     int match = 0;
     int rc = SSH_OK;
 
-    known_host = strdup(line);
-    if (known_host == NULL) {
+    keyword = strdup(line);
+    if (keyword == NULL) {
         return SSH_ERROR;
     }
 
-    /* match pattern for hostname or hashed hostname */
-    p = strtok_r(known_host, " ", &save_tok);
+    /* Check for marker */
+    p = strtok_r(keyword, " ", &save_tok);
     if (p == NULL ) {
-        free(known_host);
+        SAFE_FREE(keyword);
         return SSH_ERROR;
     }
 
     e = calloc(1, sizeof(struct ssh_knownhosts_entry));
     if (e == NULL) {
-        free(known_host);
+        SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
+        SAFE_FREE(keyword);
         return SSH_ERROR;
+    }
+
+    if (p[0] == '@') {
+        rc = ssh_known_host_get_marker(p);
+        /* rc should never be -1 because p can't be NULL at this point */
+        if (rc == MARK_UNKNOWN) {
+            SSH_LOG(SSH_LOG_WARN, "Unknown marker: %s", p);
+            rc = SSH_ERROR;
+            goto out;
+        }
+        e->marker = rc;
+
+        /* Move the pointer and get the next tok */
+        p = strtok_r(NULL, " ", &save_tok);
+        if (p == NULL ) {
+            SAFE_FREE(keyword);
+            rc = SSH_ERROR;
+            goto out;
+        }
     }
 
     if (hostname != NULL) {
@@ -701,7 +740,7 @@ int ssh_known_hosts_parse_line(const char *hostname,
                 break;
             }
         }
-        free(host_port);
+        SAFE_FREE(host_port);
 
         if (match == 0) {
             rc = SSH_AGAIN;
@@ -710,15 +749,17 @@ int ssh_known_hosts_parse_line(const char *hostname,
 
         e->hostname = strdup(hostname);
         if (e->hostname == NULL) {
+            SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
             rc = SSH_ERROR;
             goto out;
         }
     }
 
     /* Restart parsing */
-    SAFE_FREE(known_host);
+    SAFE_FREE(keyword);
     known_host = strdup(line);
     if (known_host == NULL) {
+        SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
         rc = SSH_ERROR;
         goto out;
     }
@@ -731,8 +772,19 @@ int ssh_known_hosts_parse_line(const char *hostname,
         goto out;
     }
 
+    if (e->marker) {
+        /* Skip the marker and move p to the next tok */
+        p = strtok_r(NULL, " ", &save_tok);
+        if (p == NULL ) {
+            SAFE_FREE(known_host);
+            rc = SSH_ERROR;
+            goto out;
+        }
+    }
+
     e->unparsed = strdup(p);
     if (e->unparsed == NULL) {
+        SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
         rc = SSH_ERROR;
         goto out;
     }
@@ -776,6 +828,7 @@ int ssh_known_hosts_parse_line(const char *hostname,
         if (p != NULL) {
             e->comment = strdup(p);
             if (e->comment == NULL) {
+                SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
                 rc = SSH_ERROR;
                 goto out;
             }
@@ -787,8 +840,9 @@ int ssh_known_hosts_parse_line(const char *hostname,
 
     return SSH_OK;
 out:
+    SAFE_FREE(keyword);
     SAFE_FREE(known_host);
-    ssh_knownhosts_entry_free(e);
+    SSH_KNOWNHOSTS_ENTRY_FREE(e);
     return rc;
 }
 
@@ -1101,6 +1155,12 @@ ssh_known_hosts_check_server_key(const char *hosts_entry,
 
         entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
 
+        /*
+         * TODO: handle host certificate when fully implemented, i.e. handle
+         *       check for @cert-authority and @revoked (also for plain keys).
+         *       We should (maybe) pass here the session struct pointer for
+         *       checking revoked keys inside session->opts->RevokedHostKeys
+         */
         cmp = ssh_key_cmp(server_key, entry->publickey, SSH_KEY_CMP_PUBLIC);
         if (cmp == 0) {
             found = SSH_KNOWN_HOSTS_OK;

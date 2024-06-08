@@ -369,6 +369,7 @@ void ssh_free(ssh_session session)
   SAFE_FREE(session->opts.gss_client_identity);
   SAFE_FREE(session->opts.pubkey_accepted_types);
   SAFE_FREE(session->opts.control_path);
+  SAFE_FREE(session->opts.revoked_host_keys);
 
   SAFE_FREE(session->server_opts.trusted_user_ca_keys_file);
 

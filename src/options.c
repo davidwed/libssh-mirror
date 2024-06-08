@@ -627,6 +627,12 @@ int ssh_options_set_algo(ssh_session session,
  *                Set to "none" to disable connection sharing.
  *                (const char *)
  *
+ *              - SSH_OPTIONS_REVOKEDHOSTKEYS
+ *                Set the path to the file containing the revoked host public
+ *                keys. Keys listed in this file will be refused for host
+ *                authentication.
+ *                (const char *)
+ *
  *
  * @param  value The value to set. This is a generic pointer and the
  *               datatype which is used should be set according to the
@@ -876,6 +882,19 @@ int ssh_options_set(ssh_session session, enum ssh_options_e type,
                     return -1;
                 }
                 session->opts.exp_flags &= ~SSH_OPT_EXP_FLAG_GLOBAL_KNOWNHOSTS;
+            }
+            break;
+        case SSH_OPTIONS_REVOKEDHOSTKEYS:
+            v = value;
+            SAFE_FREE(session->opts.revoked_host_keys);
+            if (v == NULL || v[0] == '\0') {
+                ssh_set_error_invalid(session);
+                return -1;
+            }
+            session->opts.revoked_host_keys = strdup(v);
+            if (session->opts.revoked_host_keys == NULL) {
+                ssh_set_error_oom(session);
+                return -1;
             }
             break;
         case SSH_OPTIONS_TIMEOUT:

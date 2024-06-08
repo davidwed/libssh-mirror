@@ -307,6 +307,7 @@ struct ssh_knownhosts_entry {
     char *unparsed;
     ssh_key publickey;
     char *comment;
+    int marker;
 };
 
 
@@ -420,6 +421,7 @@ enum ssh_options_e {
     SSH_OPTIONS_CERTIFICATE,
     SSH_OPTIONS_PROXYJUMP,
     SSH_OPTIONS_PROXYJUMP_CB_LIST_APPEND,
+    SSH_OPTIONS_REVOKEDHOSTKEYS,
 };
 
 enum {
