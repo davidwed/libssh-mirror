@@ -724,12 +724,6 @@ LIBSSH_API int ssh_key_cmp(const ssh_key k1,
                            enum ssh_keycmp_e what);
 LIBSSH_API ssh_key ssh_key_dup(const ssh_key key);
 
-/* Certificate APIs */
-LIBSSH_API ssh_cert ssh_cert_new(void);
-LIBSSH_API void ssh_cert_free(ssh_cert cert);
-#define SSH_CERT_FREE(x) \
-    do { if ((x) != NULL) { ssh_cert_free(x); x = NULL; } } while(0)
-
 LIBSSH_API int ssh_pki_generate(enum ssh_keytypes_e type, int parameter,
         ssh_key *pkey);
 LIBSSH_API int ssh_pki_import_privkey_base64(const char *b64_key,

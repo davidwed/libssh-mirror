@@ -122,22 +122,20 @@ enum ssh_key_cert_exts_flags {
     PERMIT_USER_RC          = 1 << 5
 };
 
-struct ssh_key_cert_exts {
-    uint32_t ext;
-};
-typedef struct ssh_key_cert_exts *cert_ext;
-
 struct ssh_key_cert_struct {
-    unsigned int    type;
-    uint64_t        serial;
-    char            *key_id;
-    unsigned int    n_principals;
-    char            **principals;
-    uint64_t        valid_after, valid_before;
-    cert_opt        critical_options;
-    cert_ext        extensions;
-    ssh_key         signature_key;
-    ssh_signature   signature;
+    unsigned int type;
+    uint64_t serial;
+    char *key_id;
+    unsigned int n_principals;
+    char **principals;
+    uint64_t valid_after, valid_before;
+    cert_opt critical_options;
+    struct ssh_key_cert_exts {
+        /* Base structure for new extensions type */
+        uint32_t ext;
+    } extensions;
+    ssh_key signature_key;
+    ssh_signature signature;
 };
 
 #ifdef __cplusplus
@@ -167,7 +165,10 @@ enum ssh_digest_e ssh_key_hash_from_name(const char *name);
      (kt) <= SSH_KEYTYPE_ED25519_CERT01))
 
 /* SSH Certificate Functions */
-void ssh_cert_clean(ssh_cert cert);
+int pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey);
+void ssh_cert_free(ssh_cert cert);
+#define SSH_CERT_FREE(x) \
+    do { if ((x) != NULL) { ssh_cert_free(x); x = NULL; } } while(0)
 
 /* SSH Signature Functions */
 ssh_signature ssh_signature_new(void);
