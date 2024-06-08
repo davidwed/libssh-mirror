@@ -26,7 +26,11 @@
 #define LOCALHOST_HASHED_ED25519 "|1|ayWjmTf9mYgj7PuQNVOa7Lqkj5s=|hkbEh8FN6IkLo6t6GQGuBwamgsM= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA7M22fXD7OiS7kGMXP+OoIjCa+J+5sq8SgAZfIOmDgM"
 #define LOCALHOST_PORT_WILDCARD "[localhost]:* ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA7M22fXD7OiS7kGMXP+OoIjCa+J+5sq8SgAZfIOmDgM"
 #define LOCALHOST_STANDARD_PORT "[localhost]:22 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA7M22fXD7OiS7kGMXP+OoIjCa+J+5sq8SgAZfIOmDgM"
-
+#define LOCALHOST_REVOKED_RSA "@revoked localhost ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC0YkotSbFFF408jTRB/2pSktDVGNDydCCHD7XARsANId3RbJUkNUsMAL2be7xdp+pX2+JjAmlnWPlnXZ7eqAL2qeNrPN0at0fepAi5TShrfs+CCFYFmDfECuotP8NCDxKHB7m0bJvFivqLUOxCFk1elx8e/IZAxDWBpVfll3ZmpE5P7J3h+HN6IC08Irj+/gmDBCPgjcxm7vH4OwwLEo5OGD8YyR/MwIiAadc9+ldC6CggrUN/wf0Tx1IU7aJFSknsMXF92BsDk7HVEi9ZKPaojliFqDYiSDmIYFvYMJx0R57DBZQkH4dnT0GQQX77C23X+PecSPjFG/rz9AvWz6nRTbJPiQVZu9KJUUPkdLSYN1ltnt8PsImtfPxzHNzAJMWwmqRbRu6fdH3hpeY2UAP4kBEMlpnFTyik6vv2sl/x8sHLYyg2VE2VxdRP3UfS4/f9+rRgMRZm5TrnqFfio8InED78jGIoFgrxZjAeRTpQch5LVus45juOCo8+eNPYaH8= host@libssh"
+#define LOCALHOST_CA_RSA "@cert-authority localhost ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC1bSyeZACUpVJ1tlFPgiiNHEloUnZ+yMs+9NU1+BayWoDiqWdjqpmXgE2FqaLzFp3PQYiqT9+xsK/6kBBfc1hxvTxvCBZ88fDPPpxJZLQbJDTnzeiak5KU2dGMPt+HDF+9EAB2+ULbEYFCexxrFF2gKkzZWLpDu3Kh+tqxm47Wev+1+0pduYKzTq/9irzqw6w0uYEaUKqfMOY/N96TLsx42If3uatujVFmCSKqjXTT+NMUdf4pcr3annA1Ruvpqp4DB1Jihb4b1Vbnmcfy0FHMq9cYunELr4pWu8aeBsVqkmLsy4CwqtP53z4ZeVNvm3Q7V/XS3DB0VsSu2aeZAh3KGadfflqqAGGcxI77Qf2biTkasz4ElHiDNBzzCaFtQBuFhd/3ks3jFftlJ6wLU7A3J+J0dJRQAv6/ebN38c4RcoOWaBinKDSlTPTWCJeA7cT0xvRKk/OYWr0nMMFw2SSb7BNOM8BAX0o+gLLvOupZwViUIC/7RQgpJa8uibemu60= host_ca"
+#define LOCALHOST_INVALID_MARKER "@revoked @cert-authority localhost ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDYa4s3dRWfstP0SSy4r4412tIsNryYW2S9ZN+5DNmFs/tKII+SRGcR5THe9exnpX/dsPrcmBH9GJNueuRZScKOg+K4jn1A7AOVQQKjw9oJgQ5GVBOcTjBHQXhmr3xI/kkIDIXl9Iu8P2LhZabJiAJsHKfoLv4kSq1sJnbOIUvXLIVokaggv5yADScR1BhklO5K9dkxWNrX19CSltw29I7W+sxm677YoK9z/Gey1ukKQaR9UR4etmKyvxDNmX3LRGg39VKuVpRekO2+l/WHPltuT/4yvGbsyvfhziApa6LIiZP5TyN6+gVCTGfulNwgeDjwgUf6vhH3eAQK/+0+iHzoPV4M+wKxquK01cp9TyxL+Z45E2ssq6yc1pASmp8P31aETtn29KlfTg7cl/hK853mk96j9lOzAeLyTEeO98BJP5yqQJJPQjwgI4Wu83UkVry1uBj9cz3QBOXivhNXoCWKZGnszzFQitWVg6lfZQaC7sNRJEBBRvGidezq42yiwWE= host_ca"
+/* Base for testing non-consecutive markers */
+#define LOCALHOST_INVALID_MARKER_NC "@revoked localhost @cert-authority ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDYa4s3dRWfstP0SSy4r4412tIsNryYW2S9ZN+5DNmFs/tKII+SRGcR5THe9exnpX/dsPrcmBH9GJNueuRZScKOg+K4jn1A7AOVQQKjw9oJgQ5GVBOcTjBHQXhmr3xI/kkIDIXl9Iu8P2LhZabJiAJsHKfoLv4kSq1sJnbOIUvXLIVokaggv5yADScR1BhklO5K9dkxWNrX19CSltw29I7W+sxm677YoK9z/Gey1ukKQaR9UR4etmKyvxDNmX3LRGg39VKuVpRekO2+l/WHPltuT/4yvGbsyvfhziApa6LIiZP5TyN6+gVCTGfulNwgeDjwgUf6vhH3eAQK/+0+iHzoPV4M+wKxquK01cp9TyxL+Z45E2ssq6yc1pASmp8P31aETtn29KlfTg7cl/hK853mk96j9lOzAeLyTEeO98BJP5yqQJJPQjwgI4Wu83UkVry1uBj9cz3QBOXivhNXoCWKZGnszzFQitWVg6lfZQaC7sNRJEBBRvGidezq42yiwWE= host_ca"
 #define TMP_FILE_NAME "/tmp/known_hosts_XXXXXX"
 
 const char template[] = "temp_dir_XXXXXX";
@@ -66,6 +70,36 @@ static int setup_knownhosts_file(void **state)
                       strlen(LOCALHOST_RSA_LINE),
                       fp);
     if (nwritten != strlen(LOCALHOST_RSA_LINE)) {
+        rc = -1;
+        goto close_fp;
+    }
+
+    nwritten = fwrite("\n", sizeof(char), 1, fp);
+    if (nwritten != 1) {
+        rc = -1;
+        goto close_fp;
+    }
+
+    nwritten = fwrite(LOCALHOST_REVOKED_RSA,
+                      sizeof(char),
+                      strlen(LOCALHOST_REVOKED_RSA),
+                      fp);
+    if (nwritten != strlen(LOCALHOST_REVOKED_RSA)) {
+        rc = -1;
+        goto close_fp;
+    }
+
+    nwritten = fwrite("\n", sizeof(char), 1, fp);
+    if (nwritten != 1) {
+        rc = -1;
+        goto close_fp;
+    }
+
+    nwritten = fwrite(LOCALHOST_CA_RSA,
+                      sizeof(char),
+                      strlen(LOCALHOST_CA_RSA),
+                      fp);
+    if (nwritten != strlen(LOCALHOST_CA_RSA)) {
         rc = -1;
         goto close_fp;
     }
@@ -139,6 +173,32 @@ static int setup_knownhosts_file_duplicate(void **state)
         goto close_fp;
     }
 
+    /* Revoked RSA key */
+    nwritten = fwrite(LOCALHOST_REVOKED_RSA,
+                      sizeof(char),
+                      strlen(LOCALHOST_REVOKED_RSA),
+                      fp);
+    if (nwritten != strlen(LOCALHOST_REVOKED_RSA)) {
+        rc = -1;
+        goto close_fp;
+    }
+
+    nwritten = fwrite("\n", sizeof(char), 1, fp);
+    if (nwritten != 1) {
+        rc = -1;
+        goto close_fp;
+    }
+
+    /* Certificate Authority RSA key */
+    nwritten = fwrite(LOCALHOST_CA_RSA,
+                      sizeof(char),
+                      strlen(LOCALHOST_CA_RSA),
+                      fp);
+    if (nwritten != strlen(LOCALHOST_CA_RSA)) {
+        rc = -1;
+        goto close_fp;
+    }
+
 close_fp:
     fclose(fp);
 
@@ -200,6 +260,7 @@ static void torture_knownhosts_parse_line_rsa(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -213,6 +274,7 @@ static void torture_knownhosts_parse_line_rsa(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "127.0.0.1");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -233,6 +295,7 @@ static void torture_knownhosts_parse_line_ecdsa(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -252,6 +315,7 @@ static void torture_knownhosts_parse_line_default_ed25519(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -271,6 +335,7 @@ static void torture_knownhosts_parse_line_port_ed25519(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "[localhost]:2222");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -291,6 +356,7 @@ static void torture_knownhosts_parse_line_port_wildcard(void **state)
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -311,6 +377,7 @@ static void torture_knownhosts_parse_line_standard_port(void **state)
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -330,6 +397,7 @@ static void torture_knownhosts_parse_line_pattern_ed25519(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -349,12 +417,85 @@ static void torture_knownhosts_parse_line_hashed_ed25519(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
     assert_int_equal(ssh_key_type(entry->publickey), SSH_KEYTYPE_ED25519);
 
     SSH_KNOWNHOSTS_ENTRY_FREE(entry);
+}
+
+static void
+torture_knownhosts_parse_line_revoked_rsa(void **state)
+{
+    struct ssh_knownhosts_entry *entry = NULL;
+    int rc;
+
+    (void)state;
+
+    rc = ssh_known_hosts_parse_line("localhost",
+                                    LOCALHOST_REVOKED_RSA,
+                                    &entry);
+    assert_int_equal(rc, SSH_OK);
+
+    assert_int_equal(entry->marker, MARK_REVOKED);
+    assert_string_equal(entry->hostname, "localhost");
+    assert_non_null(entry->unparsed);
+    assert_non_null(entry->publickey);
+    assert_int_equal(ssh_key_type(entry->publickey), SSH_KEYTYPE_RSA);
+
+    SSH_KNOWNHOSTS_ENTRY_FREE(entry);
+}
+
+static void
+torture_knownhosts_parse_line_cert_authority_rsa(void **state)
+{
+    struct ssh_knownhosts_entry *entry = NULL;
+    int rc;
+
+    (void)state;
+
+    rc = ssh_known_hosts_parse_line("localhost",
+                                    LOCALHOST_CA_RSA,
+                                    &entry);
+    assert_int_equal(rc, SSH_OK);
+
+    assert_int_equal(entry->marker, MARK_CA);
+    assert_string_equal(entry->hostname, "localhost");
+    assert_non_null(entry->unparsed);
+    assert_non_null(entry->publickey);
+    assert_int_equal(ssh_key_type(entry->publickey), SSH_KEYTYPE_RSA);
+
+    SSH_KNOWNHOSTS_ENTRY_FREE(entry);
+}
+
+static void
+torture_knownhosts_parse_invalid_marker_line(void **state)
+{
+    struct ssh_knownhosts_entry *entry = NULL;
+    int rc;
+
+    (void)state;
+
+    rc = ssh_known_hosts_parse_line("localhost",
+                                    LOCALHOST_INVALID_MARKER,
+                                    &entry);
+    assert_int_equal(rc, SSH_AGAIN);
+}
+
+static void
+torture_knownhosts_parse_invalid_marker_nc_line(void **state)
+{
+    struct ssh_knownhosts_entry *entry = NULL;
+    int rc;
+
+    (void)state;
+
+    rc = ssh_known_hosts_parse_line("localhost",
+                                    LOCALHOST_INVALID_MARKER_NC,
+                                    &entry);
+    assert_int_equal(rc, SSH_ERROR);
 }
 
 static void torture_knownhosts_read_file(void **state)
@@ -378,6 +519,7 @@ static void torture_knownhosts_read_file(void **state)
     entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
     assert_non_null(entry);
 
+    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     type = ssh_key_type(entry->publickey);
     assert_int_equal(type, SSH_KEYTYPE_ED25519);
@@ -389,6 +531,31 @@ static void torture_knownhosts_read_file(void **state)
     entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
     assert_non_null(entry);
 
+    assert_int_equal(entry->marker, MARK_NONE);
+    assert_string_equal(entry->hostname, "localhost");
+    type = ssh_key_type(entry->publickey);
+    assert_int_equal(type, SSH_KEYTYPE_RSA);
+    assert_non_null(it->next);
+
+    it = it->next;
+
+    /* Third key in known hosts file is a revoked RSA */
+    entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
+    assert_non_null(entry);
+
+    assert_int_equal(entry->marker, MARK_REVOKED);
+    assert_string_equal(entry->hostname, "localhost");
+    type = ssh_key_type(entry->publickey);
+    assert_int_equal(type, SSH_KEYTYPE_RSA);
+    assert_non_null(it->next);
+
+    it = it->next;
+
+    /* Fourth key in known hosts file is a Certificate Authority RSA */
+    entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
+    assert_non_null(entry);
+
+    assert_int_equal(entry->marker, MARK_CA);
     assert_string_equal(entry->hostname, "localhost");
     type = ssh_key_type(entry->publickey);
     assert_int_equal(type, SSH_KEYTYPE_RSA);
@@ -709,6 +876,10 @@ int torture_run_tests(void) {
         cmocka_unit_test(torture_knownhosts_parse_line_standard_port),
         cmocka_unit_test(torture_knownhosts_parse_line_pattern_ed25519),
         cmocka_unit_test(torture_knownhosts_parse_line_hashed_ed25519),
+        cmocka_unit_test(torture_knownhosts_parse_line_revoked_rsa),
+        cmocka_unit_test(torture_knownhosts_parse_line_cert_authority_rsa),
+        cmocka_unit_test(torture_knownhosts_parse_invalid_marker_line),
+        cmocka_unit_test(torture_knownhosts_parse_invalid_marker_nc_line),
         cmocka_unit_test_setup_teardown(torture_knownhosts_read_file,
                                         setup_knownhosts_file,
                                         teardown_knownhosts_file),

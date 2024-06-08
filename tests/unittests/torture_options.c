@@ -412,6 +412,22 @@ static void torture_options_get_hostkey(void **state)
     ssh_string_free_char(value);
 }
 
+static void torture_options_set_revoked_host_keys(void **state)
+{
+    ssh_session session = *state;
+    int rc;
+
+    rc = ssh_options_set(session, SSH_OPTIONS_REVOKEDHOSTKEYS, "/path/to/keys");
+    assert_int_equal(rc, 0);
+    assert_string_equal(session->opts.revoked_host_keys, "/path/to/keys");
+
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_REVOKEDHOSTKEYS,
+                         "/new/path/to/keys");
+    assert_int_equal(rc, 0);
+    assert_string_equal(session->opts.revoked_host_keys, "/new/path/to/keys");
+}
+
 static void torture_options_set_pubkey_accepted_types(void **state)
 {
     ssh_session session = *state;
@@ -2976,6 +2992,9 @@ torture_run_tests(void)
                                         setup,
                                         teardown),
         cmocka_unit_test_setup_teardown(torture_options_get_hostkey,
+                                        setup,
+                                        teardown),
+        cmocka_unit_test_setup_teardown(torture_options_set_revoked_host_keys,
                                         setup,
                                         teardown),
         cmocka_unit_test_setup_teardown(
