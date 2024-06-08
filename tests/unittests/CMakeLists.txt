@@ -20,6 +20,7 @@ set(LIBSSH_UNIT_TESTS
     torture_push_pop_dir
     torture_session_keys
     torture_tokens
+    torture_certificates_parsing
 )
 
 set(LIBSSH_THREAD_UNIT_TESTS

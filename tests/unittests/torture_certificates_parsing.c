@@ -1,12 +1,13 @@
 #include "libssh/libssh.h"
 #include "pki.c"
+#include "pki_cert.c"
 #include "torture.h"
 
 #define CERT_DIR SOURCEDIR "/tests/keys/certs"
 
 /* Base input for computing a signature. Only for test purpose. */
-const unsigned char INPUT[] = "1234567890123456789012345678901234567890"
-                              "123456789012345678901234";
+const unsigned char BASE_INPUT[] = "1234567890123456789012345678901234567890"
+                                   "123456789012345678901234";
 
 /**
  * @brief helper function for generating a list of principals in the form
@@ -48,7 +49,7 @@ fail:
  * (see OpenSSH PROTOCOL.certkeys for the default extensions)
  */
 static void
-make_default_extensions(cert_ext a)
+make_default_extensions(struct ssh_key_cert_exts *a)
 {
     if (a == NULL) {
         return;
@@ -64,36 +65,24 @@ make_default_extensions(cert_ext a)
 /**
  * @brief helper function for comparing two lists of critical options
  */
-static int
+static void
 assert_copts_equal(cert_opt a, cert_opt b)
 {
-    if (a->verify_required != b->verify_required)
-        goto fail;
+    assert_int_equal(a->verify_required, b->verify_required);
 
-    if ((a->force_command != NULL && b->force_command != NULL) &&
-        strcmp(a->force_command, b->force_command) != 0) {
-        goto fail;
+    if (a->force_command != NULL && b->force_command != NULL) {
+        assert_string_equal(a->force_command, b->force_command);
+    } else {
+        assert_null(a->force_command);
+        assert_null(b->force_command);
     }
 
-    if ((a->force_command == NULL && b->force_command != NULL) ||
-        (a->force_command != NULL && b->force_command == NULL)) {
-        goto fail;
+    if (a->source_address != NULL && b->source_address != NULL) {
+        assert_string_equal(a->source_address, b->source_address);
+    } else {
+        assert_null(a->source_address);
+        assert_null(b->source_address);
     }
-
-    if ((a->source_address != NULL && b->source_address != NULL) &&
-        strcmp(a->source_address, b->source_address) != 0) {
-        goto fail;
-    }
-
-    if ((a->source_address == NULL && b->source_address != NULL) ||
-        (a->source_address != NULL && b->source_address == NULL)) {
-        goto fail;
-    }
-
-    return 1;
-
-fail:
-    return 0;
 }
 
 /**
@@ -144,7 +133,7 @@ setup_default_cert(void **state)
     cert->valid_after = 19990101;
     cert->valid_before = 19991231;
 
-    make_default_extensions(cert->extensions);
+    make_default_extensions(&cert->extensions);
     rc = ssh_pki_import_pubkey_file(CERT_DIR "/user_ca.pub",
                                     &cert->signature_key);
     if (rc != SSH_OK) {
@@ -211,12 +200,10 @@ torture_pki_parse_cert_data(void **state, const char *filename)
         }
     }
 
-    rc = assert_copts_equal(test_cert->critical_options,
-                            expected_cert->critical_options);
-    assert_int_equal(rc, 1);
+    assert_copts_equal(test_cert->critical_options,
+                       expected_cert->critical_options);
 
-    assert_int_equal(test_cert->extensions->ext,
-                     expected_cert->extensions->ext);
+    assert_int_equal(test_cert->extensions.ext, expected_cert->extensions.ext);
 
     rc = ssh_key_cmp(test_cert->signature_key,
                      expected_cert->signature_key,
@@ -266,7 +253,7 @@ torture_cert_all_exts(void **state)
     ssh_cert cert = *state;
 
     cert->serial = 1;
-    cert->extensions->ext |= NO_TOUCH_REQUIRED;
+    cert->extensions.ext |= NO_TOUCH_REQUIRED;
 
     torture_pki_parse_cert_data(state, CERT_DIR "/all_exts.cert");
 }
@@ -289,12 +276,7 @@ torture_cert_no_exts(void **state)
     unsigned int i;
 
     cert->serial = 2;
-    cert->extensions->ext &= NO_TOUCH_REQUIRED;
-    cert->extensions->ext &= PERMIT_X11_FORWARDING;
-    cert->extensions->ext &= PERMIT_AGENT_FORWARDING;
-    cert->extensions->ext &= PERMIT_PORT_FORWARDING;
-    cert->extensions->ext &= PERMIT_PTY;
-    cert->extensions->ext &= PERMIT_USER_RC;
+    cert->extensions.ext = 0;
 
     for (i = 0; i < cert->n_principals; i++) {
         SAFE_FREE(cert->principals[i]);
@@ -323,7 +305,7 @@ torture_cert_force_command(void **state)
      * Signature key    /tests/cert/user_ca.pub
      */
     ssh_cert cert = *state;
-    char *option;
+    char *option = NULL;
 
     cert->serial = 3;
     option = strdup("/path/to/run.sh");
@@ -349,7 +331,7 @@ torture_cert_source_address(void **state)
      * Signature key    /tests/cert/user_ca.pub
      */
     ssh_cert cert = *state;
-    char *option;
+    char *option = NULL;
     int rc;
     unsigned int i;
 
@@ -363,10 +345,13 @@ torture_cert_source_address(void **state)
     rc = generate_n_principals(&cert->principals, 4);
     assert_int_equal(rc, 0);
 
+#ifdef _WIN32
+    cert->critical_options->source_address = NULL;
+#else
     option = strdup("127.0.0.1/32,::1/128");
     assert_non_null(option);
-
     cert->critical_options->source_address = option;
+#endif
 
     torture_pki_parse_cert_data(state, CERT_DIR "/source_address.cert");
 }
@@ -423,7 +408,7 @@ torture_cert_all_options(void **state)
      * Signature key    /tests/cert/user_ca.pub
      */
     ssh_cert cert = *state;
-    char *option_a, *option_b;
+    char *option_a = NULL, *option_b = NULL;
 
     cert->serial = 6;
 
@@ -431,12 +416,16 @@ torture_cert_all_options(void **state)
     assert_non_null(option_a);
     cert->critical_options->force_command = option_a;
 
+#ifdef _WIN32
+    cert->critical_options->source_address = NULL;
+#else
     option_b = strdup("127.0.0.1/32,::1/128");
     assert_non_null(option_b);
     cert->critical_options->source_address = option_b;
+#endif
 
     cert->critical_options->verify_required = true;
-    cert->extensions->ext |= NO_TOUCH_REQUIRED;
+    cert->extensions.ext |= NO_TOUCH_REQUIRED;
 
     torture_pki_parse_cert_data(state, CERT_DIR "/all_options.cert");
 }
@@ -465,11 +454,7 @@ torture_cert_no_all(void **state)
     cert->valid_after = 0;
     cert->valid_before = 0;
 
-    cert->extensions->ext &= NO_TOUCH_REQUIRED;
-    cert->extensions->ext &= PERMIT_X11_FORWARDING;
-    cert->extensions->ext &= PERMIT_AGENT_FORWARDING;
-    cert->extensions->ext &= PERMIT_PORT_FORWARDING;
-    cert->extensions->ext &= PERMIT_PTY;
+    cert->extensions.ext = 0;
 
     torture_pki_parse_cert_data(state, CERT_DIR "/no_all.cert");
 }
@@ -496,11 +481,7 @@ torture_cert_host(void **state)
     cert->principals[0] = strdup("hostname");
     assert_non_null(cert->principals[0]);
 
-    cert->extensions->ext &= NO_TOUCH_REQUIRED;
-    cert->extensions->ext &= PERMIT_X11_FORWARDING;
-    cert->extensions->ext &= PERMIT_AGENT_FORWARDING;
-    cert->extensions->ext &= PERMIT_PORT_FORWARDING;
-    cert->extensions->ext &= PERMIT_PTY;
+    cert->extensions.ext = 0;
 
     torture_pki_parse_cert_data(state, CERT_DIR "/host.cert");
 }
@@ -686,7 +667,7 @@ setup_cert_buffer(uint64_t serial,
                   int n_exts,
                   const char **extensions)
 {
-    ssh_buffer cert_data = NULL;
+    ssh_buffer cert_data = NULL, ret = NULL;
     ssh_string principals_s = NULL, critical_options_s = NULL,
                extensions_s = NULL, sign_key_s = NULL, signature_s = NULL,
                reserved = NULL;
@@ -697,43 +678,44 @@ setup_cert_buffer(uint64_t serial,
     /* Initialize certificate buffer */
     cert_data = ssh_buffer_new();
     if (cert_data == NULL) {
-        goto fail;
+        goto out;
     }
 
     /* Serialize and convert principals to a blob */
     principals_s = make_principals(principals, n_princ);
     if (principals_s == NULL) {
-        goto fail;
+        goto out;
     }
 
     /* Create an empty ssh_string for the reserved field */
     reserved = ssh_string_new(0);
     if (reserved == NULL) {
-        goto fail;
+        goto out;
     }
 
     /* Serialize and convert critical options to a blob */
     critical_options_s = make_extensions(critical_options, n_crit);
     if (critical_options_s == NULL) {
-        goto fail;
+        goto out;
     }
 
     /* Serialize and convert extensions to a blob */
     extensions_s = make_extensions(extensions, n_exts);
     if (extensions_s == NULL) {
-        goto fail;
+        goto out;
     }
 
     /* Import the CA public key as the signature key of the certificate */
     rc = ssh_pki_import_pubkey_file(CERT_DIR "/user_ca.pub", &sign_key_public);
+    assert_return_code(rc, errno);
     if (rc != SSH_OK) {
-        goto fail;
+        goto out;
     }
 
     /* Convert the CA public key to a blob */
     sign_key_s = pki_key_to_blob(sign_key_public, SSH_KEY_PUBLIC);
     if (sign_key_s == NULL) {
-        goto fail;
+        goto out;
     }
 
     /*
@@ -750,22 +732,24 @@ setup_cert_buffer(uint64_t serial,
                                      NULL,
                                      NULL,
                                      &sign_key_private);
+    assert_return_code(rc, errno);
     if (rc != SSH_OK) {
-        goto fail;
+        goto out;
     }
 
     signature = pki_sign_data(sign_key_private,
                               SSH_DIGEST_SHA512,
-                              INPUT,
-                              sizeof(INPUT));
+                              BASE_INPUT,
+                              sizeof(BASE_INPUT));
     if (signature == NULL) {
-        goto fail;
+        goto out;
     }
 
     /* Convert the signature to a blob */
     rc = ssh_pki_export_signature_blob(signature, &signature_s);
+    assert_return_code(rc, errno);
     if (rc != SSH_OK) {
-        goto fail;
+        goto out;
     }
 
     /* Pack all the certificate fields into the buffer */
@@ -782,22 +766,15 @@ setup_cert_buffer(uint64_t serial,
                          reserved,
                          sign_key_s,
                          signature_s);
+    assert_return_code(rc, errno);
     if (rc != SSH_OK) {
-        goto fail;
+        goto out;
     }
 
-    SSH_STRING_FREE(principals_s);
-    SSH_STRING_FREE(critical_options_s);
-    SSH_STRING_FREE(extensions_s);
-    SSH_STRING_FREE(sign_key_s);
-    SSH_STRING_FREE(signature_s);
-    SSH_STRING_FREE(reserved);
-    SSH_KEY_FREE(sign_key_private);
-    SSH_KEY_FREE(sign_key_public);
-    SSH_SIGNATURE_FREE(signature);
-    return cert_data;
+    ret = cert_data;
+    cert_data = NULL;
 
-fail:
+out:
     SSH_STRING_FREE(principals_s);
     SSH_STRING_FREE(critical_options_s);
     SSH_STRING_FREE(extensions_s);
@@ -808,7 +785,7 @@ fail:
     SSH_KEY_FREE(sign_key_public);
     SSH_SIGNATURE_FREE(signature);
     SSH_BUFFER_FREE(cert_data);
-    return NULL;
+    return ret;
 }
 
 static void
@@ -823,8 +800,7 @@ torture_parse_cert_data_valid(void **state)
                           "no-touch-required",
                           "permit-user-rc",
                           "permit-agent-forwarding"};
-    const char *c_opts[] = {"force-command=foo",
-                            "source-address=127.0.0.1/32"};
+    const char *c_opts[] = {"force-command=foo", "source-address=127.0.0.1/32"};
 
     (void)state;
 
@@ -1015,6 +991,56 @@ torture_parse_cert_data_invalid_double_opts(void **state)
     SSH_KEY_FREE(tmp_key);
 }
 
+static void
+torture_parse_cert_data_invalid_double_exts(void **state)
+{
+    ssh_buffer cert_data = NULL;
+    ssh_key tmp_key = NULL;
+    int rc, n_exts, n_crit;
+
+    const char *exts[] = {"permit-x11-forwarding",
+                          "no-touch-required",
+                          "permit-user-rc",
+                          "permit-user-rc",
+                          "permit-pty"};
+    const char *c_opts[] = {"force-command=/usr/bin/run.sh"};
+
+    (void)state;
+
+    n_crit = sizeof(c_opts) / sizeof(c_opts[0]);
+    n_exts = sizeof(exts) / sizeof(exts[0]);
+
+    /* Just for test, no principals are defined (cert valid to everyone) */
+    cert_data = setup_cert_buffer(1,
+                                  SSH_CERT_TYPE_USER,
+                                  "test@libssh.com",
+                                  0,
+                                  NULL,
+                                  1704067261,
+                                  1735689599,
+                                  n_crit,
+                                  c_opts,
+                                  n_exts,
+                                  exts);
+    assert_non_null(cert_data);
+
+    /*
+     * The initialisation of the key is not required but pki_parse_cert_data
+     * requires a pointer to a key where to store the certificate fields.
+     * For this reason the key is just initialized but not filled with any
+     * actual key. It has just a support role for running the test.
+     */
+    tmp_key = ssh_key_new();
+    assert_non_null(tmp_key);
+
+    rc = pki_parse_cert_data(cert_data, tmp_key);
+    assert_int_equal(rc, SSH_ERROR);
+    assert_null(tmp_key->cert_data);
+
+    SSH_BUFFER_FREE(cert_data);
+    SSH_KEY_FREE(tmp_key);
+}
+
 /**
  * @brief helper function for negative tests on pki_cert_unpack_auth_options
  */
@@ -1094,7 +1120,12 @@ torture_pki_cert_unpack_invalid_copts(void **state)
                                               NULL,
                                               SSH_CERT_TYPE_USER);
 
+#ifdef _WIN32
+    /* When running on Windows, unsupported critical options are skipped */
+    assert_int_equal(rc, 0);
+#else
     assert_int_equal(rc, -1);
+#endif
 }
 
 static void
@@ -1174,7 +1205,7 @@ torture_pki_cert_unpack_principals(void **state)
     char **princs = NULL;
     ssh_cert cert = NULL;
     ssh_string principals = NULL;
-    int rc, n_princs = 100, i;
+    int rc, n_princs = 300, i;
 
     (void)state;
 
@@ -1195,18 +1226,14 @@ torture_pki_cert_unpack_principals(void **state)
     }
 
     /*
-     * In this test we are just passing to pki_cert_unpack_principals
-     * a big number of principals (100).
-     * TODO: understand if we should put a maximum number on principals.
-     *       OpenSSH PROTOCOL.certkeys doesn't say anything about it but looking
-     *       at ssh-keygen code the maximum number of principals is set to 250.
-     *       If we decide to put a cap on principals this test makes more sense.
+     * In this test we are passing to pki_cert_unpack_principals a number of
+     * principals (300) that exceeds the maximum allowed (256).
      */
     rc = pki_cert_unpack_principals(cert, principals);
-    assert_int_equal(rc, 0);
+    assert_int_equal(rc, -1);
 
-    assert_int_equal(cert->n_principals, n_princs);
-    assert_non_null(cert->principals);
+    assert_int_equal(cert->n_principals, 0);
+    assert_null(cert->principals);
 
     if (princs != NULL) {
         for (i = 0; i < n_princs; i++) {
@@ -1250,15 +1277,19 @@ torture_pki_cert_unpack_principals_invalid_format(void **state)
     assert_non_null(buffer);
 
     /*
-     * In this test we are packing the principals as "d" (uint32_t)
-     * instead of "s" (C string) on purpose. The pki_cert_unpack_principals
-     * fails only if there are errors while allocating memory or errors while
-     * unpacking data from the buffer. Packing the principals as "d" will make
+     * In this test we are packing some junk (integer values) on purpose. The
+     * pki_cert_unpack_principals fails only if there are errors while
+     * allocating memory or errors while unpacking data from the buffer.
+     * Packing the principals with junk integers before them will make
      * pki_cert_unpack_principals fail.
      */
     n_princs = sizeof(princs) / sizeof(princs[0]);
     for (i = 0; i < n_princs; i++) {
-        rc = ssh_buffer_pack(buffer, "d", princs[i]);
+        rc = ssh_buffer_pack(buffer, "w", i);
+        assert_int_equal(rc, SSH_OK);
+    }
+    for (i = 0; i < n_princs; i++) {
+        rc = ssh_buffer_pack(buffer, "s", princs[i]);
         assert_int_equal(rc, SSH_OK);
     }
 
@@ -1317,6 +1348,7 @@ torture_run_tests(void)
         cmocka_unit_test(torture_parse_cert_data_invalid_crit_opt),
         cmocka_unit_test(torture_parse_cert_data_invalid_exts),
         cmocka_unit_test(torture_parse_cert_data_invalid_double_opts),
+        cmocka_unit_test(torture_parse_cert_data_invalid_double_exts),
         cmocka_unit_test(torture_pki_cert_unpack_invalid_copts),
         cmocka_unit_test(torture_pki_cert_unpack_invalid_copts_host),
         cmocka_unit_test(torture_pki_cert_unpack_invalid_exts),
