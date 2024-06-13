@@ -1335,6 +1335,7 @@ int pki_import_privkey_buffer(enum ssh_keytypes_e type,
             break;
 #endif /* HAVE_ECC */
         case SSH_KEYTYPE_ED25519:
+        case SSH_KEYTYPE_ED25519_CERT01:
             {
                 ssh_string pubkey = NULL, privkey = NULL;
 
@@ -1358,7 +1359,6 @@ int pki_import_privkey_buffer(enum ssh_keytypes_e type,
         case SSH_KEYTYPE_ECDSA_P256_CERT01:
         case SSH_KEYTYPE_ECDSA_P384_CERT01:
         case SSH_KEYTYPE_ECDSA_P521_CERT01:
-        case SSH_KEYTYPE_ED25519_CERT01:
         case SSH_KEYTYPE_SK_ECDSA:
         case SSH_KEYTYPE_SK_ECDSA_CERT01:
         case SSH_KEYTYPE_SK_ED25519:
