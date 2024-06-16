@@ -45,6 +45,22 @@ fail:
 }
 
 /**
+ * @brief helper function for freeing certificate principals list
+ */
+static void
+free_principals(ssh_cert cert)
+{
+    unsigned int i;
+
+    if (cert->principals != NULL) {
+        for (i = 0; i < cert->n_principals; i++) {
+            SAFE_FREE(cert->principals[i]);
+        }
+        SAFE_FREE(cert->principals);
+    }
+}
+
+/**
  * @brief helper function for setting up the default extensions in the bitmap.
  * (see OpenSSH PROTOCOL.certkeys for the default extensions)
  */
@@ -54,6 +70,8 @@ make_default_extensions(struct ssh_key_cert_exts *a)
     if (a == NULL) {
         return;
     }
+
+    a->ext = 0;
 
     a->ext |= PERMIT_X11_FORWARDING;
     a->ext |= PERMIT_AGENT_FORWARDING;
@@ -126,12 +144,9 @@ setup_default_cert(void **state)
         goto fail;
     }
 
-    cert->principals[0] = strdup("user1");
-    if (cert->principals[0] == NULL) {
-        goto fail;
-    }
-    cert->valid_after = 19990101;
-    cert->valid_before = 19991231;
+    generate_n_principals(&cert->principals, 1);
+    cert->valid_after = 915145200;
+    cert->valid_before = 946594800;
 
     make_default_extensions(&cert->extensions);
     rc = ssh_pki_import_pubkey_file(CERT_DIR "/user_ca.pub",
@@ -199,6 +214,9 @@ torture_pki_parse_cert_data(void **state, const char *filename)
             goto fail;
         }
     }
+
+    assert_int_equal(test_cert->valid_before, expected_cert->valid_before);
+    assert_int_equal(test_cert->valid_after, expected_cert->valid_after);
 
     assert_copts_equal(test_cert->critical_options,
                        expected_cert->critical_options);
@@ -273,15 +291,11 @@ torture_cert_no_exts(void **state)
      */
     ssh_cert cert = *state;
     int rc;
-    unsigned int i;
 
     cert->serial = 2;
     cert->extensions.ext = 0;
 
-    for (i = 0; i < cert->n_principals; i++) {
-        SAFE_FREE(cert->principals[i]);
-    }
-    SAFE_FREE(cert->principals);
+    free_principals(cert);
     cert->n_principals = 6;
     rc = generate_n_principals(&cert->principals, 6);
     assert_int_equal(rc, 0);
@@ -333,14 +347,10 @@ torture_cert_source_address(void **state)
     ssh_cert cert = *state;
     char *option = NULL;
     int rc;
-    unsigned int i;
 
     cert->serial = 4;
 
-    for (i = 0; i < cert->n_principals; i++) {
-        SAFE_FREE(cert->principals[i]);
-    }
-    SAFE_FREE(cert->principals);
+    free_principals(cert);
     cert->n_principals = 4;
     rc = generate_n_principals(&cert->principals, 4);
     assert_int_equal(rc, 0);
@@ -373,14 +383,10 @@ torture_cert_verify_required(void **state)
      */
     ssh_cert cert = *state;
     int rc;
-    unsigned int i;
 
     cert->serial = 5;
 
-    for (i = 0; i < cert->n_principals; i++) {
-        SAFE_FREE(cert->principals[i]);
-    }
-    SAFE_FREE(cert->principals);
+    free_principals(cert);
     cert->n_principals = 9;
     rc = generate_n_principals(&cert->principals, 9);
     assert_int_equal(rc, 0);
@@ -447,12 +453,11 @@ torture_cert_no_all(void **state)
 
     cert->serial = 7;
 
-    SAFE_FREE(cert->principals[0]);
-    SAFE_FREE(cert->principals);
+    free_principals(cert);
     cert->n_principals = 0;
 
     cert->valid_after = 0;
-    cert->valid_before = 0;
+    cert->valid_before = 0xffffffffffffffffULL;
 
     cert->extensions.ext = 0;
 
@@ -792,7 +797,7 @@ static void
 torture_parse_cert_data_valid(void **state)
 {
     ssh_buffer cert_data = NULL;
-    ssh_key tmp_key = NULL;
+    ssh_cert cert = NULL;
     int rc, n_princ, n_exts, n_crit;
 
     const char *principals[] = {"user", "test", "root"};
@@ -821,27 +826,21 @@ torture_parse_cert_data_valid(void **state)
                                   exts);
     assert_non_null(cert_data);
 
-    /*
-     * The initialisation of the key is not required but pki_parse_cert_data
-     * requires a pointer to a key where to store the certificate fields.
-     * For this reason the key is just initialized but not filled with any
-     * actual key. It has just a support role for running the test.
-     */
-    tmp_key = ssh_key_new();
-    assert_non_null(tmp_key);
+    cert = ssh_cert_new();
+    assert_non_null(cert);
 
-    rc = pki_parse_cert_data(cert_data, tmp_key);
+    rc = pki_parse_cert_data(cert_data, cert);
     assert_int_equal(rc, SSH_OK);
 
     SSH_BUFFER_FREE(cert_data);
-    SSH_KEY_FREE(tmp_key);
+    SSH_CERT_FREE(cert);
 }
 
 static void
 torture_parse_cert_data_invalid_crit_opt(void **state)
 {
     ssh_buffer cert_data = NULL;
-    ssh_key tmp_key = NULL;
+    ssh_cert cert = NULL;
     int rc, n_princ, n_exts, n_crit;
 
     const char *principals[] = {"user", "alice", "bob"};
@@ -871,28 +870,21 @@ torture_parse_cert_data_invalid_crit_opt(void **state)
                                   exts);
     assert_non_null(cert_data);
 
-    /*
-     * The initialisation of the key is not required but pki_parse_cert_data
-     * requires a pointer to a key where to store the certificate fields.
-     * For this reason the key is just initialized but not filled with any
-     * actual key. It has just a support role for running the test.
-     */
-    tmp_key = ssh_key_new();
-    assert_non_null(tmp_key);
+    cert = ssh_cert_new();
+    assert_non_null(cert);
 
-    rc = pki_parse_cert_data(cert_data, tmp_key);
+    rc = pki_parse_cert_data(cert_data, cert);
     assert_int_equal(rc, SSH_ERROR);
-    assert_null(tmp_key->cert_data);
 
     SSH_BUFFER_FREE(cert_data);
-    SSH_KEY_FREE(tmp_key);
+    SSH_CERT_FREE(cert);
 }
 
 static void
 torture_parse_cert_data_invalid_exts(void **state)
 {
     ssh_buffer cert_data = NULL;
-    ssh_key tmp_key = NULL;
+    ssh_cert cert = NULL;
     int rc, n_princ, n_exts, n_crit;
 
     const char *principals[] = {"user123"};
@@ -923,29 +915,22 @@ torture_parse_cert_data_invalid_exts(void **state)
                                   exts);
     assert_non_null(cert_data);
 
-    /*
-     * The initialisation of the key is not required but pki_parse_cert_data
-     * requires a pointer to a key where to store the certificate fields.
-     * For this reason the key is just initialized but not filled with any
-     * actual key. It has just a support role for running the test.
-     */
-    tmp_key = ssh_key_new();
-    assert_non_null(tmp_key);
+    cert = ssh_cert_new();
+    assert_non_null(cert);
 
     /* It should ignore the unrecognized extension -> rc = SSH_OK */
-    rc = pki_parse_cert_data(cert_data, tmp_key);
+    rc = pki_parse_cert_data(cert_data, cert);
     assert_int_equal(rc, SSH_OK);
-    assert_non_null(tmp_key->cert_data);
 
     SSH_BUFFER_FREE(cert_data);
-    SSH_KEY_FREE(tmp_key);
+    SSH_CERT_FREE(cert);
 }
 
 static void
 torture_parse_cert_data_invalid_double_opts(void **state)
 {
     ssh_buffer cert_data = NULL;
-    ssh_key tmp_key = NULL;
+    ssh_cert cert = NULL;
     int rc, n_exts, n_crit;
 
     const char *exts[] = {"permit-x11-forwarding",
@@ -974,28 +959,21 @@ torture_parse_cert_data_invalid_double_opts(void **state)
                                   exts);
     assert_non_null(cert_data);
 
-    /*
-     * The initialisation of the key is not required but pki_parse_cert_data
-     * requires a pointer to a key where to store the certificate fields.
-     * For this reason the key is just initialized but not filled with any
-     * actual key. It has just a support role for running the test.
-     */
-    tmp_key = ssh_key_new();
-    assert_non_null(tmp_key);
+    cert = ssh_cert_new();
+    assert_non_null(cert);
 
-    rc = pki_parse_cert_data(cert_data, tmp_key);
+    rc = pki_parse_cert_data(cert_data, cert);
     assert_int_equal(rc, SSH_ERROR);
-    assert_null(tmp_key->cert_data);
 
     SSH_BUFFER_FREE(cert_data);
-    SSH_KEY_FREE(tmp_key);
+    SSH_CERT_FREE(cert);
 }
 
 static void
 torture_parse_cert_data_invalid_double_exts(void **state)
 {
     ssh_buffer cert_data = NULL;
-    ssh_key tmp_key = NULL;
+    ssh_cert cert = NULL;
     int rc, n_exts, n_crit;
 
     const char *exts[] = {"permit-x11-forwarding",
@@ -1024,21 +1002,14 @@ torture_parse_cert_data_invalid_double_exts(void **state)
                                   exts);
     assert_non_null(cert_data);
 
-    /*
-     * The initialisation of the key is not required but pki_parse_cert_data
-     * requires a pointer to a key where to store the certificate fields.
-     * For this reason the key is just initialized but not filled with any
-     * actual key. It has just a support role for running the test.
-     */
-    tmp_key = ssh_key_new();
-    assert_non_null(tmp_key);
+    cert = ssh_cert_new();
+    assert_non_null(cert);
 
-    rc = pki_parse_cert_data(cert_data, tmp_key);
+    rc = pki_parse_cert_data(cert_data, cert);
     assert_int_equal(rc, SSH_ERROR);
-    assert_null(tmp_key->cert_data);
 
     SSH_BUFFER_FREE(cert_data);
-    SSH_KEY_FREE(tmp_key);
+    SSH_CERT_FREE(cert);
 }
 
 /**
@@ -1235,12 +1206,7 @@ torture_pki_cert_unpack_principals(void **state)
     assert_int_equal(cert->n_principals, 0);
     assert_null(cert->principals);
 
-    if (princs != NULL) {
-        for (i = 0; i < n_princs; i++) {
-            SAFE_FREE(princs[i]);
-        }
-        SAFE_FREE(princs);
-    }
+    free_principals(cert);
     SSH_STRING_FREE(principals);
     SSH_CERT_FREE(cert);
     return;

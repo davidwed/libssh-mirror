@@ -39,7 +39,7 @@
  *
  * @returns an empty ssh_cert handle, or NULL on error.
  */
-static ssh_cert
+ssh_cert
 ssh_cert_new(void)
 {
     ssh_cert ptr = calloc(1, sizeof(struct ssh_key_cert_struct));
@@ -68,6 +68,9 @@ ssh_cert_clean(ssh_cert cert)
     if (cert == NULL) {
         return;
     }
+
+    /* Clean nonce */
+    SSH_STRING_FREE(cert->nonce);
 
     /* Clean key id */
     SAFE_FREE(cert->key_id);
@@ -224,7 +227,7 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                 break;
             }
 
-            if (strcmp(name, "force-command") == 0) {
+            if (strcmp(name, "force-command") == 0 && value != NULL) {
                 if (cert->type == SSH_CERT_TYPE_HOST) {
                     SSH_LOG(SSH_LOG_TRACE,
                             "Critical options for Host Certificates "
@@ -250,7 +253,7 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                     rc = -1;
                     break;
                 }
-            } else if (strcmp(name, "source-address") == 0) {
+            } else if (strcmp(name, "source-address") == 0 && value != NULL) {
                 if (cert->type == SSH_CERT_TYPE_HOST) {
                     SSH_LOG(SSH_LOG_TRACE,
                             "Critical options for Host Certificates "
@@ -302,7 +305,7 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                     break;
                 }
 
-                if (cert->critical_options->verify_required) {
+                if (cert->critical_options->verify_required && value == NULL) {
                     SSH_LOG(SSH_LOG_TRACE,
                             "Certificate contains multiple"
                             "verify-required options");
@@ -524,16 +527,14 @@ fail:
  *
  */
 int
-pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
+pki_parse_cert_data(ssh_buffer buffer, ssh_cert cert)
 {
-    ssh_cert cert = NULL;
     ssh_key signature_key = NULL;
     ssh_signature signature = NULL;
     ssh_string principals = NULL, ext = NULL, c_opts = NULL, sign_key = NULL,
                sign = NULL, reserved = NULL;
     int rc;
 
-    cert = ssh_cert_new();
     if (cert == NULL) {
         goto fail;
     }
@@ -630,11 +631,9 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey)
     cert->signature = signature;
     SSH_STRING_FREE(sign);
 
-    pkey->cert_data = cert;
     return SSH_OK;
 
 fail:
-    SSH_CERT_FREE(cert);
     SSH_SIGNATURE_FREE(signature);
     SSH_KEY_FREE(signature_key);
     SSH_STRING_FREE(principals);

@@ -1537,8 +1537,8 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
                                   enum ssh_keytypes_e type,
                                   ssh_key *pkey)
 {
-    ssh_buffer cert;
-    ssh_string tmp_s;
+    ssh_buffer cert = NULL;
+    ssh_string tmp_s = NULL, nonce = NULL;
     const char *type_c;
     ssh_key key = NULL;
     int rc;
@@ -1568,14 +1568,15 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
     }
 
     /*
-     * After the key type, comes an ssh_string nonce. Just after this comes the
-     * cert public key, which can be parsed out of the buffer.
+     * After the key type, comes an ssh_string nonce. The nonce will be stored
+     * later when the ssh_key key will be initialized next in the code.
+     * Just after this comes the cert public key, which can be parsed
+     * out of the buffer.
      */
-    tmp_s = ssh_buffer_get_ssh_string(buffer);
-    if (tmp_s == NULL) {
+    nonce = ssh_buffer_get_ssh_string(buffer);
+    if (nonce == NULL) {
         goto fail;
     }
-    SSH_STRING_FREE(tmp_s);
 
     switch (type) {
         case SSH_KEYTYPE_RSA_CERT01:
@@ -1606,7 +1607,16 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
         goto fail;
     }
 
-    rc = pki_parse_cert_data(buffer, key);
+    /* Initialize the key->cert_data structure */
+    key->cert_data = ssh_cert_new();
+    if (key->cert_data == NULL) {
+        goto fail;
+    }
+
+    /* Store the previously parsed nonce into key->cert_data */
+    key->cert_data->nonce = nonce;
+
+    rc = pki_parse_cert_data(buffer, key->cert_data);
     if (rc != SSH_OK) {
         SSH_LOG(SSH_LOG_TRACE, "Error while parsing certificate fields");
         goto fail;
@@ -1621,6 +1631,8 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
 
 fail:
     ssh_key_free(key);
+    SSH_STRING_FREE(tmp_s);
+    SSH_STRING_FREE(nonce);
     SSH_BUFFER_FREE(cert);
     return SSH_ERROR;
 }

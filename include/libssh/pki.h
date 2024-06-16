@@ -123,6 +123,7 @@ enum ssh_key_cert_exts_flags {
 };
 
 struct ssh_key_cert_struct {
+    ssh_string nonce;
     unsigned int type;
     uint64_t serial;
     char *key_id;
@@ -165,7 +166,8 @@ enum ssh_digest_e ssh_key_hash_from_name(const char *name);
      (kt) <= SSH_KEYTYPE_ED25519_CERT01))
 
 /* SSH Certificate Functions */
-int pki_parse_cert_data(ssh_buffer buffer, ssh_key pkey);
+ssh_cert ssh_cert_new(void);
+int pki_parse_cert_data(ssh_buffer buffer, ssh_cert cert);
 void ssh_cert_free(ssh_cert cert);
 #define SSH_CERT_FREE(x) \
     do { if ((x) != NULL) { ssh_cert_free(x); x = NULL; } } while(0)
