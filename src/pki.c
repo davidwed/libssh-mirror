@@ -2365,6 +2365,7 @@ int ssh_pki_copy_cert_to_privkey(const ssh_key certkey, ssh_key privkey) {
 
   privkey->cert = cert_buffer;
   privkey->cert_type = certkey->type;
+  privkey->cert_data = certkey->cert_data;
   return SSH_OK;
 }
 

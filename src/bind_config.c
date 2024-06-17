@@ -110,6 +110,11 @@ ssh_bind_config_keyword_table[] = {
         .allowed_in_match = false
     },
     {
+        .name   = "hostcertificate",
+        .opcode = BIND_CFG_HOST_CERTIFICATE,
+        .allowed_in_match = false
+    },
+    {
         .opcode = BIND_CFG_UNKNOWN,
     }
 };
@@ -371,6 +376,20 @@ ssh_bind_config_parse_line(ssh_bind bind,
                 SSH_LOG(SSH_LOG_TRACE,
                         "line %d: Failed to set Hostkey value '%s'",
                         count, p);
+            }
+        }
+        break;
+    case BIND_CFG_HOST_CERTIFICATE:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(bind,
+                                      SSH_BIND_OPTIONS_HOST_CERTIFICATE,
+                                      p);
+            if (rc != 0) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "line %d: Failed to set HostCertificate value '%s'",
+                        count,
+                        p);
             }
         }
         break;

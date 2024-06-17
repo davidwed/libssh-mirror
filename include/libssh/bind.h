@@ -55,6 +55,12 @@ struct ssh_bind_struct {
   char* moduli_file;
   int rsa_min_size;
   char *trusted_user_ca_keys_file;
+  char *ecdsa_cert_file;
+  char *rsa_cert_file;
+  char *ed25519_cert_file;
+  ssh_key ecdsa_cert;
+  ssh_key rsa_cert;
+  ssh_key ed25519_cert;
 };
 
 struct ssh_poll_handle_struct *ssh_bind_get_poll(struct ssh_bind_struct

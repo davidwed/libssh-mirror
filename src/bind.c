@@ -410,6 +410,9 @@ void ssh_bind_free(ssh_bind sshbind){
   ssh_key_free(sshbind->ed25519);
   sshbind->ed25519 = NULL;
 
+  SSH_KEY_FREE(sshbind->rsa_cert);
+  SAFE_FREE(sshbind->rsa_cert_file);
+
   for (i = 0; i < SSH_KEX_METHODS; i++) {
     if (sshbind->wanted_methods[i]) {
       SAFE_FREE(sshbind->wanted_methods[i]);
