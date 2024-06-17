@@ -264,10 +264,14 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                 }
 
 #ifdef _WIN32
+                /*
+                 * Unsupported source-address option on Windows is just stored
+                 * without any check on its validity and later discarded during
+                 * the actual use and validation of the certificate
+                 */
                 SSH_LOG(SSH_LOG_TRACE,
                         "Critical option source-address is not"
                         "supported on Windows");
-                continue;
 #endif
 
                 if (cert->critical_options->source_address != NULL) {
@@ -286,6 +290,7 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                             value);
                     break;
                 }
+#endif
                 cert->critical_options->source_address = strdup(value);
                 if (cert->critical_options->source_address == NULL) {
                     SSH_LOG(SSH_LOG_TRACE,
@@ -294,7 +299,6 @@ pki_cert_unpack_auth_options(ssh_cert cert, ssh_string field, int what)
                     rc = -1;
                     break;
                 }
-#endif
             } else if (strcmp(name, "verify-required") == 0) {
                 if (cert->type == SSH_CERT_TYPE_HOST) {
                     SSH_LOG(SSH_LOG_TRACE,

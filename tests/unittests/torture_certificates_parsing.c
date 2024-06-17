@@ -355,13 +355,9 @@ torture_cert_source_address(void **state)
     rc = generate_n_principals(&cert->principals, 4);
     assert_int_equal(rc, 0);
 
-#ifdef _WIN32
-    cert->critical_options->source_address = NULL;
-#else
     option = strdup("127.0.0.1/32,::1/128");
     assert_non_null(option);
     cert->critical_options->source_address = option;
-#endif
 
     torture_pki_parse_cert_data(state, CERT_DIR "/source_address.cert");
 }
@@ -422,13 +418,9 @@ torture_cert_all_options(void **state)
     assert_non_null(option_a);
     cert->critical_options->force_command = option_a;
 
-#ifdef _WIN32
-    cert->critical_options->source_address = NULL;
-#else
     option_b = strdup("127.0.0.1/32,::1/128");
     assert_non_null(option_b);
     cert->critical_options->source_address = option_b;
-#endif
 
     cert->critical_options->verify_required = true;
     cert->extensions.ext |= NO_TOUCH_REQUIRED;
@@ -1092,7 +1084,10 @@ torture_pki_cert_unpack_invalid_copts(void **state)
                                               SSH_CERT_TYPE_USER);
 
 #ifdef _WIN32
-    /* When running on Windows, unsupported critical options are skipped */
+    /*
+     * When running on Windows, the unsupported source-address option
+     * is just stored and no validity check is performed
+     */
     assert_int_equal(rc, 0);
 #else
     assert_int_equal(rc, -1);
