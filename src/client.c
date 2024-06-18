@@ -239,6 +239,35 @@ end:
     return rc;
 }
 
+static int ssh_client_send_extensions(ssh_session session)
+{
+    int rc;
+
+    SSH_LOG(SSH_LOG_PACKET, "Sending SSH_MSG_EXT_INFO");
+
+    rc = ssh_buffer_pack(session->out_buffer,
+                         "bdss",
+                         SSH2_MSG_EXT_INFO,
+                         1, /* nr. of extensions */
+                         "ext-info-in-auth@openssh.com",
+                         "0");
+    if (rc != SSH_OK) {
+        goto error;
+    }
+
+    rc = ssh_packet_send(session);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    return 0;
+error:
+    ssh_buffer_reinit(session->out_buffer);
+
+    return -1;
+}
+
+
 /** @internal
  * @brief launches the DH handshake state machine
  * @param session session handle
@@ -466,6 +495,28 @@ static void ssh_client_connection_callback(ssh_session session)
         FALL_THROUGH;
     case SSH_SESSION_STATE_DH:
         if (session->dh_handshake_state == DH_STATE_FINISHED) {
+
+            /*
+             * If the server supports extension negotiation, we will send
+             * our supported extensions now. This is the first message after
+             * sending NEWKEYS message and after turning on crypto.
+             */
+            if (session->extensions & SSH_EXT_NEGOTIATION &&
+                session->session_state != SSH_SESSION_STATE_AUTHENTICATED) {
+                /*
+                 * Only send SSH_MSG_EXT_INFO after *first* newkeys and not
+                 * again after a rekey, as described in RFC 8308. One cannot tell
+                 * if it is the first newkeys or a rekey from looking at session
+                 * state, thus we use the flag session->connected instead.
+                 *
+                 * See ssh_server_connection_callback() for a similar discussion
+                 * on the server-side.
+                 */
+                if (session->connected == 0) {
+                    ssh_client_send_extensions(session);
+                }
+            }
+
             set_status(session, 1.0f);
             session->connected = 1;
             if (session->flags & SSH_SESSION_FLAG_AUTHENTICATED) {
