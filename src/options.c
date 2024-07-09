@@ -2631,7 +2631,7 @@ ssh_bind_options_set(ssh_bind sshbind,
             return -1;
         } else {
             int key_type, cmp;
-            ssh_key cert_key = NULL, host_pubkey = NULL;
+            ssh_key cert_key = NULL;
             char **bind_cert_key_path_loc = NULL;
 
             rc = ssh_pki_import_cert_file(value, &cert_key);
@@ -2645,6 +2645,7 @@ ssh_bind_options_set(ssh_bind sshbind,
                               SSH_FATAL,
                               "The host certificate key size %d is too small.",
                               ssh_key_size(cert_key));
+                SSH_KEY_FREE(cert_key);
                 return -1;
             }
 
@@ -2659,6 +2660,7 @@ ssh_bind_options_set(ssh_bind sshbind,
                               SSH_FATAL,
                               "ECDSA certificate key used and libssh compiled "
                               "without ECDSA support");
+                return -1;
 #endif
 
                 if (sshbind->ecdsa != NULL) {
@@ -2667,28 +2669,29 @@ ssh_bind_options_set(ssh_bind sshbind,
                      * host public key
                      */
                     cmp = ssh_key_cmp(cert_key,
-                                      host_pubkey,
+                                      sshbind->ecdsa,
                                       SSH_KEY_CMP_PUBLIC);
                     if (cmp != 0) {
                         SAFE_FREE(cert_key);
-                        SAFE_FREE(host_pubkey);
                         ssh_set_error(sshbind,
                                       SSH_FATAL,
                                       "The public key certified by the "
                                       "selected certificate does not match "
                                       "the host public key");
+                        return -1;
                     }
-                    /* Store host certificate */
-                    sshbind->ecdsa_cert = cert_key;
 
                     rc = ssh_pki_copy_cert_to_privkey(cert_key, sshbind->ecdsa);
                     if (rc != SSH_OK) {
                         SAFE_FREE(cert_key);
-                        SAFE_FREE(host_pubkey);
                         ssh_set_error(sshbind,
                                       SSH_FATAL,
                                       "Failed to copy cert to private key");
+                        return -1;
                     }
+                    /* Store host certificate */
+                    SSH_KEY_FREE(sshbind->ecdsa_cert);
+                    sshbind->ecdsa_cert = cert_key;
                     bind_cert_key_path_loc = &sshbind->ecdsa_cert_file;
                 } else {
                     ssh_set_error(sshbind,
@@ -2696,8 +2699,8 @@ ssh_bind_options_set(ssh_bind sshbind,
                                   "No Host ECDSA Key loaded. HostCertificate "
                                   "option requires a private host key already "
                                   "specified to verify the match");
+                    return -1;
                 }
-                SAFE_FREE(host_pubkey);
                 break;
             case SSH_KEYTYPE_RSA_CERT01:
                 if (sshbind->rsa != NULL) {
@@ -2710,24 +2713,24 @@ ssh_bind_options_set(ssh_bind sshbind,
                                       SSH_KEY_CMP_PUBLIC);
                     if (cmp != 0) {
                         SAFE_FREE(cert_key);
-                        SAFE_FREE(host_pubkey);
                         ssh_set_error(sshbind,
                                       SSH_FATAL,
                                       "The public key certified by the "
                                       "selected certificate does not match "
                                       "the host public key");
+                        return -1;
                     }
-                    /* Store host certificate */
-                    sshbind->rsa_cert = cert_key;
 
                     rc = ssh_pki_copy_cert_to_privkey(cert_key, sshbind->rsa);
                     if (rc != SSH_OK) {
                         SAFE_FREE(cert_key);
-                        SAFE_FREE(host_pubkey);
                         ssh_set_error(sshbind,
                                       SSH_FATAL,
                                       "Failed to copy cert to private key");
                     }
+                    /* Store host certificate */
+                    SSH_KEY_FREE(sshbind->rsa_cert);
+                    sshbind->rsa_cert = cert_key;
                     bind_cert_key_path_loc = &sshbind->rsa_cert_file;
                 } else {
                     ssh_set_error(sshbind,
@@ -2735,8 +2738,8 @@ ssh_bind_options_set(ssh_bind sshbind,
                                   "No Host RSA Key loaded. HostCertificate "
                                   "option requires a private host key already "
                                   "specified to verify the match");
+                    return -1;
                 }
-                SAFE_FREE(host_pubkey);
                 break;
             case SSH_KEYTYPE_ED25519_CERT01:
                 if (sshbind->ed25519 != NULL) {
@@ -2745,28 +2748,29 @@ ssh_bind_options_set(ssh_bind sshbind,
                      * host public key
                      */
                     cmp = ssh_key_cmp(cert_key,
-                                      host_pubkey,
+                                      sshbind->ed25519,
                                       SSH_KEY_CMP_PUBLIC);
                     if (cmp != 0) {
                         SAFE_FREE(cert_key);
-                        SAFE_FREE(host_pubkey);
                         ssh_set_error(sshbind,
                                       SSH_FATAL,
                                       "The public key certified by the "
                                       "selected certificate does not match "
                                       "the host public key");
+                        return -1;
                     }
-                    /* Store host certificate */
-                    sshbind->ed25519_cert = cert_key;
 
                     rc = ssh_pki_copy_cert_to_privkey(cert_key, sshbind->ed25519);
                     if (rc != SSH_OK) {
                         SAFE_FREE(cert_key);
-                        SAFE_FREE(host_pubkey);
                         ssh_set_error(sshbind,
                                       SSH_FATAL,
                                       "Failed to copy cert to private key");
+                        return -1;
                     }
+                    /* Store host certificate */
+                    SSH_KEY_FREE(sshbind->ed25519_cert);
+                    sshbind->ed25519_cert = cert_key;
                     bind_cert_key_path_loc = &sshbind->ed25519_cert_file;
                 } else {
                     ssh_set_error(sshbind,
@@ -2774,14 +2778,15 @@ ssh_bind_options_set(ssh_bind sshbind,
                                   "No Host ED25519 Key loaded. HostCertificate "
                                   "option requires a private host key already "
                                   "specified to verify the match");
+                    return -1;
                 }
-                SAFE_FREE(host_pubkey);
                 break;
             default:
                 ssh_set_error(sshbind,
                               SSH_FATAL,
                               "Unsupported certificate type %d",
                               key_type);
+                return -1;
             }
 
             if (bind_cert_key_path_loc == NULL) {

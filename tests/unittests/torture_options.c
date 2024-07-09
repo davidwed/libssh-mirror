@@ -2766,7 +2766,7 @@ static void torture_bind_options_config_dir(void **state)
 static void
 torture_bind_options_user_ca_file(void **state)
 {
-    struct bind_st *test_state;
+    struct bind_st *test_state = NULL;
     ssh_bind bind = NULL;
     const char *new_dir_file = "/new/path/to/user_ca";
     const char *replacement_dir_file = "/replacement/path/to/user_ca_new";
