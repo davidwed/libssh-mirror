@@ -168,6 +168,7 @@ enum ssh_digest_e ssh_key_hash_from_name(const char *name);
 /* SSH Certificate Functions */
 ssh_cert ssh_cert_new(void);
 int pki_parse_cert_data(ssh_buffer buffer, ssh_cert cert);
+ssh_cert ssh_cert_copy(const ssh_cert src_cert);
 void ssh_cert_free(ssh_cert cert);
 #define SSH_CERT_FREE(x) \
     do { if ((x) != NULL) { ssh_cert_free(x); x = NULL; } } while(0)

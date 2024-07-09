@@ -113,6 +113,135 @@ ssh_cert_free(ssh_cert cert)
 }
 
 /**
+ * @brief Copy a certificate
+ *
+ * @param[in] src_cert  ssh_cert certificate to copy.
+ *
+ * @return Newly allocated copy of the certificate.
+ * @return NULL on error.
+ */
+ssh_cert
+ssh_cert_copy(const ssh_cert src_cert)
+{
+    unsigned int i;
+    ssh_cert dest_cert = NULL;
+
+    if (src_cert == NULL) {
+        goto fail;
+    }
+
+    dest_cert = ssh_cert_new();
+    if (dest_cert == NULL) {
+        goto fail;
+    }
+
+    /* Copy the nonce */
+    if (src_cert->nonce != NULL) {
+        dest_cert->nonce = ssh_string_copy(src_cert->nonce);
+        if (dest_cert->nonce == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while getting the option value payload");
+            goto fail;
+        }
+    }
+
+    /* Copy the type and the serial */
+    dest_cert->type = src_cert->type;
+    dest_cert->serial = src_cert->serial;
+
+    if (src_cert->key_id != NULL) {
+        dest_cert->key_id = strdup(src_cert->key_id);
+        if (dest_cert->key_id == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while allocating space for key id");
+            goto fail;
+        }
+    }
+
+    /* Copy the principals */
+    if (src_cert->n_principals > 0) {
+        dest_cert->n_principals = src_cert->n_principals;
+        dest_cert->principals = calloc(1, sizeof(char *));
+
+        if (dest_cert->principals == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for cert principals "
+                    "during certificate copy");
+            goto fail;
+        }
+
+        for (i = 0; i < src_cert->n_principals; i++) {
+            dest_cert->principals[i] = strdup(src_cert->principals[i]);
+            if (dest_cert->principals[i] == NULL) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "Error while copying cert principals "
+                        "during certificate copy");
+                goto fail;
+            }
+        }
+    }
+
+    /* Copy the validity dates */
+    dest_cert->valid_after = src_cert->valid_after;
+    dest_cert->valid_before = src_cert->valid_before;
+
+    /* Copy the critical options */
+    if (src_cert->critical_options->force_command != NULL) {
+        dest_cert->critical_options->force_command =
+            strdup(src_cert->critical_options->force_command);
+        if (dest_cert->critical_options->force_command == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for force-command option "
+                    "during certificate copy");
+            goto fail;
+        }
+    }
+
+    if (src_cert->critical_options->source_address != NULL) {
+        dest_cert->critical_options->source_address =
+            strdup(src_cert->critical_options->source_address);
+        if (dest_cert->critical_options->source_address == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for source-address option "
+                    "during certificate copy");
+            goto fail;
+        }
+    }
+
+    dest_cert->critical_options->verify_required =
+        src_cert->critical_options->verify_required;
+
+    /* Copy the extensions */
+    dest_cert->extensions.ext = src_cert->extensions.ext;
+
+    /* Copy the signature key */
+    if (src_cert->signature_key != NULL) {
+        dest_cert->signature_key = ssh_key_dup(src_cert->signature_key);
+        if (dest_cert->signature_key == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while duplicating the signature key "
+                    "during certificate copy");
+            goto fail;
+        }
+    }
+
+    /* Copy the signature */
+    if (src_cert->signature != NULL) {
+        dest_cert->signature = ssh_signature_dup(src_cert->signature);
+        if (dest_cert->signature == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while duplicating the signature "
+                    "during certificate copy");
+            goto fail;
+        }
+    }
+
+    return dest_cert;
+
+fail:
+    SSH_CERT_FREE(dest_cert);
+    return NULL;
+}
+
+/**
  * @brief Validate and parse the ssh_string data of an authentication option
  * (critical or not) containing the value associated to the name of the option.
  *
