@@ -723,6 +723,167 @@ ssh_signature ssh_signature_new(void)
     return sig;
 }
 
+/**
+ * @brief Duplicate a signature.
+ *
+ * @param src An ssh_signature to duplicate.
+ *
+ * @return A duplicated ssh_signature signature on success.
+ * @return NULL on error.
+ */
+ssh_signature
+ssh_signature_dup(const ssh_signature src)
+{
+    ssh_signature new = NULL;
+#if defined(HAVE_LIBGCRYPT)
+    char *buf = NULL;
+    size_t size;
+    gcry_error_t err;
+#elif defined(HAVE_LIBMBEDCRYPTO)
+    int rc;
+#endif
+
+    if (src == NULL) {
+        goto fail;
+    }
+
+    new = ssh_signature_new();
+    if (new == NULL) {
+        goto fail;
+    }
+
+    new->type = src->type;
+    new->hash_type = src->hash_type;
+    new->type_c = src->type_c;
+
+#if defined(HAVE_LIBGCRYPT)
+    /* copy rsa_sig */
+    if (src->rsa_sig != NULL) {
+        size = gcry_sexp_sprint(src->rsa_sig, GCRYSEXP_FMT_ADVANCED, NULL, 0);
+        buf = gcry_malloc(size);
+
+        if (buf == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for (gcry) rsa_sig "
+                    "during signature duplication");
+            goto fail;
+        }
+        gcry_sexp_sprint(src->rsa_sig, GCRYSEXP_FMT_ADVANCED, buf, size);
+
+        err = gcry_sexp_new(&new->rsa_sig, buf, size, 0);
+        if (err != 0) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while copying (gcry) rsa_sig "
+                    "during signature duplication");
+            gcry_free(buf);
+            goto fail;
+        }
+        gcry_free(buf);
+    }
+
+    /* copy ecdsa_sig */
+    if (src->ecdsa_sig != NULL) {
+        size = gcry_sexp_sprint(src->ecdsa_sig, GCRYSEXP_FMT_ADVANCED, NULL, 0);
+        buf = gcry_malloc(size);
+
+        if (buf == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for (gcry) ecdsa_sig "
+                    "during signature duplication");
+            goto fail;
+        }
+        gcry_sexp_sprint(src->ecdsa_sig, GCRYSEXP_FMT_ADVANCED, buf, size);
+
+        err = gcry_sexp_new(&new->ecdsa_sig, buf, size, 0);
+        if (err != 0) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while copying (gcry) ecdsa_sig "
+                    "during signature duplication");
+            gcry_free(buf);
+            goto fail;
+        }
+        gcry_free(buf);
+    }
+#elif defined(HAVE_LIBMBEDCRYPTO)
+    if (src->rsa_sig != NULL) {
+        new->rsa_sig = ssh_string_copy(src->rsa_sig);
+        if (new->rsa_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for (libmbed) rsa_sig "
+                    "during signature duplication");
+            goto fail;
+        }
+    }
+
+    if (src->ecdsa_sig.r != NULL) {
+        new->ecdsa_sig.r = bignum_new();
+        if (new->ecdsa_sig.r == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating ecdsa_sig->r "
+                    "during signature duplication");
+            goto fail;
+        }
+
+        rc = mbedtls_mpi_copy(new->ecdsa_sig.r, src->ecdsa_sig.r);
+        if (rc != 0) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while copying (libmbed) ecdsa_sig->r "
+                    "during signature duplication");
+            goto fail;
+        }
+    }
+
+    if (src->ecdsa_sig.s != NULL) {
+        new->ecdsa_sig.s = bignum_new();
+        if (new->ecdsa_sig.s == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating ecdsa_sig->s "
+                    "during signature duplication");
+            goto fail;
+        }
+
+        rc = mbedtls_mpi_copy(new->ecdsa_sig.s, src->ecdsa_sig.s);
+        if (rc != 0) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while copying (libmbed) ecdsa_sig->s "
+                    "during signature duplication");
+            goto fail;
+        }
+    }
+#endif /* HAVE_LIBGCRYPT */
+#ifndef HAVE_LIBCRYPTO
+    if (src->ed25519_sig != NULL) {
+        new->ed25519_sig = calloc(1, sizeof(ed25519_signature));
+        if (new->ed25519_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for ed25519_sig "
+                    "during signature duplication");
+            goto fail;
+        }
+        memcpy(new->ed25519_sig, src->ed25519_sig, ED25519_SIG_LEN);
+    }
+#endif /* HAVE_LIBGCRYPT */
+
+    if (src->raw_sig != NULL) {
+        new->raw_sig = ssh_string_copy(src->raw_sig);
+        if (new->raw_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for raw_sig"
+                    "during signature duplication");
+            goto fail;
+        }
+    }
+
+    new->sk_flags = src->sk_flags;
+    new->sk_counter = src->sk_counter;
+
+    return new;
+
+fail:
+    SSH_SIGNATURE_FREE(new);
+    return NULL;
+}
+
 void ssh_signature_free(ssh_signature sig)
 {
     if (sig == NULL) {
@@ -2365,7 +2526,13 @@ int ssh_pki_copy_cert_to_privkey(const ssh_key certkey, ssh_key privkey) {
 
   privkey->cert = cert_buffer;
   privkey->cert_type = certkey->type;
-  privkey->cert_data = certkey->cert_data;
+
+  privkey->cert_data = ssh_cert_copy(certkey->cert_data);
+  if (privkey->cert_data == NULL) {
+      SSH_LOG(SSH_LOG_TRACE, "Error while copying the certificate data");
+      return SSH_ERROR;
+  }
+
   return SSH_OK;
 }
 

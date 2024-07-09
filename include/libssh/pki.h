@@ -176,6 +176,7 @@ void ssh_cert_free(ssh_cert cert);
 /* SSH Signature Functions */
 ssh_signature ssh_signature_new(void);
 void ssh_signature_free(ssh_signature sign);
+ssh_signature ssh_signature_dup(const ssh_signature src);
 #define SSH_SIGNATURE_FREE(x) \
     do { ssh_signature_free(x); x = NULL; } while(0)
 
