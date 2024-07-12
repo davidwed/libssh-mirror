@@ -48,15 +48,15 @@ fail:
  * @brief helper function for freeing certificate principals list
  */
 static void
-free_principals(ssh_cert cert)
+free_principals(char ***principals, unsigned int n)
 {
     unsigned int i;
 
-    if (cert->principals != NULL) {
-        for (i = 0; i < cert->n_principals; i++) {
-            SAFE_FREE(cert->principals[i]);
+    if (principals != NULL && *principals != NULL) {
+        for (i = 0; i < n; i++) {
+            SAFE_FREE((*principals)[i]);
         }
-        SAFE_FREE(cert->principals);
+        SAFE_FREE(*principals);
     }
 }
 
@@ -139,11 +139,6 @@ setup_default_cert(void **state)
     }
 
     cert->n_principals = 1;
-    cert->principals = calloc(1, sizeof(char *));
-    if (cert->principals == NULL) {
-        goto fail;
-    }
-
     generate_n_principals(&cert->principals, 1);
     cert->valid_after = 915145200;
     cert->valid_before = 946594800;
@@ -295,7 +290,7 @@ torture_cert_no_exts(void **state)
     cert->serial = 2;
     cert->extensions.ext = 0;
 
-    free_principals(cert);
+    free_principals(&cert->principals, cert->n_principals);
     cert->n_principals = 6;
     rc = generate_n_principals(&cert->principals, 6);
     assert_int_equal(rc, 0);
@@ -350,7 +345,7 @@ torture_cert_source_address(void **state)
 
     cert->serial = 4;
 
-    free_principals(cert);
+    free_principals(&cert->principals, cert->n_principals);
     cert->n_principals = 4;
     rc = generate_n_principals(&cert->principals, 4);
     assert_int_equal(rc, 0);
@@ -382,7 +377,7 @@ torture_cert_verify_required(void **state)
 
     cert->serial = 5;
 
-    free_principals(cert);
+    free_principals(&cert->principals, cert->n_principals);
     cert->n_principals = 9;
     rc = generate_n_principals(&cert->principals, 9);
     assert_int_equal(rc, 0);
@@ -445,7 +440,7 @@ torture_cert_no_all(void **state)
 
     cert->serial = 7;
 
-    free_principals(cert);
+    free_principals(&cert->principals, cert->n_principals);
     cert->n_principals = 0;
 
     cert->valid_after = 0;
@@ -1171,7 +1166,7 @@ torture_pki_cert_unpack_principals(void **state)
     char **princs = NULL;
     ssh_cert cert = NULL;
     ssh_string principals = NULL;
-    int rc, n_princs = 300, i;
+    int rc, n_princs = 300;
 
     (void)state;
 
@@ -1201,18 +1196,13 @@ torture_pki_cert_unpack_principals(void **state)
     assert_int_equal(cert->n_principals, 0);
     assert_null(cert->principals);
 
-    free_principals(cert);
+    free_principals(&princs, (unsigned int) n_princs);
     SSH_STRING_FREE(principals);
     SSH_CERT_FREE(cert);
     return;
 
 fail:
-    if (princs != NULL) {
-        for (i = 0; i < n_princs; i++) {
-            SAFE_FREE(princs[i]);
-        }
-        SAFE_FREE(princs);
-    }
+    free_principals(&princs, (unsigned int) n_princs);
     SSH_STRING_FREE(principals);
     SSH_CERT_FREE(cert);
     fail();
