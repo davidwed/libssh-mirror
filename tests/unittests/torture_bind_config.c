@@ -53,6 +53,7 @@ extern LIBSSH_THREAD int ssh_log_level;
 #define PUBKEYACCEPTEDTYPES2 "rsa-sha2-256,ssh-rsa"
 #define MACS "hmac-sha1,hmac-sha2-256,hmac-sha2-512,hmac-sha1-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com"
 #define MACS2 "hmac-sha1"
+#define CERT_DIR SOURCEDIR "/tests/keys/certs"
 
 #define LIBSSH_RSA_TESTKEY        "libssh_testkey.id_rsa"
 #define LIBSSH_ED25519_TESTKEY    "libssh_testkey.id_ed25519"
@@ -1692,6 +1693,48 @@ static void torture_bind_config_match_invalid(void **state)
     assert_int_equal(rc, SSH_OK);
 }
 
+static void
+torture_bind_config_hostcertificate(void **state)
+{
+    struct bind_st *test_state = NULL;
+    ssh_bind bind = NULL;
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    /* Hostkey is mandatory */
+    ssh_bind_options_set(bind, SSH_BIND_OPTIONS_HOSTKEY, CERT_DIR "/user-key");
+    assert_non_null(bind->rsa);
+
+    /* Parse valid certificate */
+    rc = ssh_bind_config_parse_string(bind, "HostCertificate="CERT_DIR"/host.cert");
+    assert_int_equal(rc, SSH_OK);
+    assert_non_null(bind->rsa_cert);
+    assert_string_equal(bind->rsa_cert_file, CERT_DIR"/host.cert");
+
+    /* Try to override with another call to set another certificate */
+    rc = ssh_bind_config_parse_string(bind, "HostCertificate="CERT_DIR"/host.cert");
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Reset previous configuration */
+    SSH_KEY_FREE(bind->rsa);
+    SAFE_FREE(bind->rsa_cert_file);
+    SSH_KEY_FREE(bind->rsa_cert);
+
+    /* Parse invalid certificate (user certificate) */
+    ssh_bind_options_set(bind, SSH_BIND_OPTIONS_HOSTKEY, CERT_DIR "/user-key");
+    assert_non_null(bind->rsa);
+
+    rc = ssh_bind_config_parse_string(bind, "HostCertificate="CERT_DIR"/all_exts.cert");
+    assert_int_equal(rc, SSH_ERROR);
+    assert_null(bind->rsa_cert);
+    assert_null(bind->rsa_cert_file);
+}
+
 int torture_run_tests(void)
 {
     int rc;
@@ -1868,6 +1911,9 @@ int torture_run_tests(void)
                 sshbind_setup, sshbind_teardown),
         cmocka_unit_test_setup_teardown(torture_bind_config_hostkey_algorithms_unknown_string,
                 sshbind_setup, sshbind_teardown),
+        cmocka_unit_test_setup_teardown(torture_bind_config_hostcertificate,
+                                        sshbind_setup,
+                                        sshbind_teardown),
     };
 
     ssh_init();

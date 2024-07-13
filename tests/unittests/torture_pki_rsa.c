@@ -413,9 +413,12 @@ static void torture_pki_rsa_copy_cert_to_privkey(void **state)
     rc = ssh_pki_copy_cert_to_privkey(cert, pubkey);
     assert_return_code(rc, errno);
     assert_non_null(pubkey->cert);
+    assert_non_null(pubkey->cert_data);
+
     rc = ssh_pki_copy_cert_to_privkey(cert, privkey);
     assert_return_code(rc, errno);
     assert_non_null(privkey->cert);
+    assert_non_null(privkey->cert_data);
 
     /* The private key's cert is already set, another copy should fail. */
     rc = ssh_pki_copy_cert_to_privkey(cert, privkey);
