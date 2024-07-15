@@ -418,14 +418,31 @@ static void torture_options_set_revoked_host_keys(void **state)
     int rc;
 
     rc = ssh_options_set(session, SSH_OPTIONS_REVOKEDHOSTKEYS, "/path/to/keys");
-    assert_int_equal(rc, 0);
+    assert_ssh_return_code(session, rc);
     assert_string_equal(session->opts.revoked_host_keys, "/path/to/keys");
 
     rc = ssh_options_set(session,
                          SSH_OPTIONS_REVOKEDHOSTKEYS,
                          "/new/path/to/keys");
-    assert_int_equal(rc, 0);
+    assert_ssh_return_code(session, rc);
     assert_string_equal(session->opts.revoked_host_keys, "/new/path/to/keys");
+}
+
+static void torture_options_get_revoked_host_keys(void **state)
+{
+    ssh_session session = *state;
+    char *value = NULL;
+    int rc;
+
+    rc = ssh_options_set(session, SSH_OPTIONS_REVOKEDHOSTKEYS, "/path/to/keys");
+    assert_ssh_return_code(session, rc);
+    assert_string_equal(session->opts.revoked_host_keys, "/path/to/keys");
+
+    rc = ssh_options_get(session, SSH_OPTIONS_REVOKEDHOSTKEYS, &value);
+    assert_ssh_return_code(session, rc);
+    assert_non_null(value);
+    assert_string_equal(value, "/path/to/keys");
+    SAFE_FREE(value);
 }
 
 static void torture_options_set_pubkey_accepted_types(void **state)
@@ -2793,6 +2810,68 @@ torture_bind_options_user_ca_file(void **state)
     assert_string_equal(bind->trusted_user_ca_keys_file, replacement_dir_file);
 }
 
+static void
+torture_bind_options_authorized_keys_file(void **state)
+{
+    struct bind_st *test_state = NULL;
+    ssh_bind bind = NULL;
+    const char *new_dir_file = "/new/path/to/authorized_keys";
+    const char *replacement_dir_file =
+        "/replacement/path/to/authorized_keys_new";
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_AUTHORIZED_KEYS_FILE,
+                              new_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->authorized_keys_file);
+    assert_string_equal(bind->authorized_keys_file, new_dir_file);
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_AUTHORIZED_KEYS_FILE,
+                              replacement_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->authorized_keys_file);
+    assert_string_equal(bind->authorized_keys_file, replacement_dir_file);
+}
+
+static void
+torture_bind_options_authorized_principals_file(void **state)
+{
+    struct bind_st *test_state = NULL;
+    ssh_bind bind = NULL;
+    const char *new_dir_file = "/new/path/to/authorized_principals";
+    const char *replacement_dir_file =
+        "/replacement/path/to/authorized_principals_new";
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS_FILE,
+                              new_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->authorized_principals_file);
+    assert_string_equal(bind->authorized_principals_file, new_dir_file);
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS_FILE,
+                              replacement_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->authorized_principals_file);
+    assert_string_equal(bind->authorized_principals_file, replacement_dir_file);
+}
+
 static void torture_bind_options_set_pubkey_accepted_key_types(void **state)
 {
     struct bind_st *test_state;
@@ -2994,9 +3073,14 @@ torture_run_tests(void)
         cmocka_unit_test_setup_teardown(torture_options_get_hostkey,
                                         setup,
                                         teardown),
-        cmocka_unit_test_setup_teardown(torture_options_set_revoked_host_keys,
-                                        setup,
-                                        teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_options_set_revoked_host_keys,
+            setup,
+            teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_options_get_revoked_host_keys,
+            setup,
+            teardown),
         cmocka_unit_test_setup_teardown(
             torture_options_set_pubkey_accepted_types,
             setup,
@@ -3106,6 +3190,14 @@ torture_run_tests(void)
         cmocka_unit_test_setup_teardown(torture_bind_options_user_ca_file,
                                         sshbind_setup,
                                         sshbind_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_bind_options_authorized_keys_file,
+            sshbind_setup,
+            sshbind_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_bind_options_authorized_principals_file,
+            sshbind_setup,
+            sshbind_teardown),
         cmocka_unit_test_setup_teardown(
             torture_bind_options_set_pubkey_accepted_key_types,
             sshbind_setup,

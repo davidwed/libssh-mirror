@@ -280,6 +280,8 @@ struct ssh_session_struct {
         char *custombanner;
         char *moduli_file;
         char *trusted_user_ca_keys_file;
+        char *authorized_keys_file;
+        char *authorized_principals_file;
     } server_opts;
 
     /* counters */

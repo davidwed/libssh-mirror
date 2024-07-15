@@ -1527,6 +1527,11 @@ int ssh_options_get_port(ssh_session session, unsigned int* port_target) {
  *                Get the compression to use for server to client communication
  *                If the option has not been set, returns the defaults.
  *
+ *               - SSH_OPTIONS_REVOKEDHOSTKEYS:
+ *                Get the path to the revoked host public keys file to use for
+ *                verifying the validity of the host public key during
+ *                host authentication.
+ *
  * @param  value The value to get into. As a char**, space will be
  *               allocated by the function for the value, it is
  *               your responsibility to free the memory using
@@ -1619,6 +1624,10 @@ int ssh_options_get(ssh_session session, enum ssh_options_e type, char** value)
 
         case SSH_OPTIONS_COMPRESSION_S_C:
             src = ssh_options_get_algo(session, SSH_COMP_S_C);
+            break;
+
+        case SSH_OPTIONS_REVOKEDHOSTKEYS:
+            src = session->opts.revoked_host_keys;
             break;
 
         default:
@@ -2216,8 +2225,20 @@ static int ssh_bind_set_algo(ssh_bind sshbind,
  *                        Set the path to an ssh host certificate regardless
  *                        of the type. The certificate MUST match a host private
  *                        key already loaded by HostKey. Only one key from per
-*                         key type (RSA_CERT01, ED25519_CERT01 and ECDSA_CERT01)
-*                         is allowed in an ssh_bind at a time.
+ *                        key type (RSA_CERT01, ED25519_CERT01 and ECDSA_CERT01)
+ *                        is allowed in an ssh_bind at a time.
+ *                        (const char *)
+ *
+ *                      - SSH_BIND_OPTIONS_AUTHORIZED_KEYS_FILE
+ *                        Set the path to the AuthorizedKeysFile. This file
+ *                        contains a list (one per line) of public keys used
+ *                        for user authentication.
+ *                        (const char *)
+ *
+ *                      - SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS_FILE
+ *                        Set the path to the AuthorizedPrincipalsFile. This
+ *                        file contains a list of principal names that are
+ *                        accepted for certificate authentication.
  *                        (const char *)
  *
  * @param  value        The value to set. This is a generic pointer and the
@@ -2757,6 +2778,38 @@ ssh_bind_options_set(ssh_bind sshbind,
             rc = ssh_bind_set_key(sshbind, cert_file_path_p2p, value);
             if (rc < 0) {
                 SSH_KEY_FREE(cert_key);
+                return -1;
+            }
+        }
+        break;
+    case SSH_BIND_OPTIONS_AUTHORIZED_KEYS_FILE:
+        v = value;
+        SAFE_FREE(sshbind->authorized_keys_file);
+        if (v == NULL) {
+            break;
+        } else if (v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            sshbind->authorized_keys_file = ssh_path_expand_tilde(v);
+            if (sshbind->authorized_keys_file == NULL) {
+                ssh_set_error_oom(sshbind);
+                return -1;
+            }
+        }
+        break;
+    case SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS_FILE:
+        v = value;
+        SAFE_FREE(sshbind->authorized_principals_file);
+        if (v == NULL) {
+            break;
+        } else if (v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            sshbind->authorized_principals_file = ssh_path_expand_tilde(v);
+            if (sshbind->authorized_principals_file == NULL) {
+                ssh_set_error_oom(sshbind);
                 return -1;
             }
         }

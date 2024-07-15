@@ -54,6 +54,8 @@ enum ssh_bind_config_opcode_e {
     BIND_CFG_HOSTKEY_ALGORITHMS,
     BIND_CFG_TRUSTED_USER_CA_KEYS,
     BIND_CFG_HOST_CERTIFICATE,
+    BIND_CFG_AUTHORIZED_KEYS,
+    BIND_CFG_AUTHORIZED_PRINCIPALS,
 
     BIND_CFG_MAX /* Keep this one last in the list */
 };

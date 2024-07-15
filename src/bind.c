@@ -403,15 +403,20 @@ void ssh_bind_free(ssh_bind sshbind){
   SAFE_FREE(sshbind->ecdsakey);
   SAFE_FREE(sshbind->ed25519key);
 
-  ssh_key_free(sshbind->rsa);
-  sshbind->rsa = NULL;
-  ssh_key_free(sshbind->ecdsa);
-  sshbind->ecdsa = NULL;
-  ssh_key_free(sshbind->ed25519);
-  sshbind->ed25519 = NULL;
+  SSH_KEY_FREE(sshbind->rsa);
+  SSH_KEY_FREE(sshbind->ecdsa);
+  SSH_KEY_FREE(sshbind->ed25519);
 
+  SSH_KEY_FREE(sshbind->ecdsa_cert);
+  SAFE_FREE(sshbind->ecdsa_cert_file);
   SSH_KEY_FREE(sshbind->rsa_cert);
   SAFE_FREE(sshbind->rsa_cert_file);
+  SSH_KEY_FREE(sshbind->ed25519_cert);
+  SAFE_FREE(sshbind->ed25519_cert_file);
+
+  SAFE_FREE(sshbind->trusted_user_ca_keys_file);
+  SAFE_FREE(sshbind->authorized_keys_file);
+  SAFE_FREE(sshbind->authorized_principals_file);
 
   for (i = 0; i < SSH_KEX_METHODS; i++) {
     if (sshbind->wanted_methods[i]) {
@@ -503,6 +508,24 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
         session->server_opts.trusted_user_ca_keys_file =
             strdup(sshbind->trusted_user_ca_keys_file);
         if (session->server_opts.trusted_user_ca_keys_file == NULL) {
+            ssh_set_error_oom(sshbind);
+            return SSH_ERROR;
+        }
+    }
+
+    if (sshbind->authorized_keys_file != NULL) {
+        session->server_opts.authorized_keys_file =
+            strdup(sshbind->authorized_keys_file);
+        if (session->server_opts.authorized_keys_file == NULL) {
+            ssh_set_error_oom(sshbind);
+            return SSH_ERROR;
+        }
+    }
+
+    if (sshbind->authorized_principals_file != NULL) {
+        session->server_opts.authorized_principals_file =
+            strdup(sshbind->authorized_principals_file);
+        if (session->server_opts.authorized_principals_file == NULL) {
             ssh_set_error_oom(sshbind);
             return SSH_ERROR;
         }

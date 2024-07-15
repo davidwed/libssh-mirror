@@ -61,6 +61,8 @@ struct ssh_bind_struct {
   ssh_key ecdsa_cert;
   ssh_key rsa_cert;
   ssh_key ed25519_cert;
+  char *authorized_keys_file;
+  char *authorized_principals_file;
 };
 
 struct ssh_poll_handle_struct *ssh_bind_get_poll(struct ssh_bind_struct
