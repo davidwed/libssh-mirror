@@ -656,9 +656,9 @@ int ssh_known_hosts_parse_line(const char *hostname,
                                struct ssh_knownhosts_entry **entry)
 {
     struct ssh_knownhosts_entry *e = NULL;
-    char *known_host = NULL, *keyword = NULL;
+    char *keyword = NULL;
     char *p = NULL;
-    char *save_tok = NULL;
+    char *save_tok = NULL, *save_tok2 = NULL;
     enum ssh_keytypes_e key_type;
     int match = 0;
     int rc = SSH_OK;
@@ -710,11 +710,9 @@ int ssh_known_hosts_parse_line(const char *hostname,
             match = match_hashed_hostname(hostname, p);
         }
 
-        save_tok = NULL;
-
-        for (q = strtok_r(p, ",", &save_tok);
+        for (q = strtok_r(p, ",", &save_tok2);
              q != NULL;
-             q = strtok_r(NULL, ",", &save_tok)) {
+             q = strtok_r(NULL, ",", &save_tok2)) {
             int cmp;
 
             if (q[0] == '[' && hostname[0] != '[') {
@@ -755,34 +753,7 @@ int ssh_known_hosts_parse_line(const char *hostname,
         }
     }
 
-    /* Restart parsing */
-    SAFE_FREE(keyword);
-    known_host = strdup(line);
-    if (known_host == NULL) {
-        SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
-        rc = SSH_ERROR;
-        goto out;
-    }
-
-    save_tok = NULL;
-
-    p = strtok_r(known_host, " ", &save_tok);
-    if (p == NULL ) {
-        rc = SSH_ERROR;
-        goto out;
-    }
-
-    if (e->marker) {
-        /* Skip the marker and move p to the next tok */
-        p = strtok_r(NULL, " ", &save_tok);
-        if (p == NULL ) {
-            SAFE_FREE(known_host);
-            rc = SSH_ERROR;
-            goto out;
-        }
-    }
-
-    e->unparsed = strdup(p);
+    e->unparsed = strdup(save_tok2);
     if (e->unparsed == NULL) {
         SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
         rc = SSH_ERROR;
@@ -790,7 +761,7 @@ int ssh_known_hosts_parse_line(const char *hostname,
     }
 
     /* pubkey type */
-    p = strtok_r(NULL, " ", &save_tok);
+    p = strtok_r(save_tok, " ", &save_tok);
     if (p == NULL) {
         rc = SSH_ERROR;
         goto out;
@@ -836,12 +807,11 @@ int ssh_known_hosts_parse_line(const char *hostname,
     }
 
     *entry = e;
-    SAFE_FREE(known_host);
 
+    SAFE_FREE(keyword);
     return SSH_OK;
 out:
     SAFE_FREE(keyword);
-    SAFE_FREE(known_host);
     SSH_KNOWNHOSTS_ENTRY_FREE(e);
     return rc;
 }
