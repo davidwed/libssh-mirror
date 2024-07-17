@@ -196,6 +196,9 @@ struct ssh_session_struct {
      */
     bool first_kex_follows_guess_wrong;
 
+    bool gssapi_key_exchange;
+    ssh_string gssapi_key_exchange_mic;
+
     ssh_buffer in_hashbuf;
     ssh_buffer out_hashbuf;
     struct ssh_crypto_struct *current_crypto;

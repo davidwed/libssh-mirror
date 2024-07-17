@@ -567,6 +567,8 @@ int crypt_set_algorithms_server(ssh_session session){
     case SSH_KEX_DH_GROUP14_SHA256:
     case SSH_KEX_DH_GROUP16_SHA512:
     case SSH_KEX_DH_GROUP18_SHA512:
+    case SSH_GSS_KEX_DH_GROUP14_SHA256:
+    case SSH_GSS_KEX_DH_GROUP16_SHA512:
       ssh_server_dh_init(session);
       break;
 #ifdef WITH_GEX

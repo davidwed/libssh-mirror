@@ -627,7 +627,7 @@ fail:
 
 /** @brief returns the OIDs of the mechs that have usable credentials
  */
-static int ssh_gssapi_match(ssh_session session, gss_OID_set *valid_oids)
+int ssh_gssapi_match(ssh_session session, gss_OID_set *valid_oids)
 {
     OM_uint32 maj_stat, min_stat, lifetime;
     gss_OID_set actual_mechs = GSS_C_NO_OID_SET;

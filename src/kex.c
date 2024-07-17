@@ -163,6 +163,8 @@
 #endif /* WITH_GEX */
 
 #define CHACHA20 "chacha20-poly1305@openssh.com,"
+#define GSSAPI_KEY_EXCHANGE \
+    "gss-group14-sha256-toWM5Slw5Ew8Mqkay+al2g==,gss-group16-sha512-toWM5Slw5Ew8Mqkay+al2g==,"
 
 #define DEFAULT_KEY_EXCHANGE \
     CURVE25519 \
@@ -173,6 +175,7 @@
     "diffie-hellman-group14-sha256" \
 
 #define KEY_EXCHANGE_SUPPORTED \
+    GSSAPI_KEY_EXCHANGE \
     GEX_SHA1 \
     DEFAULT_KEY_EXCHANGE \
     ",diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"
@@ -878,6 +881,10 @@ kex_select_kex_type(const char *kex)
 {
     if (strcmp(kex, "diffie-hellman-group1-sha1") == 0) {
         return SSH_KEX_DH_GROUP1_SHA1;
+    } else if (strcmp(kex, "gss-group14-sha256-toWM5Slw5Ew8Mqkay+al2g==") == 0) {
+        return SSH_GSS_KEX_DH_GROUP14_SHA256;
+    } else if (strcmp(kex, "gss-group16-sha512-toWM5Slw5Ew8Mqkay+al2g==") == 0) {
+        return SSH_GSS_KEX_DH_GROUP16_SHA512;
     } else if (strcmp(kex, "diffie-hellman-group14-sha1") == 0) {
         return SSH_KEX_DH_GROUP14_SHA1;
     } else if (strcmp(kex, "diffie-hellman-group14-sha256") == 0) {
@@ -921,7 +928,9 @@ static void revert_kex_callbacks(ssh_session session)
     case SSH_KEX_DH_GROUP1_SHA1:
     case SSH_KEX_DH_GROUP14_SHA1:
     case SSH_KEX_DH_GROUP14_SHA256:
+    case SSH_GSS_KEX_DH_GROUP14_SHA256:
     case SSH_KEX_DH_GROUP16_SHA512:
+    case SSH_GSS_KEX_DH_GROUP16_SHA512:
     case SSH_KEX_DH_GROUP18_SHA512:
         ssh_client_dh_remove_callbacks(session);
         break;
@@ -1379,6 +1388,10 @@ int ssh_make_sessionid(ssh_session session)
         goto error;
     }
 
+    if (server_pubkey_blob == NULL && session->gssapi_key_exchange) {
+        server_pubkey_blob = ssh_string_new(0);
+    }
+
     rc = ssh_buffer_pack(buf,
                          "dPdPS",
                          ssh_buffer_get_len(client_hash),
@@ -1397,7 +1410,9 @@ int ssh_make_sessionid(ssh_session session)
     case SSH_KEX_DH_GROUP1_SHA1:
     case SSH_KEX_DH_GROUP14_SHA1:
     case SSH_KEX_DH_GROUP14_SHA256:
+    case SSH_GSS_KEX_DH_GROUP14_SHA256:
     case SSH_KEX_DH_GROUP16_SHA512:
+    case SSH_GSS_KEX_DH_GROUP16_SHA512:
     case SSH_KEX_DH_GROUP18_SHA512:
         rc = ssh_dh_keypair_get_keys(session->next_crypto->dh_ctx,
                                      DH_CLIENT_KEYPAIR, NULL, &client_pubkey);
@@ -1544,6 +1559,7 @@ int ssh_make_sessionid(ssh_session session)
                                    session->next_crypto->secret_hash);
         break;
     case SSH_KEX_DH_GROUP14_SHA256:
+    case SSH_GSS_KEX_DH_GROUP14_SHA256:
     case SSH_KEX_ECDH_SHA2_NISTP256:
     case SSH_KEX_CURVE25519_SHA256:
     case SSH_KEX_CURVE25519_SHA256_LIBSSH_ORG:
@@ -1572,6 +1588,7 @@ int ssh_make_sessionid(ssh_session session)
                                      session->next_crypto->secret_hash);
         break;
     case SSH_KEX_DH_GROUP16_SHA512:
+    case SSH_GSS_KEX_DH_GROUP16_SHA512:
     case SSH_KEX_DH_GROUP18_SHA512:
     case SSH_KEX_ECDH_SHA2_NISTP521:
     case SSH_KEX_SNTRUP761X25519_SHA512_OPENSSH_COM:

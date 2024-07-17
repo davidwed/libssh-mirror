@@ -263,7 +263,14 @@ int dh_handshake(ssh_session session)
 
     switch (session->dh_handshake_state) {
     case DH_STATE_INIT:
-        switch (session->next_crypto->kex_type) {
+      switch(session->next_crypto->kex_type){
+#ifdef WITH_GSSAPI
+        case SSH_GSS_KEX_DH_GROUP14_SHA256:
+        case SSH_GSS_KEX_DH_GROUP16_SHA512:
+            session->gssapi_key_exchange = true;
+            rc = ssh_client_gss_dh_init(session);
+            break;
+#endif
         case SSH_KEX_DH_GROUP1_SHA1:
         case SSH_KEX_DH_GROUP14_SHA1:
         case SSH_KEX_DH_GROUP14_SHA256:

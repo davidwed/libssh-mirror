@@ -85,6 +85,10 @@ enum ssh_key_exchange_e {
     SSH_KEX_DH_GROUP14_SHA256,
     /* sntrup761x25519-sha512@openssh.com */
     SSH_KEX_SNTRUP761X25519_SHA512_OPENSSH_COM,
+    /* gss-group14-sha256 */
+    SSH_GSS_KEX_DH_GROUP14_SHA256,
+    /* gss-group16-sha512 */
+    SSH_GSS_KEX_DH_GROUP16_SHA512,
 };
 
 enum ssh_cipher_e {

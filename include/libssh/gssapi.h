@@ -76,6 +76,7 @@ int ssh_gssapi_init(ssh_session session);
 void ssh_gssapi_log_error(int verb, const char *msg_a, int maj_stat, int min_stat);
 int ssh_gssapi_auth_mic(ssh_session session);
 void ssh_gssapi_free(ssh_session session);
+int ssh_gssapi_match(ssh_session session, gss_OID_set *valid_oids);
 char *ssh_gssapi_name_to_char(gss_name_t name);
 
 #ifdef __cplusplus
