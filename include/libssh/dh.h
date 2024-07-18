@@ -81,7 +81,6 @@ int dh_handshake(ssh_session session);
 
 int ssh_client_dh_init(ssh_session session);
 void ssh_client_dh_remove_callbacks(ssh_session session);
-int ssh_client_gss_dh_init(ssh_session session);
 #ifdef WITH_SERVER
 void ssh_server_dh_init(ssh_session session);
 #endif /* WITH_SERVER */

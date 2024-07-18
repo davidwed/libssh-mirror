@@ -80,7 +80,7 @@ torture_gssapi_key_exchange(void **state)
     struct torture_state *s = *state;
     ssh_session session = s->ssh.session;
     int rc;
-    int t = 1;
+    bool t = true;
 
     rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
     assert_ssh_return_code(s->ssh.session, rc);

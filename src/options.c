@@ -548,7 +548,7 @@ int ssh_options_set_algo(ssh_session session,
  *                to the server (int, 0 = false).
  *
  *              - SSH_OPTIONS_GSSAPI_KEY_EXCHANGE
- *                Set to true to do GSSAPI key exchange (int, 0 = false).
+ *                Set to true to do GSSAPI key exchange (bool).
  *
  *              - SSH_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS
  *                Set the GSSAPI key exchange method to be used (const char *,
@@ -1227,9 +1227,8 @@ int ssh_options_set(ssh_session session, enum ssh_options_e type,
                 ssh_set_error_invalid(session);
                 return -1;
             } else {
-                int x = *(int *)value;
-
-                session->opts.gssapi_key_exchange = (x & 0xff);
+                bool *x = (bool *)value;
+                session->opts.gssapi_key_exchange = *x;
             }
             break;
         case SSH_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS:

@@ -38,6 +38,7 @@
 #include "libssh/socket.h"
 #include "libssh/session.h"
 #include "libssh/dh.h"
+#include "libssh/dh-gss.h"
 #ifdef WITH_GEX
 #include "libssh/dh-gex.h"
 #endif /* WITH_GEX */
