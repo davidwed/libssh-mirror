@@ -25,7 +25,6 @@ sshd_teardown(void **state)
 {
     assert_non_null(state);
 
-    torture_teardown_kdc_server(state);
     torture_teardown_sshd_server(state);
 
     return 0;
@@ -70,6 +69,7 @@ session_teardown(void **state)
 
     ssh_disconnect(s->ssh.session);
     ssh_free(s->ssh.session);
+    torture_teardown_kdc_server(state);
 
     return 0;
 }
@@ -80,6 +80,13 @@ torture_gssapi_key_exchange(void **state)
     struct torture_state *s = *state;
     ssh_session session = s->ssh.session;
     int rc;
+    int t = 1;
+
+    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
+    assert_ssh_return_code(s->ssh.session, rc);
+
+    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS, "gss-group16-sha512-");
+    assert_ssh_return_code(s->ssh.session, rc);
 
     /* Valid */
     torture_setup_kdc_server(
@@ -90,7 +97,6 @@ torture_gssapi_key_exchange(void **state)
         "kadmin.local list_principals",
 
         "echo bar | kinit alice");
-    ssh_options_set(s->ssh.session, SSH_OPTIONS_KEY_EXCHANGE, "^gss-group14-sha256-toWM5Slw5Ew8Mqkay+al2g==");
     rc = ssh_connect(session);
     assert_int_equal(rc, 0);
 }

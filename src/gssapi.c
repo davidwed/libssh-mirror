@@ -38,6 +38,7 @@
 #include <libssh/callbacks.h>
 #include <libssh/string.h>
 #include <libssh/server.h>
+#include <libssh/token.h>
 
 /** @internal
  * @initializes a gssapi context for authentication
@@ -626,6 +627,54 @@ fail:
     return SSH_ERROR;
 }
 
+/**
+ * @brief Get the base64 encoding of md5 of the oid to add as suffix to GSSAPI
+ * key exchange algorithms.
+ *
+ * @param[in] oid The OID as a ssh_string
+ *
+ * @returns the hash.
+ * @returns NULL if error.
+ */
+char *
+ssh_gssapi_oid_hash(ssh_string oid)
+{
+    MD5CTX ctx = NULL;
+    unsigned char *h = NULL;
+    int rc;
+    char *base64 = NULL;
+
+    h = calloc(MD5_DIGEST_LEN, sizeof(unsigned char));
+    if (h == NULL) {
+        return NULL;
+    }
+
+    ctx = md5_init();
+    if (ctx == NULL) {
+        SAFE_FREE(h);
+        return NULL;
+    }
+
+    rc = md5_update(ctx,
+                    ssh_string_data(oid),
+                    ssh_string_len(oid));
+    if (rc != SSH_OK) {
+        SAFE_FREE(h);
+        md5_ctx_free(ctx);
+        return NULL;
+    }
+    SSH_STRING_FREE(oid);
+    rc = md5_final(h, ctx);
+    if (rc != SSH_OK) {
+        SAFE_FREE(h);
+        return NULL;
+    }
+
+    base64 = (char *)bin_to_base64(h, 16);
+    SAFE_FREE(h);
+    return base64;
+}
+
 /** @brief returns the OIDs of the mechs that have usable credentials
  */
 int ssh_gssapi_client_identity(ssh_session session, gss_OID_set *valid_oids)
@@ -700,6 +749,113 @@ end:
     gss_release_oid_set(&min_stat, &actual_mechs);
     gss_release_name(&min_stat, &client_id);
     return ret;
+}
+
+char *
+ssh_gssapi_kex_mechs(ssh_session session, const char *gss_algs)
+{
+    size_t i,j;
+    gss_OID_set selected = GSS_C_NO_OID_SET; /* oid selected for authentication */
+    ssh_string *oids = NULL;
+    int rc;
+    size_t n_oids = 0;
+    struct ssh_tokens_st *algs = NULL;
+    char *oid_hash = NULL;
+    char *new_gss_algs = NULL;
+    char gss_kex_algs[8000] = {0};
+    OM_uint32 min_stat;
+    size_t offset = 0;
+
+    rc = ssh_gssapi_client_identity(session, &selected);
+    if (rc == SSH_ERROR) {
+        return NULL;
+    }
+    ssh_gssapi_free(session);
+
+    n_oids = selected->count;
+    SSH_LOG(SSH_LOG_DEBUG, "Sending %zu oids", n_oids);
+
+    oids = calloc(n_oids, sizeof(ssh_string));
+    if (oids == NULL) {
+        ssh_set_error_oom(session);
+        return NULL;
+    }
+
+    new_gss_algs = ssh_find_all_matching(GSSAPI_KEY_EXCHANGE_SUPPORTED, gss_algs);
+    if (gss_algs == NULL) {
+        ssh_set_error(session,
+                      SSH_FATAL,
+                      "GSSAPI key exchange algorithms not supported or invalid");
+        rc = SSH_ERROR;
+        goto out;
+    }
+
+    algs = ssh_tokenize(new_gss_algs, ',');
+    if (algs == NULL) {
+        ssh_set_error(session,
+                      SSH_FATAL,
+                      "Couldn't tokenize GSSAPI key exchange algs");
+        rc = SSH_ERROR;
+        goto out;
+    }
+    for (i=0; i<n_oids; ++i){
+        oids[i] = ssh_string_new(selected->elements[i].length + 2);
+        if (oids[i] == NULL) {
+            ssh_set_error_oom(session);
+            rc = SSH_ERROR;
+            goto out;
+        }
+        ((unsigned char *)oids[i]->data)[0] = SSH_OID_TAG;
+        ((unsigned char *)oids[i]->data)[1] = selected->elements[i].length;
+        memcpy((unsigned char *)oids[i]->data + 2, selected->elements[i].elements,
+                selected->elements[i].length);
+
+        /* Get the algorithm suffix */
+        oid_hash = ssh_gssapi_oid_hash(oids[i]);
+        if (oid_hash == NULL) {
+            ssh_set_error_oom(session);
+            rc = SSH_ERROR;
+            goto out;
+        }
+
+        /* For each oid loop through the algorithms, append the oid and append
+         * the algorithms to a string */
+        for (j = 0; algs->tokens[j]; j++) {
+            if (sizeof(gss_kex_algs) < offset) {
+                ssh_set_error(session,
+                              SSH_FATAL,
+                              "snprintf failed");
+                rc = SSH_ERROR;
+                goto out;
+            }
+            rc = snprintf(&gss_kex_algs[offset], sizeof(gss_kex_algs)-offset, "%s%s,", algs->tokens[j], oid_hash);
+            if (rc < 0 || rc >= (ssize_t)sizeof(gss_kex_algs)) {
+                ssh_set_error(session,
+                              SSH_FATAL,
+                              "snprintf failed");
+                rc = SSH_ERROR;
+                goto out;
+            }
+            /* + 1 for ',' */
+            offset += strlen(algs->tokens[j]) + strlen(oid_hash) + 1;
+        }
+        SAFE_FREE(oid_hash);
+    }
+
+    rc = SSH_OK;
+
+out:
+    SAFE_FREE(oid_hash);
+    SAFE_FREE(oids);
+    SAFE_FREE(new_gss_algs);
+    gss_release_oid_set(&min_stat, &selected);
+    ssh_tokens_free(algs);
+
+    if (rc != SSH_OK) {
+        return NULL;
+    }
+
+    return strdup(gss_kex_algs);
 }
 
 int

@@ -196,7 +196,6 @@ struct ssh_session_struct {
      */
     bool first_kex_follows_guess_wrong;
 
-    bool gssapi_key_exchange;
     ssh_string gssapi_key_exchange_mic;
 
     ssh_buffer in_hashbuf;
@@ -263,6 +262,8 @@ struct ssh_session_struct {
         char compressionlevel;
         char *gss_server_identity;
         char *gss_client_identity;
+        bool gssapi_key_exchange;
+        char *gssapi_key_exchange_algs;
         int gss_delegate_creds;
         int flags;
         int exp_flags;

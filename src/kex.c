@@ -46,6 +46,7 @@
 #include "libssh/pki.h"
 #include "libssh/bignum.h"
 #include "libssh/token.h"
+#include "libssh/gssapi.h"
 
 #ifdef HAVE_BLOWFISH
 # define BLOWFISH ",blowfish-cbc"
@@ -163,8 +164,6 @@
 #endif /* WITH_GEX */
 
 #define CHACHA20 "chacha20-poly1305@openssh.com,"
-#define GSSAPI_KEY_EXCHANGE \
-    "gss-group14-sha256-toWM5Slw5Ew8Mqkay+al2g==,gss-group16-sha512-toWM5Slw5Ew8Mqkay+al2g==,"
 
 #define DEFAULT_KEY_EXCHANGE \
     CURVE25519 \
@@ -175,7 +174,6 @@
     "diffie-hellman-group14-sha256" \
 
 #define KEY_EXCHANGE_SUPPORTED \
-    GSSAPI_KEY_EXCHANGE \
     GEX_SHA1 \
     DEFAULT_KEY_EXCHANGE \
     ",diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"
@@ -777,6 +775,32 @@ int ssh_set_client_kex(ssh_session session)
         ssh_set_error(session, SSH_FATAL, "PRNG error");
         return SSH_ERROR;
     }
+#ifdef WITH_GSSAPI
+    if (session->opts.gssapi_key_exchange) {
+        char *gssapi_algs = NULL;
+
+        ok = ssh_gssapi_init(session);
+        if (ok != SSH_OK) {
+            ssh_set_error_oom(session);
+            return SSH_ERROR;
+        }
+
+        ok = ssh_gssapi_import_name(session, session->opts.host);
+        if (ok != SSH_OK) {
+            return SSH_ERROR;
+        }
+
+        gssapi_algs = ssh_gssapi_kex_mechs(session, session->opts.gssapi_key_exchange_algs ? session->opts.gssapi_key_exchange_algs : GSSAPI_KEY_EXCHANGE_SUPPORTED);
+        if (gssapi_algs == NULL) {
+            return SSH_ERROR;
+        }
+
+        /* Prefix the default algorithms with gsskex algs */
+        session->opts.wanted_methods[SSH_KEX] =
+            ssh_prefix_without_duplicates(default_methods[SSH_KEX], gssapi_algs);
+        SAFE_FREE(gssapi_algs);
+    }
+#endif
 
     /* Set the list of allowed algorithms in order of preference, if it hadn't
      * been set yet. */
@@ -881,9 +905,9 @@ kex_select_kex_type(const char *kex)
 {
     if (strcmp(kex, "diffie-hellman-group1-sha1") == 0) {
         return SSH_KEX_DH_GROUP1_SHA1;
-    } else if (strcmp(kex, "gss-group14-sha256-toWM5Slw5Ew8Mqkay+al2g==") == 0) {
+    } else if (strncmp(kex, "gss-group14-sha256-", 19) == 0) {
         return SSH_GSS_KEX_DH_GROUP14_SHA256;
-    } else if (strcmp(kex, "gss-group16-sha512-toWM5Slw5Ew8Mqkay+al2g==") == 0) {
+    } else if (strncmp(kex, "gss-group16-sha512-", 19) == 0) {
         return SSH_GSS_KEX_DH_GROUP16_SHA512;
     } else if (strcmp(kex, "diffie-hellman-group14-sha1") == 0) {
         return SSH_KEX_DH_GROUP14_SHA1;
@@ -1388,7 +1412,7 @@ int ssh_make_sessionid(ssh_session session)
         goto error;
     }
 
-    if (server_pubkey_blob == NULL && session->gssapi_key_exchange) {
+    if (server_pubkey_blob == NULL && session->opts.gssapi_key_exchange) {
         server_pubkey_blob = ssh_string_new(0);
     }
 
