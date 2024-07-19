@@ -7,6 +7,7 @@ set(LIBSSH_CLIENT_TESTS
     torture_client_callbacks
     torture_client_config
     torture_connect
+    torture_connector
     torture_hostkey
     torture_auth
     torture_auth_cert
