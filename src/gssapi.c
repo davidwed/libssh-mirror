@@ -149,6 +149,35 @@ static int ssh_gssapi_send_response(ssh_session session, ssh_string oid)
 
 #ifdef WITH_SERVER
 
+int
+ssh_gssapi_server_oids(ssh_session session, gss_OID_set *selected)
+{
+    OM_uint32 maj_stat, min_stat;
+    size_t i;
+    char *ptr;
+    gss_OID_set supported; /* oids supported by server */
+
+    maj_stat = gss_indicate_mechs(&min_stat, &supported);
+    if (maj_stat != GSS_S_COMPLETE) {
+        SSH_LOG(SSH_LOG_DEBUG, "indicate mechs %d, %d", maj_stat, min_stat);
+        ssh_gssapi_log_error(SSH_LOG_DEBUG,
+                             "indicate mechs",
+                             maj_stat,
+                             min_stat);
+        return SSH_ERROR;
+    }
+
+    for (i=0; i < supported->count; ++i){
+        ptr = ssh_get_hexa(supported->elements[i].elements, supported->elements[i].length);
+        SSH_LOG(SSH_LOG_DEBUG, "Supported mech %zu: %s", i, ptr);
+        free(ptr);
+    }
+
+    *selected = supported;
+
+    return SSH_OK;
+}
+
 /** @internal
  * @brief handles an user authentication using GSSAPI
  */
@@ -305,7 +334,7 @@ ssh_gssapi_handle_userauth(ssh_session session, const char *user,
     memcpy(session->gssapi->mech.elements, oid.elements, oid.length);
     gss_release_oid_set(&min_stat, &selected);
     session->gssapi->user = strdup(user);
-    session->gssapi->service = hostname;
+    session->gssapi->service = (char *)"host";
     session->gssapi->state = SSH_GSSAPI_STATE_RCV_TOKEN;
     return ssh_gssapi_send_response(session, oids[i]);
 }
@@ -766,9 +795,18 @@ ssh_gssapi_kex_mechs(ssh_session session, const char *gss_algs)
     OM_uint32 min_stat;
     size_t offset = 0;
 
-    rc = ssh_gssapi_client_identity(session, &selected);
-    if (rc == SSH_ERROR) {
-        return NULL;
+    if (session->server) {
+#ifdef WITH_SERVER
+        rc = ssh_gssapi_server_oids(session, &selected);
+        if (rc == SSH_ERROR) {
+            return NULL;
+        }
+#endif
+    } else {
+        rc = ssh_gssapi_client_identity(session, &selected);
+        if (rc == SSH_ERROR) {
+            return NULL;
+        }
     }
     ssh_gssapi_free(session);
 

@@ -25,6 +25,7 @@
 
 #include <stdio.h>
 #include <gssapi/gssapi.h>
+#include <errno.h>
 #include "libssh/gssapi.h"
 
 #include "libssh/priv.h"
@@ -103,7 +104,7 @@ int ssh_client_gss_dh_init(ssh_session session){
     session->gssapi->client.flags = GSS_C_MUTUAL_FLAG | GSS_C_INTEG_FLAG;
     maj_stat = ssh_gssapi_init_ctx(session, &input_token, &output_token, &oflags);
     gss_release_oid_set(&min_stat, &selected);
-    if(GSS_ERROR(maj_stat)) {
+    if (GSS_ERROR(maj_stat)) {
         ssh_gssapi_log_error(SSH_LOG_DEBUG,
                              "Initializing gssapi context",
                              maj_stat,
@@ -206,3 +207,214 @@ error:
     session->session_state=SSH_SESSION_STATE_ERROR;
     return SSH_PACKET_USED;
 }
+
+
+#ifdef WITH_SERVER
+
+static SSH_PACKET_CALLBACK(ssh_packet_server_gss_dh_init);
+
+static ssh_packet_callback gss_dh_server_callbacks[] = {
+    ssh_packet_server_gss_dh_init,
+};
+
+static struct ssh_packet_callbacks_struct ssh_gss_dh_server_callbacks = {
+    .start = SSH2_MSG_KEXGSS_INIT,
+    .n_callbacks = 1,
+    .callbacks = gss_dh_server_callbacks,
+    .user = NULL
+};
+
+/** @internal
+ * @brief sets up the gssapi kex callbacks
+ */
+void ssh_server_gss_dh_init(ssh_session session){
+    /* register the packet callbacks */
+    ssh_packet_set_callbacks(session, &ssh_gss_dh_server_callbacks);
+
+    ssh_dh_init_common(session->next_crypto);
+}
+
+/** @internal
+ * @brief processes a SSH_MSG_KEXGSS_INIT and sends
+ * the appropriate SSH_MSG_KEXGSS_COMPLETE
+ */
+int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
+{
+    struct ssh_crypto_struct *crypto = session->next_crypto;
+    ssh_key privkey = NULL;
+    enum ssh_digest_e digest = SSH_DIGEST_AUTO;
+    bignum client_pubkey;
+#if !defined(HAVE_LIBCRYPTO) || OPENSSL_VERSION_NUMBER < 0x30000000L
+    const_bignum server_pubkey;
+#else
+    bignum server_pubkey = NULL;
+#endif /* OPENSSL_VERSION_NUMBER */
+    int rc;
+    gss_buffer_desc input_token = GSS_C_EMPTY_BUFFER;
+    gss_buffer_desc output_token = GSS_C_EMPTY_BUFFER;
+    ssh_string otoken = NULL;
+    OM_uint32 maj_stat, min_stat;
+    gss_name_t client_name = GSS_C_NO_NAME;
+    OM_uint32 ret_flags=0;
+    gss_buffer_desc mic = GSS_C_EMPTY_BUFFER, msg = GSS_C_EMPTY_BUFFER;
+    char hostname[NI_MAXHOST] = {0};
+    char err_msg[SSH_ERRNO_MSG_MAX] = {0};
+
+    rc = ssh_buffer_unpack(packet, "S", &otoken);
+    if (rc == SSH_ERROR) {
+        ssh_set_error(session, SSH_FATAL, "No token in client request");
+        goto error;
+    }
+    input_token.length = ssh_string_len(otoken);
+    input_token.value = ssh_string_data(otoken);
+
+    rc = ssh_buffer_unpack(packet, "B", &client_pubkey);
+    if (rc == SSH_ERROR) {
+        ssh_set_error(session, SSH_FATAL, "No e number in client request");
+        goto error;
+    }
+
+    rc = ssh_dh_keypair_set_keys(crypto->dh_ctx, DH_CLIENT_KEYPAIR,
+                                 NULL, client_pubkey);
+    if (rc != SSH_OK) {
+        bignum_safe_free(client_pubkey);
+        goto error;
+    }
+
+    rc = ssh_dh_keypair_gen_keys(crypto->dh_ctx, DH_SERVER_KEYPAIR);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    rc = ssh_get_key_params(session, &privkey, &digest);
+    if (rc != SSH_OK) {
+        goto error;
+    }
+
+    rc = ssh_dh_compute_shared_secret(crypto->dh_ctx,
+                                      DH_SERVER_KEYPAIR, DH_CLIENT_KEYPAIR,
+                                      &crypto->shared_secret);
+    ssh_dh_debug_crypto(crypto);
+    if (rc == SSH_ERROR) {
+        ssh_set_error(session, SSH_FATAL, "Could not generate shared secret");
+        goto error;
+    }
+    rc = ssh_make_sessionid(session);
+    if (rc != SSH_OK) {
+        ssh_set_error(session, SSH_FATAL, "Could not create a session id");
+        goto error;
+    }
+    rc = ssh_dh_keypair_get_keys(crypto->dh_ctx, DH_SERVER_KEYPAIR,
+                                 NULL, &server_pubkey);
+    if (rc != SSH_OK){
+        goto error;
+    }
+
+    rc = ssh_gssapi_init(session);
+    if (rc == SSH_ERROR) {
+        return SSH_AUTH_ERROR;
+    }
+
+    rc = gethostname(hostname, 64);
+    if (rc != 0) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error getting hostname: %s",
+                ssh_strerror(errno, err_msg, SSH_ERRNO_MSG_MAX));
+        return SSH_ERROR;
+    }
+
+    rc = ssh_gssapi_import_name(session, hostname);
+    if (rc != SSH_OK) {
+        return SSH_AUTH_DENIED;
+    }
+
+    maj_stat = gss_acquire_cred(&min_stat, session->gssapi->client.server_name, 0,
+            GSS_C_NO_OID_SET, GSS_C_ACCEPT,
+            &session->gssapi->server_creds, NULL, NULL);
+    if (maj_stat != GSS_S_COMPLETE) {
+        SSH_LOG(SSH_LOG_TRACE, "error acquiring credentials %d, %d", maj_stat, min_stat);
+        ssh_gssapi_log_error(SSH_LOG_TRACE,
+                             "acquiring creds",
+                             maj_stat,
+                             min_stat);
+        goto error;
+    }
+
+    maj_stat = gss_accept_sec_context(&min_stat, &session->gssapi->ctx, session->gssapi->server_creds,
+            &input_token, GSS_C_NO_CHANNEL_BINDINGS, &client_name, NULL /*mech_oid*/, &output_token, &ret_flags,
+            NULL /*time*/, &session->gssapi->client_creds);
+    ssh_gssapi_log_error(SSH_LOG_DEBUG,
+                         "accepting token",
+                         maj_stat,
+                         min_stat);
+
+    msg.length = session->next_crypto->digest_len;
+    msg.value = session->next_crypto->secret_hash;
+    maj_stat = gss_get_mic(&min_stat,
+                           session->gssapi->ctx,
+                           GSS_C_QOP_DEFAULT,
+                           &msg,
+                           &mic);
+    ssh_gssapi_log_error(SSH_LOG_DEBUG,
+                         "get mic",
+                         maj_stat,
+                         min_stat);
+
+
+    rc = ssh_buffer_pack(session->out_buffer,
+                         "bBdPbdP",
+                         SSH2_MSG_KEXGSS_COMPLETE,
+                         server_pubkey,
+                         mic.length,
+                         (size_t)mic.length,
+                         mic.value,
+                         1,
+                         output_token.length,
+                         (size_t)output_token.length,
+                         output_token.value);
+#if defined(HAVE_LIBCRYPTO) && OPENSSL_VERSION_NUMBER >= 0x30000000L
+    bignum_safe_free(server_pubkey);
+#endif
+    if(rc != SSH_OK) {
+        ssh_set_error_oom(session);
+        ssh_buffer_reinit(session->out_buffer);
+        goto error;
+    }
+    rc = ssh_packet_send(session);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+    SSH_LOG(SSH_LOG_DEBUG, "Sent SSH2_MSG_KEXGSS_COMPLETE");
+
+    session->dh_handshake_state=DH_STATE_NEWKEYS_SENT;
+    /* Send the MSG_NEWKEYS */
+    rc = ssh_packet_send_newkeys(session);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    return SSH_OK;
+error:
+#if defined(HAVE_LIBCRYPTO) && OPENSSL_VERSION_NUMBER >= 0x30000000L
+    bignum_safe_free(server_pubkey);
+#endif
+
+    session->session_state = SSH_SESSION_STATE_ERROR;
+    ssh_dh_cleanup(session->next_crypto);
+    return SSH_ERROR;
+}
+
+/** @internal
+ * @brief parse an incoming SSH_MSG_KEXGSS_INIT packet and complete
+ *        Diffie-Hellman key exchange
+ **/
+static SSH_PACKET_CALLBACK(ssh_packet_server_gss_dh_init){
+    (void)type;
+    (void)user;
+    SSH_LOG(SSH_LOG_DEBUG, "Received SSH_MSG_KEXGSS_INIT");
+    ssh_packet_remove_callbacks(session, &ssh_gss_dh_server_callbacks);
+    ssh_server_gss_dh_process_init(session, packet);
+    return SSH_PACKET_USED;
+}
+
+#endif /* WITH_SERVER */

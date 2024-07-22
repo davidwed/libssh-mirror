@@ -1416,6 +1416,17 @@ int ssh_make_sessionid(ssh_session session)
         server_pubkey_blob = ssh_string_new(0);
     }
 
+    if (session->server) {
+        switch (session->next_crypto->kex_type) {
+        case SSH_GSS_KEX_DH_GROUP14_SHA256:
+        case SSH_GSS_KEX_DH_GROUP16_SHA512:
+            server_pubkey_blob = ssh_string_new(0);
+            break;
+        default:
+            break;
+        }
+    }
+
     rc = ssh_buffer_pack(buf,
                          "dPdPS",
                          ssh_buffer_get_len(client_hash),

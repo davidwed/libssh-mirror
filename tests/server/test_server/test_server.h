@@ -53,6 +53,7 @@ struct server_state_st {
     bool parse_global_config;
 
     char *log_file;
+    bool gssapi_key_exchange;
 
     /* State */
     int  max_tries;

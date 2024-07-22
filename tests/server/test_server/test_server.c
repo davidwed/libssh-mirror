@@ -192,6 +192,16 @@ int run_server(struct server_state_st *state)
     }
 
     rc = ssh_bind_options_set(sshbind,
+                              SSH_BIND_OPTIONS_GSSAPI_KEY_EXCHANGE,
+                              &(state->gssapi_key_exchange));
+    if (rc != 0) {
+        fprintf(stderr,
+                "Error setting GSSAPI key exchange: %s\n",
+                ssh_get_error(sshbind));
+        goto out;
+    }
+
+    rc = ssh_bind_options_set(sshbind,
                               SSH_BIND_OPTIONS_BINDPORT,
                               &(state->port));
     if (rc != 0) {

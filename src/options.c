@@ -2226,6 +2226,9 @@ static int ssh_bind_set_algo(ssh_bind sshbind,
  *                        Default is 1024 bits or 2048 bits in FIPS mode.
  *                        (int)
  *
+ *                      - SSH_BIND_OPTIONS_GSSAPI_KEY_EXCHANGE
+ *                        Set true to enable GSSAPI key exchange,
+ *                        false to disable GSSAPI key exchange. (bool)
  *
  * @param  value        The value to set. This is a generic pointer and the
  *                      datatype which should be used is described at the
@@ -2612,6 +2615,15 @@ ssh_bind_options_set(ssh_bind sshbind,
                 return -1;
             }
             sshbind->rsa_min_size = *x;
+        }
+        break;
+    case SSH_BIND_OPTIONS_GSSAPI_KEY_EXCHANGE:
+        if (value == NULL) {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            bool *x = (bool *)value;
+            sshbind->gssapi_key_exchange = *x;
         }
         break;
     default:

@@ -478,6 +478,7 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
     }
 
     session->common.log_verbosity = sshbind->common.log_verbosity;
+    session->opts.gssapi_key_exchange = sshbind->gssapi_key_exchange;
 
     if (sshbind->banner != NULL) {
         session->server_opts.custombanner = strdup(sshbind->banner);
