@@ -627,7 +627,7 @@ int ssh_options_set_algo(ssh_session session,
  *                Set to "none" to disable connection sharing.
  *                (const char *)
  *
- *              - SSH_OPTIONS_REVOKEDHOSTKEYS
+ *              - SSH_OPTIONS_REVOKED_HOSTKEYS
  *                Set the path to the file containing the revoked host public
  *                keys. Keys listed in this file will be refused for host
  *                authentication.
@@ -884,7 +884,7 @@ int ssh_options_set(ssh_session session, enum ssh_options_e type,
                 session->opts.exp_flags &= ~SSH_OPT_EXP_FLAG_GLOBAL_KNOWNHOSTS;
             }
             break;
-        case SSH_OPTIONS_REVOKEDHOSTKEYS:
+        case SSH_OPTIONS_REVOKED_HOSTKEYS:
             v = value;
             SAFE_FREE(session->opts.revoked_host_keys);
             if (v == NULL || v[0] == '\0') {
@@ -1527,7 +1527,7 @@ int ssh_options_get_port(ssh_session session, unsigned int* port_target) {
  *                Get the compression to use for server to client communication
  *                If the option has not been set, returns the defaults.
  *
- *               - SSH_OPTIONS_REVOKEDHOSTKEYS:
+ *               - SSH_OPTIONS_REVOKED_HOSTKEYS:
  *                Get the path to the revoked host public keys file to use for
  *                verifying the validity of the host public key during
  *                host authentication.
@@ -1626,7 +1626,7 @@ int ssh_options_get(ssh_session session, enum ssh_options_e type, char** value)
             src = ssh_options_get_algo(session, SSH_COMP_S_C);
             break;
 
-        case SSH_OPTIONS_REVOKEDHOSTKEYS:
+        case SSH_OPTIONS_REVOKED_HOSTKEYS:
             src = session->opts.revoked_host_keys;
             break;
 
@@ -2628,7 +2628,7 @@ ssh_bind_options_set(ssh_bind sshbind,
             sshbind->rsa_min_size = *x;
         }
         break;
-    case SSH_BIND_OPTIONS_USER_CA_FILE:
+    case SSH_BIND_OPTIONS_USER_CA:
         v = value;
         SAFE_FREE(sshbind->trusted_user_ca_keys_file);
         if (v == NULL) {
@@ -2782,7 +2782,7 @@ ssh_bind_options_set(ssh_bind sshbind,
             }
         }
         break;
-    case SSH_BIND_OPTIONS_AUTHORIZED_KEYS_FILE:
+    case SSH_BIND_OPTIONS_AUTHORIZED_KEYS:
         v = value;
         SAFE_FREE(sshbind->authorized_keys_file);
         if (v == NULL) {
@@ -2798,7 +2798,7 @@ ssh_bind_options_set(ssh_bind sshbind,
             }
         }
         break;
-    case SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS_FILE:
+    case SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS:
         v = value;
         SAFE_FREE(sshbind->authorized_principals_file);
         if (v == NULL) {

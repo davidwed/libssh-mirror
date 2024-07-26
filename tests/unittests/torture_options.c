@@ -417,12 +417,12 @@ static void torture_options_set_revoked_host_keys(void **state)
     ssh_session session = *state;
     int rc;
 
-    rc = ssh_options_set(session, SSH_OPTIONS_REVOKEDHOSTKEYS, "/path/to/keys");
+    rc = ssh_options_set(session, SSH_OPTIONS_REVOKED_HOSTKEYS, "/path/to/keys");
     assert_ssh_return_code(session, rc);
     assert_string_equal(session->opts.revoked_host_keys, "/path/to/keys");
 
     rc = ssh_options_set(session,
-                         SSH_OPTIONS_REVOKEDHOSTKEYS,
+                         SSH_OPTIONS_REVOKED_HOSTKEYS,
                          "/new/path/to/keys");
     assert_ssh_return_code(session, rc);
     assert_string_equal(session->opts.revoked_host_keys, "/new/path/to/keys");
@@ -434,11 +434,11 @@ static void torture_options_get_revoked_host_keys(void **state)
     char *value = NULL;
     int rc;
 
-    rc = ssh_options_set(session, SSH_OPTIONS_REVOKEDHOSTKEYS, "/path/to/keys");
+    rc = ssh_options_set(session, SSH_OPTIONS_REVOKED_HOSTKEYS, "/path/to/keys");
     assert_ssh_return_code(session, rc);
     assert_string_equal(session->opts.revoked_host_keys, "/path/to/keys");
 
-    rc = ssh_options_get(session, SSH_OPTIONS_REVOKEDHOSTKEYS, &value);
+    rc = ssh_options_get(session, SSH_OPTIONS_REVOKED_HOSTKEYS, &value);
     assert_ssh_return_code(session, rc);
     assert_non_null(value);
     assert_string_equal(value, "/path/to/keys");
@@ -2796,14 +2796,14 @@ torture_bind_options_user_ca_file(void **state)
     bind = test_state->bind;
 
     rc = ssh_bind_options_set(bind,
-                              SSH_BIND_OPTIONS_USER_CA_FILE,
+                              SSH_BIND_OPTIONS_USER_CA,
                               new_dir_file);
     assert_int_equal(rc, 0);
     assert_non_null(bind->trusted_user_ca_keys_file);
     assert_string_equal(bind->trusted_user_ca_keys_file, new_dir_file);
 
     rc = ssh_bind_options_set(bind,
-                              SSH_BIND_OPTIONS_USER_CA_FILE,
+                              SSH_BIND_OPTIONS_USER_CA,
                               replacement_dir_file);
     assert_int_equal(rc, 0);
     assert_non_null(bind->trusted_user_ca_keys_file);
@@ -2827,14 +2827,14 @@ torture_bind_options_authorized_keys_file(void **state)
     bind = test_state->bind;
 
     rc = ssh_bind_options_set(bind,
-                              SSH_BIND_OPTIONS_AUTHORIZED_KEYS_FILE,
+                              SSH_BIND_OPTIONS_AUTHORIZED_KEYS,
                               new_dir_file);
     assert_int_equal(rc, 0);
     assert_non_null(bind->authorized_keys_file);
     assert_string_equal(bind->authorized_keys_file, new_dir_file);
 
     rc = ssh_bind_options_set(bind,
-                              SSH_BIND_OPTIONS_AUTHORIZED_KEYS_FILE,
+                              SSH_BIND_OPTIONS_AUTHORIZED_KEYS,
                               replacement_dir_file);
     assert_int_equal(rc, 0);
     assert_non_null(bind->authorized_keys_file);
@@ -2858,14 +2858,14 @@ torture_bind_options_authorized_principals_file(void **state)
     bind = test_state->bind;
 
     rc = ssh_bind_options_set(bind,
-                              SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS_FILE,
+                              SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS,
                               new_dir_file);
     assert_int_equal(rc, 0);
     assert_non_null(bind->authorized_principals_file);
     assert_string_equal(bind->authorized_principals_file, new_dir_file);
 
     rc = ssh_bind_options_set(bind,
-                              SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS_FILE,
+                              SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS,
                               replacement_dir_file);
     assert_int_equal(rc, 0);
     assert_non_null(bind->authorized_principals_file);

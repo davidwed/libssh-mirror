@@ -508,7 +508,7 @@ ssh_bind_config_parse_line(ssh_bind bind,
     case BIND_CFG_TRUSTED_USER_CA_KEYS:
         p = ssh_config_get_str_tok(&s, NULL);
         if (p && (*parser_flags & PARSING)) {
-            rc = ssh_bind_options_set(bind, SSH_BIND_OPTIONS_USER_CA_FILE, p);
+            rc = ssh_bind_options_set(bind, SSH_BIND_OPTIONS_USER_CA, p);
             if (rc != 0) {
                 SSH_LOG(SSH_LOG_TRACE,
                         "line %d: Failed to set TrustedUserCaKeys value '%s'",
@@ -522,7 +522,7 @@ ssh_bind_config_parse_line(ssh_bind bind,
         if (p && (*parser_flags & PARSING)) {
             rc = ssh_bind_options_set(
                 bind,
-                SSH_BIND_OPTIONS_AUTHORIZED_KEYS_FILE,
+                SSH_BIND_OPTIONS_AUTHORIZED_KEYS,
                 p);
             if (rc != 0) {
                 SSH_LOG(SSH_LOG_TRACE,
@@ -537,7 +537,7 @@ ssh_bind_config_parse_line(ssh_bind bind,
         if (p && (*parser_flags & PARSING)) {
             rc = ssh_bind_options_set(
                 bind,
-                SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS_FILE,
+                SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS,
                 p);
             if (rc != 0) {
                 SSH_LOG(SSH_LOG_TRACE,

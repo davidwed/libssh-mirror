@@ -1440,7 +1440,7 @@ ssh_config_parse_line(ssh_session session,
     case SOC_REVOKEDHOSTKEYS:
         p = ssh_config_get_str_tok(&s, NULL);
         if (p && *parsing) {
-            ssh_options_set(session, SSH_OPTIONS_REVOKEDHOSTKEYS, p);
+            ssh_options_set(session, SSH_OPTIONS_REVOKED_HOSTKEYS, p);
         }
         break;
     default:
