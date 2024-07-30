@@ -29,6 +29,9 @@
 #include "libssh/priv.h"
 #include "libssh/pki.h"
 #include "libssh/buffer.h"
+#include "libssh/misc.h"
+#include <time.h>
+#include <errno.h>
 
 #define SSH_CERT_MAX_PRINCIPALS 256
 #define SSH_CERT_PARSE_CRITICAL_OPTIONS 1
@@ -113,7 +116,7 @@ ssh_cert_free(ssh_cert cert)
 }
 
 /**
- * @brief Copy a certificate
+ * @brief Duplicate a certificate.
  *
  * @param[in] src_cert  ssh_cert certificate to copy.
  *
@@ -121,7 +124,7 @@ ssh_cert_free(ssh_cert cert)
  * @return NULL on error.
  */
 ssh_cert
-ssh_cert_copy(const ssh_cert src_cert)
+ssh_cert_dup(const ssh_cert src_cert)
 {
     unsigned int i;
     ssh_cert dest_cert = NULL;
@@ -776,4 +779,131 @@ fail:
     SSH_STRING_FREE(sign);
     SSH_STRING_FREE(reserved);
     return SSH_ERROR;
+}
+
+/**
+ * @brief Verify the current validity of a certificate. The certificate
+ * is checked based on the type, validity dates, valid principals and allowed
+ * CA signature algorithms.
+ *
+ * @param[in] key        The ssh_key public key of a certificate.
+ *
+ * @param[in] host_type  A boolean indicating if the function is called during
+ *                       server host authentication requiring, then, a host cert
+ *                       type.
+ *
+ * @param[in] name       The hostname or username to be checked against the
+ *                       allowed principal names in the certificate
+ *                       for host or user authentication.
+ *
+ * @param[in] allowed_ca_sign_algos The list of allowed CA signature algorithms.
+ *
+ * @returns SSH_OK if the certificate is valid.
+ * @returns SSH_ERROR if the certificate is NOT valid.
+ */
+int
+pki_cert_check_validity(ssh_key key,
+                        bool host_type,
+                        const char *name,
+                        const char *allowed_ca_sign_algos)
+{
+    time_t time_now;
+    int rc, valid_principal = 0;
+    char datetime[64], err_msg[SSH_ERRNO_MSG_MAX] = {0};
+    unsigned int i;
+
+    if (!is_cert_type(key->type)) {
+        SSH_LOG(SSH_LOG_WARN, "The key is not a certificate");
+        return SSH_ERROR;
+    }
+
+    /*
+     * Check if the certificate signature type is allowed by default or custom
+     * CASignatureAlgorithms.
+     */
+    if (allowed_ca_sign_algos != NULL) {
+        rc = match_pattern_list(key->cert_data->signature->type_c,
+                                allowed_ca_sign_algos,
+                                strlen(allowed_ca_sign_algos),
+                                0);
+        if (rc == 0) {
+            SSH_LOG(SSH_LOG_WARN, "Invalid certificate. The certificate is "
+                                  "signed with non-allowed signature type");
+            return SSH_ERROR;
+        }
+    }
+
+    /*
+     * Check if the certificate type is correct based on whether the
+     * function has been called during host or user authentication
+     */
+    if (host_type) {
+        if (key->cert_data->type != SSH_CERT_TYPE_HOST) {
+            SSH_LOG(SSH_LOG_WARN,
+                    "Invalid certificate: not a host certificate");
+            return SSH_ERROR;
+        }
+    } else {
+        if (key->cert_data->type != SSH_CERT_TYPE_USER) {
+            SSH_LOG(SSH_LOG_WARN,
+                    "Invalid certificate: not a user certificate");
+            return SSH_ERROR;
+        }
+    }
+
+    time_now = time(NULL);
+    if (time_now == (time_t) - 1) {
+        SSH_LOG(SSH_LOG_WARN,
+                "Error while retrieving current time: %s",
+                ssh_strerror(errno, err_msg, SSH_ERRNO_MSG_MAX));
+        return SSH_ERROR;
+    }
+
+    /* Check the certificate validity dates */
+    if ((uint64_t)time_now < key->cert_data->valid_after) {
+        ssh_format_time_to_string(key->cert_data->valid_after,
+                                  datetime,
+                                  sizeof(datetime));
+        SSH_LOG(SSH_LOG_WARN,
+                "Invalid certificate. The certificate is not valid yet. "
+                "Valid after: %s",
+                datetime);
+        return SSH_ERROR;
+    }
+
+    if ((uint64_t)time_now > key->cert_data->valid_before) {
+        ssh_format_time_to_string(key->cert_data->valid_before,
+                                  datetime,
+                                  sizeof(datetime));
+        SSH_LOG(SSH_LOG_WARN,
+                "Invalid certificate. The certificate is expired. "
+                "Valid before: %s",
+                datetime);
+        return SSH_ERROR;
+    }
+
+    /* Check if there are any valid principals */
+    if (key->cert_data->n_principals == 0) {
+        /* Certificate is valid for any principals */
+        SSH_LOG(SSH_LOG_TRACE,
+                "Certificate serial %"PRIu64" ID: %s is valid for "
+                "any principal",
+                key->cert_data->serial,
+                key->cert_data->key_id);
+    } else if (name != NULL) {
+        for (i = 0; i < key->cert_data->n_principals; i++) {
+            if (strcmp(name, key->cert_data->principals[i]) == 0) {
+                valid_principal = 1;
+                break;
+            }
+        }
+        if (!valid_principal) {
+            SSH_LOG(SSH_LOG_WARN,
+                    "Invalid certificate: %s is not a valid principal",
+                    name);
+            return SSH_ERROR;
+        }
+    }
+
+    return SSH_OK;
 }

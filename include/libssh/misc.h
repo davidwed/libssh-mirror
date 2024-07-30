@@ -136,6 +136,9 @@ int ssh_check_username_syntax(const char *username);
 void ssh_proxyjumps_free(struct ssh_list *proxy_jump_list);
 bool ssh_libssh_proxy_jumps(void);
 
+size_t
+ssh_format_time_to_string(uint64_t timestamp, char *buf, size_t buf_size);
+
 #ifdef __cplusplus
 }
 #endif

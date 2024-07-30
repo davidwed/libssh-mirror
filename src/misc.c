@@ -2271,4 +2271,33 @@ ssh_libssh_proxy_jumps(void)
     return !(t != NULL && t[0] == '1');
 }
 
+/**
+ * @brief Converts an absolute time value to a formatted string.
+ *
+ * This function takes a `uint64_t` absolute time value (representing time
+ * in seconds since the Unix epoch) and converts it to a human-readable string
+ * in the format "YYYY-MM-DD HH:MM:SS".
+ *
+ * @param[in] timestamp      The timestamp value to be converted.
+ *
+ * @param[out] buf           A pointer to a buffer where the formatted time
+ *                           string will be stored. The buffer should be large
+ *                           enough to hold the formatted string.
+ *
+ * @return The number of characters placed in the buffer.
+ * @returns 0 if the conversion fails and the buffer is undefined.
+ */
+size_t
+ssh_format_time_to_string(uint64_t timestamp, char *buf, size_t buf_size)
+{
+    struct tm *tm_info = NULL;
+    size_t rc;
+
+    time_t time = (time_t)timestamp;
+    tm_info = localtime(&time);
+
+    rc = strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S", tm_info);
+    return rc;
+}
+
 /** @} */
