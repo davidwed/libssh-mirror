@@ -2065,6 +2065,125 @@ static void torture_options_set_rsa_min_size(void **state)
     assert_ssh_return_code(session, rc);
 }
 
+static void torture_options_ca_signature_algos(void **state)
+{
+    ssh_session session = *state;
+    int rc;
+    const char *default_exp_ca_algos = NULL, *fips_exp_ca_algos = NULL;
+
+    assert_string_equal(session->opts.ca_signature_algorithms,
+                        DEFAULT_HOSTKEY_SIGNATURE_ALGOS);
+
+    /* Test minus sign */
+    default_exp_ca_algos = "ecdsa-sha2-nistp521," \
+                           "ecdsa-sha2-nistp384," \
+                           "ecdsa-sha2-nistp256," \
+                           "sk-ssh-ed25519@openssh.com," \
+                           "sk-ecdsa-sha2-nistp256@openssh.com," \
+                           "rsa-sha2-512";
+
+    fips_exp_ca_algos = "ecdsa-sha2-nistp521," \
+                        "rsa-sha2-512," \
+                        "rsa-sha2-256";
+
+    if (ssh_fips_mode()) {
+        rc = ssh_options_set(session,
+                             SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                             "-ecdsa-sha2-nistp256,ecdsa-sha2-nistp384");
+    } else {
+        rc = ssh_options_set(session,
+                             SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                             "-rsa-sha2-256,ssh-ed25519");
+    }
+    assert_ssh_return_code(session, rc);
+
+    if (ssh_fips_mode()) {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            fips_exp_ca_algos);
+    } else {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            default_exp_ca_algos);
+    }
+
+    /* Test plus sign */
+    default_exp_ca_algos = "ssh-ed25519," \
+                           "ecdsa-sha2-nistp521," \
+                           "ecdsa-sha2-nistp384," \
+                           "ecdsa-sha2-nistp256," \
+                           "sk-ssh-ed25519@openssh.com," \
+                           "sk-ecdsa-sha2-nistp256@openssh.com," \
+                           "rsa-sha2-512," \
+                           "rsa-sha2-256," \
+                           "ssh-rsa" ;
+
+    fips_exp_ca_algos = "ecdsa-sha2-nistp521,"
+                        "ecdsa-sha2-nistp384,"
+                        "ecdsa-sha2-nistp256," \
+                        "rsa-sha2-512," \
+                        "rsa-sha2-256," \
+                        "ssh-rsa";
+
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                         "+ssh-rsa");
+    assert_ssh_return_code(session, rc);
+
+    if (ssh_fips_mode()) {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            fips_exp_ca_algos);
+    } else {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            default_exp_ca_algos);
+    }
+
+    /* Test without sign */
+    default_exp_ca_algos = "ssh-ed25519," \
+                           "ecdsa-sha2-nistp521," \
+                           "rsa-sha2-512";
+
+    fips_exp_ca_algos = "ecdsa-sha2-nistp521,"
+                        "rsa-sha2-512";
+
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                         "ssh-ed25519,ecdsa-sha2-nistp521,rsa-sha2-512");
+    assert_ssh_return_code(session, rc);
+
+    if (ssh_fips_mode()) {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            fips_exp_ca_algos);
+    } else {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            default_exp_ca_algos);
+    }
+
+    /* Negative tests */
+
+    /* Missing list after the sign */
+    rc = ssh_options_set(session, SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS, "+");
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+
+    /* Unknown signature algorithm after the sign */
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                         "+unknown");
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+
+    /* NULL list */
+    rc = ssh_options_set(session, SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS, NULL);
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+
+    /* Empty list */
+    rc = ssh_options_set(session, SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS, "");
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+
+    /* Invalid sign */
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                         "^rsa-sha2-512");
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+}
+
 #ifdef WITH_SERVER
 const char template[] = "temp_dir_XXXXXX";
 
@@ -3128,6 +3247,9 @@ torture_run_tests(void)
                                         setup,
                                         teardown),
         cmocka_unit_test_setup_teardown(torture_options_set_rsa_min_size,
+                                        setup,
+                                        teardown),
+        cmocka_unit_test_setup_teardown(torture_options_ca_signature_algos,
                                         setup,
                                         teardown),
     };

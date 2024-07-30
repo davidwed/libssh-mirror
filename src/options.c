@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #ifndef _WIN32
 #include <pwd.h>
 #else
@@ -38,6 +39,8 @@
 #include "libssh/misc.h"
 #include "libssh/options.h"
 #include "libssh/config_parser.h"
+#include "libssh/token.h"
+#include "libssh/kex.h"
 #ifdef WITH_SERVER
 #include "libssh/server.h"
 #include "libssh/bind.h"
@@ -300,6 +303,99 @@ int ssh_options_set_algo(ssh_session session,
     *place = p;
 
     return 0;
+}
+
+/**
+ * @brief Sets the allowed CA signature algorithms for the session
+ * based on a specified list. If the list starts with '+', the algorithms
+ * are appended to the default signature algorithms list. If it starts with '-',
+ * they are removed.
+ *
+ * @param[in] session  The ssh_session for which to set the CA signature
+ *                     algorithms.
+ *
+ * @param[in] list     The list of CA signature algorithms to append or remove.
+ *
+ * @param[out] place   The target list where to store the new CA allowed
+ *                     algorithms.
+ *
+ * @returns 0 on success.
+ * @returns -1 on failure with an appropriate error message set in the session.
+ */
+static int
+ssh_options_set_algo_ca_only(ssh_session session,
+                             const char *list,
+                             char **place)
+{
+    char *p = NULL, *tmp = NULL;
+    const char *defaults = NULL;
+    int rc = 0;
+
+    if (list == NULL || list[0] == '\0' || list[1] == '\0') {
+        p = NULL;
+        goto out;
+    }
+
+    p = (char *)list;
+
+    if (ssh_fips_mode()) {
+        defaults = FIPS_ALLOWED_HOSTKEY_SIGNATURE_ALGOS;
+    } else {
+        defaults = DEFAULT_HOSTKEY_SIGNATURE_ALGOS;
+    }
+
+    switch (list[0]) {
+    case '+':
+        /* First validate the algorithms to append */
+        tmp = ssh_find_all_matching(HOSTKEY_SIGNATURE_ALGOS, list + 1);
+        if (tmp == NULL) {
+            p = NULL;
+            goto out;
+        }
+        p = ssh_append_without_duplicates(defaults, tmp);
+        SAFE_FREE(tmp);
+        break;
+    case '-':
+        p = ssh_remove_all_matching(defaults, list + 1);
+        break;
+    default:
+        /* If the first character is a symbol then it's an invalid symbol */
+        if (!isalnum(list[0])) {
+            ssh_set_error(session,
+                          SSH_REQUEST_DENIED,
+                          "Character '%c' is not recognized by "
+                          "CASignatureAlgorithms option",
+                          list[0]);
+            rc = -1;
+            p = NULL;
+            break;
+        }
+
+        /*
+         * If the sign is absent, the list is filtered to include only the
+         * supported signature algorithms.
+         */
+        if (ssh_fips_mode()) {
+            p = ssh_find_all_matching(FIPS_ALLOWED_HOSTKEY_SIGNATURE_ALGOS, list);
+        } else {
+            p = ssh_find_all_matching(HOSTKEY_SIGNATURE_ALGOS, list);
+        }
+        break;
+    }
+
+out:
+    if (p == NULL) {
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "No allowed algorithm for CASignatureAlgorithms (%s)",
+                      list);
+        rc = -1;
+    } else {
+        SAFE_FREE(*place);
+        *place = p;
+    }
+
+    return rc;
 }
 
 /**
@@ -633,6 +729,18 @@ int ssh_options_set_algo(ssh_session session,
  *                authentication.
  *                (const char *)
  *
+ *              - SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS
+ *                Set which algorithms are allowed for signing of certificates
+ *                by certificate authorities (CAs). \n
+ *                (const char *, comma-separated list). The list can be
+ *                prepended by +,- which will append/remove the listed
+ *                algorithms to/from the default list. Giving an empty list
+ *                after + and - will cause error.\n
+ *                The default list is:\n
+ *                ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,
+ *                ecdsa-sha2-nistp521,sk-ssh-ed25519\@openssh.com,
+ *                sk-ecdsa-sha2-nistp256\@openssh.com, rsa-sha2-512,rsa-sha2-256
+ *
  *
  * @param  value The value to set. This is a generic pointer and the
  *               datatype which is used should be set according to the
@@ -658,8 +766,8 @@ int ssh_options_set_algo(ssh_session session,
 int ssh_options_set(ssh_session session, enum ssh_options_e type,
                     const void *value)
 {
-    const char *v;
-    char *p, *q;
+    const char *v = NULL;
+    char *p = NULL, *q = NULL;
     long int i;
     unsigned int u;
     int rc;
@@ -1370,6 +1478,21 @@ int ssh_options_set(ssh_session session, enum ssh_options_e type,
                         return -1;
                     }
                     session->opts.exp_flags &= ~SSH_OPT_EXP_FLAG_CONTROL_PATH;
+                }
+            }
+            break;
+        case SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS:
+            v = value;
+            if (v == NULL || v[0] == '\0') {
+                ssh_set_error_invalid(session);
+                return -1;
+            } else {
+                rc = ssh_options_set_algo_ca_only(
+                    session,
+                    v,
+                    &session->opts.ca_signature_algorithms);
+                if (rc < 0) {
+                    return -1;
                 }
             }
             break;

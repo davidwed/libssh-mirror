@@ -273,6 +273,7 @@ struct ssh_session_struct {
         int control_master;
         char *control_path;
         char *revoked_host_keys;
+        char *ca_signature_algorithms;
     } opts;
 
     /* server options */

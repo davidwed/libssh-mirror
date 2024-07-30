@@ -223,8 +223,8 @@ static int torture_pkd_setup_ecdsa_521(void **state) {
     /* Default passes by server key type. */ \
     f(client, ed25519_default,    cmd,  setup_ed25519,    teardown)
 
-#define GEX_SHA256 "diffie-hellman-group-exchange-sha256"
-#define GEX_SHA1   "diffie-hellman-group-exchange-sha1"
+#define PKD_GEX_SHA256 "diffie-hellman-group-exchange-sha256"
+#define PKD_GEX_SHA1   "diffie-hellman-group-exchange-sha1"
 
 #if defined(WITH_GEX)
 #define PKDTESTS_KEX_FIPS(f, client, kexcmd) \
@@ -248,10 +248,10 @@ static int torture_pkd_setup_ecdsa_521(void **state) {
     f(client, ecdsa_521_ecdh_sha2_nistp521,           kexcmd("ecdh-sha2-nistp521"),            setup_ecdsa_521,  teardown) \
     f(client, ecdsa_521_diffie_hellman_group16_sha512,kexcmd("diffie-hellman-group16-sha512"), setup_ecdsa_521,  teardown) \
     f(client, ecdsa_521_diffie_hellman_group18_sha512,kexcmd("diffie-hellman-group18-sha512"), setup_ecdsa_521,  teardown) \
-    f(client, rsa_diffie_hellman_group_exchange_sha256,       kexcmd(GEX_SHA256),              setup_rsa,        teardown) \
-    f(client, ecdsa_256_diffie_hellman_group_exchange_sha256, kexcmd(GEX_SHA256),              setup_ecdsa_256,  teardown) \
-    f(client, ecdsa_384_diffie_hellman_group_exchange_sha256, kexcmd(GEX_SHA256),              setup_ecdsa_384,  teardown) \
-    f(client, ecdsa_521_diffie_hellman_group_exchange_sha256, kexcmd(GEX_SHA256),              setup_ecdsa_521,  teardown)
+    f(client, rsa_diffie_hellman_group_exchange_sha256,       kexcmd(PKD_GEX_SHA256),          setup_rsa,        teardown) \
+    f(client, ecdsa_256_diffie_hellman_group_exchange_sha256, kexcmd(PKD_GEX_SHA256),          setup_ecdsa_256,  teardown) \
+    f(client, ecdsa_384_diffie_hellman_group_exchange_sha256, kexcmd(PKD_GEX_SHA256),          setup_ecdsa_384,  teardown) \
+    f(client, ecdsa_521_diffie_hellman_group_exchange_sha256, kexcmd(PKD_GEX_SHA256),          setup_ecdsa_521,  teardown)
 #else /* !defined(WITH_GEX) */
 #define PKDTESTS_KEX_FIPS(f, client, kexcmd) \
     f(client, rsa_ecdh_sha2_nistp256,                 kexcmd("ecdh-sha2-nistp256"),            setup_rsa,        teardown) \
@@ -315,10 +315,10 @@ static int torture_pkd_setup_ecdsa_521(void **state) {
 #define PKDTESTS_KEX(f, client, kexcmd) \
     /* Kex algorithms. */ \
     PKDTESTS_KEX_COMMON(f, client, kexcmd) \
-    f(client, rsa_diffie_hellman_group_exchange_sha1,         kexcmd(GEX_SHA1),                setup_rsa,        teardown) \
-    f(client, ecdsa_256_diffie_hellman_group_exchange_sha1,   kexcmd(GEX_SHA1),                setup_ecdsa_256,  teardown) \
-    f(client, ecdsa_384_diffie_hellman_group_exchange_sha1,   kexcmd(GEX_SHA1),                setup_ecdsa_384,  teardown) \
-    f(client, ecdsa_521_diffie_hellman_group_exchange_sha1,   kexcmd(GEX_SHA1),                setup_ecdsa_521,  teardown)
+    f(client, rsa_diffie_hellman_group_exchange_sha1,         kexcmd(PKD_GEX_SHA1),                setup_rsa,        teardown) \
+    f(client, ecdsa_256_diffie_hellman_group_exchange_sha1,   kexcmd(PKD_GEX_SHA1),                setup_ecdsa_256,  teardown) \
+    f(client, ecdsa_384_diffie_hellman_group_exchange_sha1,   kexcmd(PKD_GEX_SHA1),                setup_ecdsa_384,  teardown) \
+    f(client, ecdsa_521_diffie_hellman_group_exchange_sha1,   kexcmd(PKD_GEX_SHA1),                setup_ecdsa_521,  teardown)
 #else
 #define PKDTESTS_KEX(f, client, kexcmd) \
     /* Kex algorithms. */ \
@@ -344,10 +344,8 @@ static int torture_pkd_setup_ecdsa_521(void **state) {
     f(client, ed25519_diffie_hellman_group16_sha512,  kexcmd("diffie-hellman-group16-sha512"), setup_ed25519,    teardown) \
     f(client, ed25519_diffie_hellman_group18_sha512,  kexcmd("diffie-hellman-group18-sha512"), setup_ed25519,    teardown) \
     f(client, ed25519_diffie_hellman_group1_sha1,     kexcmd("diffie-hellman-group1-sha1"),    setup_ed25519,    teardown) \
-    f(client, ed25519_diffie_hellman_group_exchange_sha256, kexcmd(GEX_SHA256),                setup_ed25519,    teardown) \
-    f(client, ed25519_diffie_hellman_group_exchange_sha1, kexcmd(GEX_SHA1),                    setup_ed25519,    teardown)
-
-#define CHACHA20 "chacha20-poly1305@openssh.com"
+    f(client, ed25519_diffie_hellman_group_exchange_sha256, kexcmd(PKD_GEX_SHA256),                setup_ed25519,    teardown) \
+    f(client, ed25519_diffie_hellman_group_exchange_sha1, kexcmd(PKD_GEX_SHA1),                    setup_ed25519,    teardown)
 
 #define PKDTESTS_CIPHER_COMMON(f, client, ciphercmd) \
     f(client, rsa_aes128_ctr,          ciphercmd("aes128-ctr"),    setup_rsa,        teardown) \

@@ -67,6 +67,7 @@ enum ssh_config_opcode_e {
     SOC_CONTROLPATH,
     SOC_CERTIFICATE,
     SOC_REVOKEDHOSTKEYS,
+    SOC_CASIGNATUREALGORITHMS,
 
     SOC_MAX /* Keep this one last in the list */
 };

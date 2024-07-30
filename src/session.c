@@ -40,6 +40,7 @@
 #include "libssh/poll.h"
 #include "libssh/pki.h"
 #include "libssh/gssapi.h"
+#include "libssh/kex.h"
 
 #define FIRST_CHANNEL 42 // why not ? it helps to find bugs.
 
@@ -177,6 +178,12 @@ ssh_session ssh_new(void)
     }
     rc = ssh_list_append(session->opts.identity_non_exp, id);
     if (rc == SSH_ERROR) {
+        goto err;
+    }
+
+    session->opts.ca_signature_algorithms =
+        strdup(DEFAULT_HOSTKEY_SIGNATURE_ALGOS);
+    if (session->opts.ca_signature_algorithms == NULL) {
         goto err;
     }
 
@@ -370,7 +377,10 @@ void ssh_free(ssh_session session)
   SAFE_FREE(session->opts.pubkey_accepted_types);
   SAFE_FREE(session->opts.control_path);
   SAFE_FREE(session->opts.revoked_host_keys);
+  SAFE_FREE(session->opts.ca_signature_algorithms);
 
+  SAFE_FREE(session->server_opts.custombanner);
+  SAFE_FREE(session->server_opts.moduli_file);
   SAFE_FREE(session->server_opts.trusted_user_ca_keys_file);
   SAFE_FREE(session->server_opts.authorized_keys_file);
   SAFE_FREE(session->server_opts.authorized_principals_file);
@@ -380,9 +390,6 @@ void ssh_free(ssh_session session)
           SAFE_FREE(session->opts.wanted_methods[i]);
       }
   }
-
-  SAFE_FREE(session->server_opts.custombanner);
-  SAFE_FREE(session->server_opts.moduli_file);
 
   _ssh_remove_legacy_log_cb();
 
