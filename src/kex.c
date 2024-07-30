@@ -655,6 +655,167 @@ void ssh_list_kex(struct ssh_kex_struct *kex) {
 }
 
 /**
+ * @brief Get preferred host key algorithms based on wanted and known
+ *        algorithms.
+ *
+ * This function compares the given wanted algorithms with known algorithms
+ * and returns a string containing the preferred algorithms in the order
+ * of wanted algorithms, including only those that are also known algorithms.
+ *
+ * @warning The lists MUST be validated with known key types. If there are
+ * unknown key types then the returned list is NULL and must be properly handled
+ * by the caller.
+ *
+ * @note If the wanted algorithms list contains certificate types then they are
+ * always prepended to plain key types.
+ * @note If the known keys contain a CA then the certificate type is always
+ * preferred.
+ *
+ * @param wanted_algos  comma-separated string of wanted algorithms.
+ * @param known_algos   comma-separated string of known algorithms.
+ * @param with_ca       boolean indicating if the known keys contain a CA.
+ *
+ * @return A dynamically allocated string containing the preferred algorithms.
+ *         The caller is responsible for freeing this string.
+ * @return NULL on errors.
+ */
+static char *
+ssh_client_get_preferred_hostkeys_algos(const char *wanted_algos,
+                                        const char *known_algos,
+                                        int with_ca)
+{
+    struct ssh_tokens_st *wanted_tokens = NULL, *known_tokens = NULL;
+    char *alg_name = NULL, *known_alg_name = NULL, *preferred = NULL;
+    const char *temp_algos = NULL;
+    enum ssh_keytypes_e key_type, known_key_type, key_type_plain;
+    size_t len, preferred_len = 0;
+    int i, j, included;
+
+#define APPEND_TO_LIST(fmt, list, ...) \
+        do { \
+            int ret; \
+            ret = snprintf(list + preferred_len, \
+                           len - preferred_len, \
+                           fmt, \
+                           __VA_ARGS__); \
+            if (ret < 0) { \
+                SAFE_FREE(preferred); \
+                return NULL; \
+            } \
+            if ((size_t)ret >= (len - preferred_len)) { \
+                /* Handle buffer overflow, output was silently truncated */ \
+                SAFE_FREE(preferred); \
+                return NULL; \
+            } \
+            preferred_len += (size_t)ret; \
+        } while (0)
+
+    if (wanted_algos == NULL || known_algos == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Bad arguments");
+        return NULL;
+    }
+
+    wanted_tokens = ssh_tokenize(wanted_algos, ',');
+    if (wanted_tokens == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while tokenizing wanted algorithms");
+        return NULL;
+    }
+
+    known_tokens = ssh_tokenize(known_algos, ',');
+    if (known_tokens == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while tokenizing known algorithms");
+        ssh_tokens_free(wanted_tokens);
+        return NULL;
+    }
+
+    /*
+     * The size of the preferred algorithms string can be, at most, equal to the
+     * size of the default algorithms string. This is because we are also
+     * appending certificate algorithms. Therefore, the final string length
+     * should be the sum of the lengths of the wanted plain key algorithms and
+     * the corresponding certificate algorithms. In the worst-case scenario
+     * (when all wanted key types are included), the total length will match the
+     * length of the default algorithms string.
+     */
+    if (ssh_fips_mode()) {
+        temp_algos = ssh_kex_get_fips_methods(SSH_HOSTKEYS);
+    } else {
+        temp_algos = ssh_kex_get_default_methods(SSH_HOSTKEYS);
+    }
+
+    len = strlen(temp_algos) + 1;
+    preferred = calloc(len, sizeof(char));
+    if (preferred == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while allocating space for preferred "
+                               "algorithms");
+        goto out;
+    }
+
+    /*
+     * Check for a match between each wanted algorithm and each known algorithm.
+     * Certificate types are converted to plain types since we want always to
+     * prepend a cert algorithm in front of a plain key algorithm.
+     */
+    for (i = 0; wanted_tokens->tokens[i] != NULL; i++) {
+        alg_name = wanted_tokens->tokens[i];
+        key_type = ssh_key_type_from_signature_name(alg_name);
+        if (key_type == SSH_KEYTYPE_UNKNOWN) {
+            SSH_LOG(SSH_LOG_TRACE, "Unknown key type: %s", alg_name);
+            SAFE_FREE(preferred);
+            goto out;
+        }
+
+        if (is_cert_type(key_type) && with_ca) {
+            APPEND_TO_LIST("%s%s",
+                           preferred,
+                           preferred_len > 0 ? "," : "",
+                           alg_name);
+            continue;
+        }
+
+        for (j = 0; known_tokens->tokens[j] != NULL; j++) {
+            known_alg_name = known_tokens->tokens[j];
+            known_key_type = ssh_key_type_from_signature_name(known_alg_name);
+            key_type_plain = ssh_key_type_plain(key_type);
+
+            if (known_key_type == SSH_KEYTYPE_UNKNOWN) {
+                SSH_LOG(SSH_LOG_TRACE, "Unknown key type: %s", known_alg_name);
+                SAFE_FREE(preferred);
+                goto out;
+            }
+
+            /*
+             * Skip algorithms that have already been included. This is
+             * necessary because when comparing plain key types, encountering
+             * rsa-sha2 algorithms will cause them to be converted to the
+             * generic ssh-rsa key type therefore leading to multiple successful
+             * matches for the same key type. Allowing duplicates and removing
+             * them later could result in a buffer overflow now, due to the way
+             * the maximum length of the preferred string is calculated.
+             */
+            included = match_pattern_list(alg_name,
+                                          preferred,
+                                          preferred_len,
+                                          0);
+            if (!included && known_key_type == key_type_plain) {
+                SSH_LOG(SSH_LOG_DEBUG, "append: %s", alg_name);
+                APPEND_TO_LIST("%s%s",
+                               preferred,
+                               preferred_len > 0 ? "," : "",
+                               alg_name);
+            }
+        }
+    }
+
+#undef APPEND_TO_LIST
+
+out:
+    ssh_tokens_free(wanted_tokens);
+    ssh_tokens_free(known_tokens);
+    return preferred;
+}
+
+/**
  * @internal
  *
  * @brief selects the hostkey mechanisms to be chosen for the key exchange,
@@ -666,11 +827,11 @@ void ssh_list_kex(struct ssh_kex_struct *kex) {
 char *ssh_client_select_hostkeys(ssh_session session)
 {
     const char *wanted = NULL;
-    char *wanted_without_certs = NULL;
-    char *known_hosts_algorithms = NULL;
-    char *known_hosts_ordered = NULL;
+    char *wanted_to_return = NULL, *preferred_algorithms = NULL;
+    char *known_hosts_algorithms = NULL, *known_hosts_algos_supported = NULL;
     char *new_hostkeys = NULL;
     char *fips_hostkeys = NULL;
+    int with_ca;
 
     wanted = session->opts.wanted_methods[SSH_HOSTKEYS];
     if (wanted == NULL) {
@@ -681,27 +842,39 @@ char *ssh_client_select_hostkeys(ssh_session session)
         }
     }
 
-    /* This removes the certificate types, unsupported for now */
-    wanted_without_certs = ssh_find_all_matching(HOSTKEYS, wanted);
-    if (wanted_without_certs == NULL) {
-        SSH_LOG(SSH_LOG_TRACE,
-                "List of allowed host key algorithms is empty or contains only "
-                "unsupported algorithms");
+    wanted_to_return = strdup(wanted);
+    if (wanted_to_return == NULL) {
+        SSH_LOG(SSH_LOG_DEBUG,
+                "Error while allocating space for wanted algorithms");
         return NULL;
     }
 
     SSH_LOG(SSH_LOG_DEBUG,
             "Order of wanted host keys: \"%s\"",
-            wanted_without_certs);
+            wanted_to_return);
+
+    /* Check if there is any CA present in the known_hosts file */
+    with_ca = ssh_session_find_known_hosts_marker(session, MARK_CA);
+    if (with_ca == SSH_ERROR) {
+        SSH_LOG(SSH_LOG_DEBUG,
+                "Error while checking the presence of CA markers in the "
+                "known_hosts file");
+        /*
+         * Since it fails on the same conditions of
+         * ssh_known_hosts_get_algorithms_names, the latter will fail too
+         * returning NULL and then exiting the function. For security reset
+         * with_ca to 0.
+         */
+        with_ca = 0;
+    }
 
     known_hosts_algorithms = ssh_known_hosts_get_algorithms_names(session);
     if (known_hosts_algorithms == NULL) {
         SSH_LOG(SSH_LOG_DEBUG,
                 "No key found in known_hosts; "
                 "changing host key method to \"%s\"",
-                wanted_without_certs);
-
-        return wanted_without_certs;
+                wanted_to_return);
+        return wanted_to_return;
     }
 
     SSH_LOG(SSH_LOG_DEBUG,
@@ -709,24 +882,37 @@ char *ssh_client_select_hostkeys(ssh_session session)
             known_hosts_algorithms);
 
     /* Filter and order the keys from known_hosts according to wanted list */
-    known_hosts_ordered = ssh_find_all_matching(known_hosts_algorithms,
-                                                wanted_without_certs);
+    known_hosts_algos_supported = ssh_find_all_matching(known_hosts_algorithms,
+                                                        wanted_to_return);
     SAFE_FREE(known_hosts_algorithms);
-    if (known_hosts_ordered == NULL) {
+    if (known_hosts_algos_supported == NULL) {
         SSH_LOG(SSH_LOG_DEBUG,
-                "No key found in known_hosts is allowed; "
-                "changing host key method to \"%s\"",
-                wanted_without_certs);
-
-        return wanted_without_certs;
+                "No supported key types found in known_hosts "
+                "file. Changing host key method to \"%s\"",
+                wanted_to_return);
+        return wanted_to_return;
     }
 
-    /* Append the other supported keys after the preferred ones
-     * This function tolerates NULL pointers in parameters */
-    new_hostkeys = ssh_append_without_duplicates(known_hosts_ordered,
-                                                 wanted_without_certs);
-    SAFE_FREE(known_hosts_ordered);
-    SAFE_FREE(wanted_without_certs);
+    /*
+     * Get the preferred algorithms in the same order of the wanted ones.
+     * At this point both lists exists and are valid therefore the returned
+     * list should never be NULL. If an error occurs here, don't fail. Just
+     * choose the initial wanted algorithms rather than aborting the connection.
+     */
+    preferred_algorithms = ssh_client_get_preferred_hostkeys_algos(
+        wanted_to_return,
+        known_hosts_algos_supported,
+        with_ca);
+
+    /*
+     * Append the other supported keys after the preferred ones.
+     * This function tolerates NULL pointers in parameters.
+     */
+    new_hostkeys = ssh_append_without_duplicates(preferred_algorithms,
+                                                 wanted_to_return);
+    SAFE_FREE(preferred_algorithms);
+    SAFE_FREE(wanted_to_return);
+    SAFE_FREE(known_hosts_algos_supported);
     if (new_hostkeys == NULL) {
         ssh_set_error_oom(session);
         return NULL;
