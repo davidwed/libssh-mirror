@@ -228,14 +228,57 @@ struct key_attrs key_attrs_list[][5] = {
     },
 };
 
+/** @brief helper function for verifying the signature of the INPUT data */
+static int
+signature_verify_helper(ssh_session session,
+                        ssh_key key,
+                        ssh_key pubkey,
+                        ssh_signature sign,
+                        ssh_signature *imported_sig,
+                        ssh_string *exported_blob,
+                        enum ssh_keytypes_e sig_type,
+                        enum ssh_digest_e hash,
+                        size_t input_length,
+                        const struct key_attrs skey_attrs)
+{
+    ssh_signature import_sig = NULL;
+    ssh_string blob = NULL;
+    int rc;
+
+    /* Create a signature blob that can be imported and verified */
+    blob = pki_signature_to_blob(sign);
+    assert_non_null(blob);
+
+    /*
+     * Import and verify with current key (this is not tested anywhere else yet)
+     */
+    import_sig = pki_signature_from_blob(key,
+                                         blob,
+                                         sig_type,
+                                         hash);
+    assert_non_null(import_sig);
+    assert_int_equal(import_sig->type, key->type);
+    assert_string_equal(import_sig->type_c, skey_attrs.sig_type_c);
+
+    rc = ssh_pki_signature_verify(session,
+                                  import_sig,
+                                  pubkey,
+                                  INPUT,
+                                  input_length);
+    *imported_sig = import_sig;
+    *exported_blob = blob;
+    return rc;
+}
+
 /* This tests all the base types and their signatures against each other */
 static void torture_pki_verify_mismatch(void **state)
 {
     int rc;
     int verbosity = torture_libssh_verbosity();
     ssh_key key = NULL, verify_key = NULL, pubkey = NULL, verify_pubkey = NULL;
-    ssh_signature sign = NULL, import_sig = NULL, new_sig = NULL;
-    ssh_string blob;
+    ssh_signature sign = NULL, import_sig = NULL, new_sig = NULL,
+                  copy_sig = NULL;
+    ssh_string blob = NULL;
     ssh_session session = ssh_new();
     enum ssh_keytypes_e key_type, sig_type;
     enum ssh_digest_e hash;
@@ -246,6 +289,10 @@ static void torture_pki_verify_mismatch(void **state)
     (void) state;
 
     ssh_options_set(session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
+
+    /* Negative test for signature duplication */
+    copy_sig = ssh_signature_dup(NULL);
+    assert_null(copy_sig);
 
     for (sig_type = SSH_KEYTYPE_RSA;
          sig_type <= SSH_KEYTYPE_ED25519_CERT01;
@@ -300,26 +347,40 @@ static void torture_pki_verify_mismatch(void **state)
             assert_int_equal(sign->type, key->type);
             assert_string_equal(sign->type_c, skey_attrs.sig_type_c);
 
-            /* Create a signature blob that can be imported and verified */
-            blob = pki_signature_to_blob(sign);
-            assert_non_null(blob);
+            rc = signature_verify_helper(session,
+                                         key,
+                                         pubkey,
+                                         sign,
+                                         &import_sig,
+                                         &blob,
+                                         sig_type,
+                                         hash,
+                                         input_length,
+                                         skey_attrs);
+            assert_int_equal(rc, SSH_OK);
 
-            /* Import and verify with current key
-             * (this is not tested anywhere else yet) */
-            import_sig = pki_signature_from_blob(key,
-                                                 blob,
-                                                 sig_type,
-                                                 hash);
-            assert_non_null(import_sig);
-            assert_int_equal(import_sig->type, key->type);
-            assert_string_equal(import_sig->type_c, skey_attrs.sig_type_c);
+            /* Duplicate signature and repeat the same verification */
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Trying duplicated signature %d with hash %d",
+                    sig_type,
+                    hash);
+            SSH_STRING_FREE(blob);
+            SSH_SIGNATURE_FREE(import_sig);
 
-            rc = ssh_pki_signature_verify(session,
-                                      import_sig,
-                                      pubkey,
-                                      INPUT,
-                                      input_length);
-            assert_true(rc == SSH_OK);
+            copy_sig = ssh_signature_dup(sign);
+            assert_non_null(copy_sig);
+
+            rc = signature_verify_helper(session,
+                                         key,
+                                         pubkey,
+                                         copy_sig,
+                                         &import_sig,
+                                         &blob,
+                                         sig_type,
+                                         hash,
+                                         input_length,
+                                         skey_attrs);
+            assert_int_equal(rc, SSH_OK);
 
             for (key_type = SSH_KEYTYPE_RSA;
                  key_type <= SSH_KEYTYPE_ED25519_CERT01;
@@ -401,6 +462,7 @@ static void torture_pki_verify_mismatch(void **state)
             ssh_string_free(blob);
             ssh_signature_free(sign);
             ssh_signature_free(import_sig);
+            SSH_SIGNATURE_FREE(copy_sig);
 
             SSH_KEY_FREE(key);
             SSH_KEY_FREE(pubkey);

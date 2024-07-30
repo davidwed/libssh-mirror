@@ -723,23 +723,78 @@ ssh_signature ssh_signature_new(void)
     return sig;
 }
 
+#if defined(HAVE_LIBGCRYPT)
+/**
+ * @brief Duplicates a given gcry_sexp_t (libgcrypt S-expression) object.
+ *
+ * This helper function duplicates a given signature stored as a gcry_sexp_t
+ * by converting the S-expression to a canonical format and re-creating it
+ * in the destination.
+ *
+ * @param[in] src  The source gcry_sexp_t object to be duplicated.
+ *
+ * @returns A newly duplicated gcry_sexp_t object on success.
+ * @returns NULL in case of error.
+ */
+static gcry_sexp_t
+ssh_gcry_sexp_dup(gcry_sexp_t src)
+{
+    gcry_sexp_t dst = NULL;
+    char *buf = NULL;
+    size_t size;
+    gcry_error_t err;
+
+    if (src == NULL) {
+        return NULL;
+    }
+
+    size = gcry_sexp_sprint(src, GCRYSEXP_FMT_CANON, NULL, 0);
+    buf = gcry_malloc(size);
+    if (buf == NULL) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while allocating space for gcry_sexp_t duplication");
+        return NULL;
+    }
+
+    /*
+     * Using canonical format as it should be reasonably economical
+     * and easy to parse for libgcrypt. For further details, see:
+     * https://datatracker.ietf.org/doc/html/draft-rivest-sexp-05#section-6.1
+     */
+    gcry_sexp_sprint(src, GCRYSEXP_FMT_CANON, buf, size);
+
+    /*
+     * Data in 'buf' is now in canonical format. Since the format is known and
+     * explicitly defined, we can pass '0' for the autodetect parameter.
+     */
+    err = gcry_sexp_new(&dst, buf, size, 0);
+    if (err != 0) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while duplicating gcry_sexp_t %s/%s",
+                gcry_strsource(err),
+                gcry_strerror(err));
+        gcry_free(buf);
+        return NULL;
+    }
+
+    gcry_free(buf);
+    return dst;
+}
+#endif
+
 /**
  * @brief Duplicate a signature.
  *
- * @param src An ssh_signature to duplicate.
+ * @param[in] src An ssh_signature to duplicate.
  *
- * @return A duplicated ssh_signature signature on success.
- * @return NULL on error.
+ * @returns A duplicated ssh_signature signature on success.
+ * @returns NULL on error.
  */
 ssh_signature
 ssh_signature_dup(const ssh_signature src)
 {
     ssh_signature new = NULL;
-#if defined(HAVE_LIBGCRYPT)
-    char *buf = NULL;
-    size_t size;
-    gcry_error_t err;
-#elif defined(HAVE_LIBMBEDCRYPTO)
+#if defined(HAVE_LIBMBEDCRYPTO)
     int rc;
 #endif
 
@@ -759,50 +814,20 @@ ssh_signature_dup(const ssh_signature src)
 #if defined(HAVE_LIBGCRYPT)
     /* copy rsa_sig */
     if (src->rsa_sig != NULL) {
-        size = gcry_sexp_sprint(src->rsa_sig, GCRYSEXP_FMT_ADVANCED, NULL, 0);
-        buf = gcry_malloc(size);
-
-        if (buf == NULL) {
-            SSH_LOG(SSH_LOG_TRACE,
-                    "Error while allocating space for (gcry) rsa_sig "
-                    "during signature duplication");
+        new->rsa_sig = ssh_gcry_sexp_dup(src->rsa_sig);
+        if (new->rsa_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while duplicating rsa_sig");
             goto fail;
         }
-        gcry_sexp_sprint(src->rsa_sig, GCRYSEXP_FMT_ADVANCED, buf, size);
-
-        err = gcry_sexp_new(&new->rsa_sig, buf, size, 0);
-        if (err != 0) {
-            SSH_LOG(SSH_LOG_TRACE,
-                    "Error while copying (gcry) rsa_sig "
-                    "during signature duplication");
-            gcry_free(buf);
-            goto fail;
-        }
-        gcry_free(buf);
     }
 
     /* copy ecdsa_sig */
     if (src->ecdsa_sig != NULL) {
-        size = gcry_sexp_sprint(src->ecdsa_sig, GCRYSEXP_FMT_ADVANCED, NULL, 0);
-        buf = gcry_malloc(size);
-
-        if (buf == NULL) {
-            SSH_LOG(SSH_LOG_TRACE,
-                    "Error while allocating space for (gcry) ecdsa_sig "
-                    "during signature duplication");
+        new->ecdsa_sig = ssh_gcry_sexp_dup(src->ecdsa_sig);
+        if (new->ecdsa_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while duplicating ecdsa_sig");
             goto fail;
         }
-        gcry_sexp_sprint(src->ecdsa_sig, GCRYSEXP_FMT_ADVANCED, buf, size);
-
-        err = gcry_sexp_new(&new->ecdsa_sig, buf, size, 0);
-        if (err != 0) {
-            SSH_LOG(SSH_LOG_TRACE,
-                    "Error while copying (gcry) ecdsa_sig "
-                    "during signature duplication");
-            gcry_free(buf);
-            goto fail;
-        }
-        gcry_free(buf);
     }
 #elif defined(HAVE_LIBMBEDCRYPTO)
     if (src->rsa_sig != NULL) {
