@@ -532,6 +532,11 @@ enum ssh_keytypes_e ssh_key_type_from_signature_name(const char *name) {
         return SSH_KEYTYPE_RSA;
     }
 
+    if (strcmp(name, "rsa-sha2-256-cert-v01@openssh.com") == 0
+        || strcmp(name, "rsa-sha2-512-cert-v01@openssh.com") == 0) {
+        return SSH_KEYTYPE_RSA_CERT01;
+    }
+
     /* Otherwise the key type matches the signature type */
     return ssh_key_type_from_name(name);
 }
@@ -2552,7 +2557,7 @@ int ssh_pki_copy_cert_to_privkey(const ssh_key certkey, ssh_key privkey) {
   privkey->cert = cert_buffer;
   privkey->cert_type = certkey->type;
 
-  privkey->cert_data = ssh_cert_copy(certkey->cert_data);
+  privkey->cert_data = ssh_cert_dup(certkey->cert_data);
   if (privkey->cert_data == NULL) {
       SSH_LOG(SSH_LOG_TRACE, "Error while copying the certificate data");
       return SSH_ERROR;
@@ -3027,6 +3032,114 @@ ssh_string ssh_pki_do_sign_agent(ssh_session session,
     SSH_BUFFER_FREE(sig_buf);
 
     return sig_blob;
+}
+
+/**
+ * @brief Checks if the given ssh_key is revoked. TODO: add KRL functionality
+ *
+ * @param[in] key  The ssh_key to check for revocation.
+ *
+ * @param[in] revoked_keys_file  The path to the file containing revoked keys.
+ *
+ * @returns 1 if the key is revoked.
+ * @returns 0 if the key is not revoked.
+ * @returns -1 on error.
+ */
+int
+ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file)
+{
+    FILE *fp = NULL;
+    char err_msg[SSH_ERRNO_MSG_MAX] = {0}, line[MAX_LINE_SIZE] = {0},
+         *cp = NULL, *p = NULL, *save_tok = NULL;
+    enum ssh_keytypes_e key_type;
+    ssh_key revoked_key = NULL;
+    int rc = 0, cmp, r, cnt = 0;
+
+    if (key == NULL || revoked_keys_file == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Bad arguments");
+        return -1;
+    }
+
+    /* TODO: handle here KRL file format */
+
+    fp = fopen(revoked_keys_file, "r");
+    if (fp == NULL) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while opening %s: %s",
+                revoked_keys_file,
+                ssh_strerror(errno, err_msg, SSH_ERRNO_MSG_MAX));
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), fp)) {
+        cnt ++;
+        for (cp = line; *cp != '\0'; cp++) {
+            if (!isspace(*cp)) {
+                break;
+            }
+        }
+
+        switch (*cp) {
+        case '#':
+        case '\0':
+            continue;
+        }
+
+        /* Parse key type */
+        p = strtok_r(cp, " ", &save_tok);
+        if (p == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while parsing line %d", cnt);
+            rc = -1;
+            goto out;
+        }
+        key_type = ssh_key_type_from_name(p);
+
+        if (key_type == SSH_KEYTYPE_UNKNOWN) {
+            SSH_LOG(SSH_LOG_TRACE, "Key type '%s' unknown!", p);
+            rc = -1;
+            goto out;
+        }
+
+        /* Parse the actual key. The comment is ignored */
+        p = strtok_r(NULL, " ", &save_tok);
+        if (p == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Key is missing at line %d", cnt);
+            rc = -1;
+            goto out;
+        }
+
+        r = ssh_pki_import_pubkey_base64(p, key_type, &revoked_key);
+        if (r != SSH_OK) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Failed to parse %s key",
+                    ssh_key_type_to_char(key_type));
+            rc = -1;
+            goto out;
+        }
+
+        if (is_cert_type(key->type)) {
+            cmp = ssh_key_cmp(key->cert_data->signature_key,
+                             revoked_key,
+                             SSH_KEY_CMP_PUBLIC);
+        } else {
+            cmp = ssh_key_cmp(key, revoked_key, SSH_KEY_CMP_PUBLIC);
+        }
+
+        SSH_KEY_FREE(revoked_key);
+        if (cmp == 0) {
+            rc = 1;
+            goto out;
+        }
+    }
+
+    if (ferror(fp)) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while reading file at line %d", cnt);
+        rc = -1;
+    }
+
+out:
+    fclose(fp);
+    return rc;
 }
 
 #ifdef WITH_SERVER
