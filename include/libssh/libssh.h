@@ -257,6 +257,13 @@ enum ssh_known_hosts_e {
      * It is a possible attack.
      */
     SSH_KNOWN_HOSTS_OTHER,
+
+    /**
+     * The server key is revoked and not valid anymore. A revoked key may
+     * indicate that a stolen key is being used to impersonate the host. Always
+     * WARN the user about a possible attack.
+     */
+    SSH_KNOWN_HOSTS_REVOKED,
 };
 
 #ifndef MD5_DIGEST_LEN

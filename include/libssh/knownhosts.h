@@ -26,7 +26,7 @@
 extern "C" {
 #endif
 
-enum host_key_marker {
+enum ssh_known_hosts_marker_e {
     MARK_NONE = 0,
     MARK_UNKNOWN,
     MARK_CA,
@@ -39,6 +39,9 @@ enum ssh_known_hosts_e
 ssh_session_get_known_hosts_entry_file(ssh_session session,
                                        const char *filename,
                                        struct ssh_knownhosts_entry **pentry);
+int
+ssh_session_find_known_hosts_marker(ssh_session session,
+                                    enum ssh_known_hosts_marker_e marker);
 
 #ifdef __cplusplus
 }
