@@ -147,9 +147,15 @@ static int ssh_gssapi_send_response(ssh_session session, ssh_string oid)
 #endif /* WITH_SERVER */
 
 #ifdef WITH_SERVER
-
+/*
+ * @brief get all the oids server supports
+ * @param session current session handler
+ * @param[out] selected OID set of supported oids
+ * @returns SSH_OK if success
+ * @returns SSH_ERROR in case of error
+ */
 int
-ssh_gssapi_server_oids(ssh_session session, gss_OID_set *selected)
+ssh_gssapi_server_oids(gss_OID_set *selected)
 {
     OM_uint32 maj_stat, min_stat;
     size_t i;
@@ -158,7 +164,6 @@ ssh_gssapi_server_oids(ssh_session session, gss_OID_set *selected)
 
     maj_stat = gss_indicate_mechs(&min_stat, &supported);
     if (maj_stat != GSS_S_COMPLETE) {
-        SSH_LOG(SSH_LOG_DEBUG, "indicate mechs %d, %d", maj_stat, min_stat);
         ssh_gssapi_log_error(SSH_LOG_DEBUG,
                              "indicate mechs",
                              maj_stat,
@@ -187,7 +192,6 @@ ssh_gssapi_handle_userauth(ssh_session session, const char *user,
     char hostname[NI_MAXHOST] = {0};
     OM_uint32 maj_stat, min_stat;
     size_t i;
-    char *ptr;
     gss_OID_set supported; /* oids supported by server */
     gss_OID_set both_supported; /* oids supported by both client and server */
     gss_OID_set selected; /* oid selected for authentication */
@@ -235,23 +239,13 @@ ssh_gssapi_handle_userauth(ssh_session session, const char *user,
     /* Default implementation for selecting oid and acquiring credential */
     gss_create_empty_oid_set(&min_stat, &both_supported);
 
-    maj_stat = gss_indicate_mechs(&min_stat, &supported);
-    if (maj_stat != GSS_S_COMPLETE) {
-        SSH_LOG(SSH_LOG_DEBUG, "indicate mechs %d, %d", maj_stat, min_stat);
-        ssh_gssapi_log_error(SSH_LOG_DEBUG,
-                             "indicate mechs",
-                             maj_stat,
-                             min_stat);
-        gss_release_oid_set(&min_stat, &both_supported);
+    /* Get the server supported oids */
+    rc = ssh_gssapi_server_oids(&supported);
+    if (rc != SSH_OK) {
         return SSH_ERROR;
     }
 
-    for (i=0; i < supported->count; ++i){
-        ptr = ssh_get_hexa(supported->elements[i].elements, supported->elements[i].length);
-        SSH_LOG(SSH_LOG_DEBUG, "Supported mech %zu: %s", i, ptr);
-        free(ptr);
-    }
-
+    /* Loop through client supported oids */
     for (i=0 ; i< n_oid ; ++i){
         unsigned char *oid_s = (unsigned char *) ssh_string_data(oids[i]);
         size_t len = ssh_string_len(oids[i]);
@@ -263,8 +257,10 @@ ssh_gssapi_handle_userauth(ssh_session session, const char *user,
             SSH_LOG(SSH_LOG_TRACE,"GSSAPI: received invalid OID");
             continue;
         }
+        /* Convert oid from string to gssapi format */
         oid.elements = &oid_s[2];
         oid.length = len - 2;
+        /* Check if this client oid is supported by server */
         gss_test_oid_set_member(&min_stat,&oid,supported,&present);
         if(present){
             gss_add_oid_set_member(&min_stat,&oid,&both_supported);
@@ -290,9 +286,7 @@ ssh_gssapi_handle_userauth(ssh_session session, const char *user,
             both_supported, GSS_C_ACCEPT,
             &session->gssapi->server_creds, &selected, NULL);
     gss_release_oid_set(&min_stat, &both_supported);
-
     if (maj_stat != GSS_S_COMPLETE) {
-        SSH_LOG(SSH_LOG_TRACE, "error acquiring credentials %d, %d", maj_stat, min_stat);
         ssh_gssapi_log_error(SSH_LOG_TRACE,
                              "acquiring creds",
                              maj_stat,
@@ -300,8 +294,7 @@ ssh_gssapi_handle_userauth(ssh_session session, const char *user,
         ssh_auth_reply_default(session,0);
         return SSH_ERROR;
     }
-
-    SSH_LOG(SSH_LOG_DEBUG, "acquiring credentials %d, %d", maj_stat, min_stat);
+    SSH_LOG(SSH_LOG_DEBUG, "acquired credentials");
 
     /* finding which OID from client we selected */
     for (i=0 ; i< n_oid ; ++i){
@@ -401,7 +394,7 @@ SSH_PACKET_CALLBACK(ssh_packet_userauth_gssapi_token_server){
         return SSH_PACKET_USED;
     }
     hexa = ssh_get_hexa(ssh_string_data(token),ssh_string_len(token));
-    SSH_LOG(SSH_LOG_PACKET, "GSSAPI Token : %s",hexa);
+    SSH_LOG(SSH_LOG_PACKET, "GSSAPI Token : %s", hexa);
     SAFE_FREE(hexa);
     input_token.length = ssh_string_len(token);
     input_token.value = ssh_string_data(token);
@@ -420,7 +413,7 @@ SSH_PACKET_CALLBACK(ssh_packet_userauth_gssapi_token_server){
     }
     if (GSS_ERROR(maj_stat)){
         ssh_gssapi_log_error(SSH_LOG_DEBUG,
-                             "Gssapi error",
+                             "accepting token failed",
                              maj_stat,
                              min_stat);
         gss_release_buffer(&min_stat, &output_token);
@@ -694,7 +687,8 @@ ssh_gssapi_oid_hash(ssh_string oid)
     return base64;
 }
 
-/** @brief returns the OIDs of the mechs that have usable credentials
+/** @brief acquires a credential and returns a set of mechanisms for which it is
+ *         valid
  */
 int ssh_gssapi_client_identity(ssh_session session, gss_OID_set *valid_oids)
 {
@@ -743,6 +737,7 @@ int ssh_gssapi_client_identity(ssh_session session, gss_OID_set *valid_oids)
             goto end;
         }
     }
+    SSH_LOG(SSH_LOG_DEBUG, "acquired credentials");
 
     gss_create_empty_oid_set(&min_stat, valid_oids);
 
@@ -770,6 +765,14 @@ end:
     return ret;
 }
 
+/*
+ * @brief Add suffixes of oid hash to each GSSAPI key exchange algorithm
+ * @param session current session handler
+ * @param[in] gss_algs comma separated GSSAPI key exchange algorithms (without
+ *                     suffix)
+ * @returns string suffixed kex algorithms
+ * @returns NULL in case of error
+ */
 char *
 ssh_gssapi_kex_mechs(ssh_session session, const char *gss_algs)
 {
@@ -785,9 +788,10 @@ ssh_gssapi_kex_mechs(ssh_session session, const char *gss_algs)
     OM_uint32 min_stat;
     size_t offset = 0;
 
+    /* Get supported oids */
     if (session->server) {
 #ifdef WITH_SERVER
-        rc = ssh_gssapi_server_oids(session, &selected);
+        rc = ssh_gssapi_server_oids(&selected);
         if (rc == SSH_ERROR) {
             return NULL;
         }
@@ -809,6 +813,7 @@ ssh_gssapi_kex_mechs(ssh_session session, const char *gss_algs)
         return NULL;
     }
 
+    /* Check if algorithms are valid */
     new_gss_algs = ssh_find_all_matching(GSSAPI_KEY_EXCHANGE_SUPPORTED, gss_algs);
     if (gss_algs == NULL) {
         ssh_set_error(session,
@@ -902,9 +907,10 @@ ssh_gssapi_import_name(ssh_session session, const char *host)
                                &hostname,
                                (gss_OID)GSS_C_NT_HOSTBASED_SERVICE,
                                &session->gssapi->client.server_name);
+    SSH_LOG(SSH_LOG_DEBUG, "importing name: %s", name_buf);
     if (maj_stat != GSS_S_COMPLETE) {
         ssh_gssapi_log_error(SSH_LOG_DEBUG,
-                             "importing name",
+                             "error importing name",
                              maj_stat,
                              min_stat);
     }
@@ -935,7 +941,7 @@ ssh_gssapi_init_ctx(ssh_session session,
                                     NULL);
     if (GSS_ERROR(maj_stat)) {
         ssh_gssapi_log_error(SSH_LOG_DEBUG,
-                             "Initializing gssapi context",
+                             "initializing gssapi context",
                              maj_stat,
                              min_stat);
     }

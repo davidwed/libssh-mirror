@@ -66,7 +66,7 @@ struct ssh_gssapi_struct{
 int ssh_gssapi_handle_userauth(ssh_session session, const char *user, uint32_t n_oid, ssh_string *oids);
 SSH_PACKET_CALLBACK(ssh_packet_userauth_gssapi_token_server);
 SSH_PACKET_CALLBACK(ssh_packet_userauth_gssapi_mic);
-int ssh_gssapi_server_oids(ssh_session session, gss_OID_set *selected);
+int ssh_gssapi_server_oids(gss_OID_set *selected);
 #endif /* WITH_SERVER */
 
 SSH_PACKET_CALLBACK(ssh_packet_userauth_gssapi_token);

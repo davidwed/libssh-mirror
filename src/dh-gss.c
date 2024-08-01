@@ -105,10 +105,14 @@ int ssh_client_gss_dh_init(ssh_session session){
     maj_stat = ssh_gssapi_init_ctx(session, &input_token, &output_token, &oflags);
     gss_release_oid_set(&min_stat, &selected);
     if (GSS_ERROR(maj_stat)) {
-        ssh_gssapi_log_error(SSH_LOG_DEBUG,
+        ssh_gssapi_log_error(SSH_LOG_WARN,
                              "Initializing gssapi context",
                              maj_stat,
                              min_stat);
+        goto error;
+    }
+    if (!(oflags & GSS_C_INTEG_FLAG) || !(oflags & GSS_C_MUTUAL_FLAG)) {
+        SSH_LOG(SSH_LOG_WARN, "GSSAPI(init) integrity and mutual flags were not set");
         goto error;
     }
 
@@ -332,9 +336,8 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
             GSS_C_NO_OID_SET, GSS_C_ACCEPT,
             &session->gssapi->server_creds, NULL, NULL);
     if (maj_stat != GSS_S_COMPLETE) {
-        SSH_LOG(SSH_LOG_TRACE, "error acquiring credentials %d, %d", maj_stat, min_stat);
         ssh_gssapi_log_error(SSH_LOG_TRACE,
-                             "acquiring creds",
+                             "acquiring credentials",
                              maj_stat,
                              min_stat);
         goto error;
@@ -343,10 +346,18 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
     maj_stat = gss_accept_sec_context(&min_stat, &session->gssapi->ctx, session->gssapi->server_creds,
             &input_token, GSS_C_NO_CHANNEL_BINDINGS, &client_name, NULL /*mech_oid*/, &output_token, &ret_flags,
             NULL /*time*/, &session->gssapi->client_creds);
-    ssh_gssapi_log_error(SSH_LOG_DEBUG,
-                         "accepting token",
-                         maj_stat,
-                         min_stat);
+    if (GSS_ERROR(maj_stat)) {
+        ssh_gssapi_log_error(SSH_LOG_DEBUG,
+                             "accepting token failed",
+                             maj_stat,
+                             min_stat);
+        goto error;
+    }
+    if (!(ret_flags & GSS_C_INTEG_FLAG) || !(ret_flags & GSS_C_MUTUAL_FLAG)) {
+        SSH_LOG(SSH_LOG_WARN, "GSSAPI(accept) integrity and mutual flags were not set");
+        goto error;
+    }
+    SSH_LOG(SSH_LOG_DEBUG, "token accepted");
 
     msg.length = session->next_crypto->digest_len;
     msg.value = session->next_crypto->secret_hash;
@@ -355,10 +366,13 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
                            GSS_C_QOP_DEFAULT,
                            &msg,
                            &mic);
-    ssh_gssapi_log_error(SSH_LOG_DEBUG,
-                         "get mic",
-                         maj_stat,
-                         min_stat);
+    if (GSS_ERROR(maj_stat)) {
+        ssh_gssapi_log_error(SSH_LOG_DEBUG,
+                             "creating mic failed",
+                             maj_stat,
+                             min_stat);
+        goto error;
+    }
 
 
     rc = ssh_buffer_pack(session->out_buffer,
