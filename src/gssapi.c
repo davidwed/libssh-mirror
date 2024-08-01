@@ -112,7 +112,6 @@ ssh_gssapi_free(ssh_session session)
     gss_release_oid(&min, &session->gssapi->client.oid);
     gss_delete_sec_context(&min, &session->gssapi->ctx, GSS_C_NO_BUFFER);
 
-    SAFE_FREE(session->gssapi->mech.elements);
     SAFE_FREE(session->gssapi->canonic_user);
     SAFE_FREE(session->gssapi);
 }
@@ -324,17 +323,8 @@ ssh_gssapi_handle_userauth(ssh_session session, const char *user,
             break;
         }
     }
-    session->gssapi->mech.length = oid.length;
-    session->gssapi->mech.elements = malloc(oid.length);
-    if (session->gssapi->mech.elements == NULL){
-        ssh_set_error_oom(session);
-        gss_release_oid_set(&min_stat, &selected);
-        return SSH_ERROR;
-    }
-    memcpy(session->gssapi->mech.elements, oid.elements, oid.length);
     gss_release_oid_set(&min_stat, &selected);
     session->gssapi->user = strdup(user);
-    session->gssapi->service = (char *)"host";
     session->gssapi->state = SSH_GSSAPI_STATE_RCV_TOKEN;
     return ssh_gssapi_send_response(session, oids[i]);
 }

@@ -47,14 +47,12 @@ enum ssh_gssapi_state_e {
 
 struct ssh_gssapi_struct{
     enum ssh_gssapi_state_e state; /* current state */
-    struct gss_OID_desc_struct mech; /* mechanism being elected for auth */
     gss_cred_id_t server_creds; /* credentials of server */
     gss_cred_id_t client_creds; /* creds delegated by the client */
     gss_ctx_id_t ctx; /* the authentication context */
     gss_name_t client_name; /* Identity of the client */
     char *user; /* username of client */
     char *canonic_user; /* canonic form of the client's username */
-    char *service; /* name of the service */
     struct {
         gss_name_t server_name; /* identity of server */
         OM_uint32 flags; /* flags used for init context */
