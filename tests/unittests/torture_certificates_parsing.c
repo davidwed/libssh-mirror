@@ -5,10 +5,6 @@
 
 #define CERT_DIR SOURCEDIR "/tests/keys/certs"
 
-/* Base input for computing a signature. Only for test purpose. */
-const unsigned char BASE_INPUT[] = "1234567890123456789012345678901234567890"
-                                   "123456789012345678901234";
-
 /**
  * @brief helper function for generating a list of principals in the form
  * "user%d" given the number of the required principals
@@ -116,7 +112,7 @@ assert_copts_equal(cert_opt a, cert_opt b)
  *   Signature key    /tests/cert/user_ca.pub
  *
  * The signature is omitted and not checked during the tests that require this
- * setup function since we miss the fields prior to the serial (e,n,nonce).
+ * setup function since it's already validated during certificate parsing.
  *
  */
 static int
@@ -140,6 +136,13 @@ setup_default_cert(void **state)
 
     cert->n_principals = 1;
     generate_n_principals(&cert->principals, 1);
+
+    /*
+     * These date fields are set using Unix epoch time, expressed in seconds
+     * elapsed since January 1, 1970 00:00:00 UTC.
+     * 'valid_after' = 915145200 corresponds to January 1, 1999.
+     * 'valid_before' = 946594800 corresponds to December 31, 1999.
+     */
     cert->valid_after = 915145200;
     cert->valid_before = 946594800;
 
@@ -710,12 +713,30 @@ setup_cert_buffer(uint64_t serial,
         goto out;
     }
 
+    /* Pack all the certificate fields into the buffer */
+    rc = ssh_buffer_pack(cert_data,
+                         "qdsSqqSSSS",
+                         serial,
+                         type,
+                         key_id,
+                         principals_s,
+                         valid_after,
+                         valid_before,
+                         critical_options_s,
+                         extensions_s,
+                         reserved,
+                         sign_key_s);
+    assert_return_code(rc, errno);
+    if (rc != SSH_OK) {
+        goto out;
+    }
+
     /*
-     * Compute a signature for the certificate. The signature is not the actual
-     * signature of the certificate because we miss the other fields prior to
-     * the serial field (e,n,nonce). The signature is computed over a default
-     * value just for filling the signature field. This is required for the test
-     * to not fail when reaching pki_parse_cert_data function
+     * Compute a signature for the certificate. Note that the certificate buffer
+     * is assembled without the prior fields (e,n,nonce) parsed before reaching
+     * the pki_parse_cert_data API. This approach is used solely for test
+     * purposes, as the verification of the parsed fields is performed only on
+     * those processed by the pki_parse_cert_data API.
      */
 
     /* Import the private key of the signer */
@@ -731,8 +752,8 @@ setup_cert_buffer(uint64_t serial,
 
     signature = pki_sign_data(sign_key_private,
                               SSH_DIGEST_SHA512,
-                              BASE_INPUT,
-                              sizeof(BASE_INPUT));
+                              ssh_buffer_get(cert_data),
+                              ssh_buffer_get_len(cert_data));
     if (signature == NULL) {
         goto out;
     }
@@ -744,20 +765,8 @@ setup_cert_buffer(uint64_t serial,
         goto out;
     }
 
-    /* Pack all the certificate fields into the buffer */
-    rc = ssh_buffer_pack(cert_data,
-                         "qdsSqqSSSSS",
-                         serial,
-                         type,
-                         key_id,
-                         principals_s,
-                         valid_after,
-                         valid_before,
-                         critical_options_s,
-                         extensions_s,
-                         reserved,
-                         sign_key_s,
-                         signature_s);
+    /* Add the signature to the end of the certificate buffer */
+    rc = ssh_buffer_add_ssh_string(cert_data, signature_s);
     assert_return_code(rc, errno);
     if (rc != SSH_OK) {
         goto out;

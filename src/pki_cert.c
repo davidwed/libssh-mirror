@@ -23,15 +23,16 @@
 #include "config.h"
 
 #include <stdint.h>
-#include <stdio.h>
+#include <time.h>
+#include <errno.h>
 
 #include "libssh/libssh.h"
+#include "libssh/pki_priv.h"
 #include "libssh/priv.h"
 #include "libssh/pki.h"
 #include "libssh/buffer.h"
 #include "libssh/misc.h"
-#include <time.h>
-#include <errno.h>
+
 
 #define SSH_CERT_MAX_PRINCIPALS 256
 #define SSH_CERT_PARSE_CRITICAL_OPTIONS 1
@@ -652,11 +653,38 @@ fail:
 }
 
 /**
+ * @brief Checks if the CA key type is allowed for certificate signing.
+ *
+ * This function validates the type of the certificate authority (CA) key for
+ * signing certificates. It searches for a matching key type in the predefined
+ * list of allowed CA signing keys.
+ *
+ * @param[in] key The CA key to be checked.
+ *
+ * @returns true if the key type is allowed.
+ * @reurns false otherwise.
+ */
+static bool
+pki_cert_ca_key_type_allowed(ssh_key key)
+{
+    char *match = NULL;
+
+    match = ssh_find_matching(key->type_c, HOSTKEY_TYPES);
+    if (match == NULL) {
+        return false;
+    }
+
+    SAFE_FREE(match);
+    return true;
+}
+
+/**
  * @brief Parse remaining certificate fields from serial up to the signature.
  *
  * @param[in]  buffer   The buffer holding certificate fields.
  *
- * @param[out] pkey     A pointer where the allocated key can be stored.
+ * @param[out] cert     A pointer to the allocated ssh_cert where the
+ *                      certificate data will be stored.
  *
  * @return  SSH_OK on success.
  * @return  SSH_ERROR on error.
@@ -669,6 +697,9 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_cert cert)
     ssh_signature signature = NULL;
     ssh_string principals = NULL, ext = NULL, c_opts = NULL, sign_key = NULL,
                sign = NULL, reserved = NULL;
+    uint32_t signed_data_len;
+    void *signed_data = NULL;
+    bool valid;
     int rc;
 
     if (cert == NULL) {
@@ -709,21 +740,22 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_cert cert)
     SSH_STRING_FREE(principals);
 
     /*
-     * Parse validity dates, critical options and extensions.
+     * Parse validity dates, critical options, extensions and signature key.
      * Reserved field can be skipped
      */
     rc = ssh_buffer_unpack(buffer,
-                           "qqSSS",
+                           "qqSSSS",
                            &cert->valid_after,
                            &cert->valid_before,
                            &c_opts,
                            &ext,
-                           &reserved);
+                           &reserved,
+                           &sign_key);
 
     if (rc != SSH_OK) {
         SSH_LOG(SSH_LOG_TRACE,
-                "Unpack of validity dates, critical options, extensions and "
-                "reserved field failed");
+                "Unpack of validity dates, critical options, extensions, "
+                "reserved field and signature key failed");
         goto fail;
     }
 
@@ -740,28 +772,61 @@ pki_parse_cert_data(ssh_buffer buffer, ssh_cert cert)
         goto fail;
     }
 
-    SSH_STRING_FREE(c_opts);
-    SSH_STRING_FREE(ext);
-    SSH_STRING_FREE(reserved);
-
-    /* Parse signature key and signature */
-    rc = ssh_buffer_unpack(buffer, "SS", &sign_key, &sign);
-    if (rc != SSH_OK) {
-        SSH_LOG(SSH_LOG_TRACE, "Unpack of signature key and signature failed");
-        goto fail;
-    }
-
     /* Key extraction */
     rc = ssh_pki_import_pubkey_blob(sign_key, &signature_key);
     if (rc != SSH_OK) {
         goto fail;
     }
+
+    /*
+     * Verify certificate signature key type. All non-certificate types are
+     * allowed as CAs.
+     */
+    valid = pki_cert_ca_key_type_allowed(signature_key);
+    if (!valid) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "CA signature key type %s is not an allowed "
+                "signature key type",
+                signature_key->type_c);
+        goto fail;
+    }
+
     cert->signature_key = signature_key;
+
+    SSH_STRING_FREE(c_opts);
+    SSH_STRING_FREE(ext);
+    SSH_STRING_FREE(reserved);
     SSH_STRING_FREE(sign_key);
 
+    /*
+     * Get the length of the signed data and the pointer to the head of the
+     * buffer. These will be used later during signature verification.
+     */
+    signed_data_len = ssh_buffer_get_current_pos(buffer);
+    signed_data = ssh_buffer_get_data_all(buffer);
+
     /* Signature extraction */
+    sign = ssh_buffer_get_ssh_string(buffer);
+    if (sign == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Unpack of signature failed");
+        goto fail;
+    }
+
     rc = ssh_pki_import_signature_blob(sign, signature_key, &signature);
     if (rc != SSH_OK) {
+        goto fail;
+    }
+
+    /* Verify signature */
+    rc = pki_signature_verify(signature,
+                              signature_key,
+                              signed_data,
+                              signed_data_len);
+    if (rc != SSH_OK) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Invalid signature for certificate serial %"PRIu64" ID: %s",
+                cert->serial,
+                cert->key_id);
         goto fail;
     }
     cert->signature = signature;
@@ -852,7 +917,7 @@ pki_cert_check_validity(ssh_key key,
     }
 
     time_now = time(NULL);
-    if (time_now == (time_t) - 1) {
+    if (time_now == (time_t)-1) {
         SSH_LOG(SSH_LOG_WARN,
                 "Error while retrieving current time: %s",
                 ssh_strerror(errno, err_msg, SSH_ERRNO_MSG_MAX));

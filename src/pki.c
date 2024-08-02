@@ -379,7 +379,7 @@ bool ssh_key_size_allowed_rsa(int min_size, ssh_key key)
 {
     int key_size = ssh_key_size(key);
 
-    if (min_size < 768) {
+    if (min_size < RSA_MIN_SIZE) {
         if (ssh_fips_mode()) {
             min_size = 2048;
         } else {
@@ -409,6 +409,36 @@ bool ssh_key_size_allowed(ssh_session session, ssh_key key)
     default:
         return true;
     }
+}
+
+/**
+ * @brief Check the given key is acceptable in regards to the default
+ * key size policy defined by the library.
+ *
+ * @param[in] key  The SSH key to be checked.
+ *
+ * @returns true if the key size is allowed.
+ * @returns false otherwise.
+ */
+bool
+ssh_default_key_size_allowed(ssh_key key)
+{
+    bool valid;
+
+    switch (key->type) {
+    case SSH_KEYTYPE_RSA:
+        valid = ssh_key_size_allowed_rsa(RSA_MIN_SIZE, key);
+        if (!valid) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "The rsa key size is less than the minimum of %d bits",
+                    RSA_MIN_SIZE);
+        }
+        break;
+    default:
+        return true;
+    }
+
+    return valid;
 }
 
 /**
@@ -804,12 +834,12 @@ ssh_signature_dup(const ssh_signature src)
 #endif
 
     if (src == NULL) {
-        goto fail;
+        return NULL;
     }
 
     new = ssh_signature_new();
     if (new == NULL) {
-        goto fail;
+        return NULL;
     }
 
     new->type = src->type;
@@ -2867,6 +2897,128 @@ int ssh_pki_signature_verify(ssh_session session,
         }
 
         rc = pki_verify_data_signature(sig, key, ssh_buffer_get(sk_buffer),
+                                       ssh_buffer_get_len(sk_buffer));
+
+        SSH_BUFFER_FREE(sk_buffer);
+        explicit_bzero(input_hash, SHA256_DIGEST_LEN);
+        explicit_bzero(application_hash, SHA256_DIGEST_LEN);
+
+        return rc;
+    }
+
+    return pki_verify_data_signature(sig, key, input, input_len);
+}
+
+/**
+ * @brief Verifies the signature of a given input of signed data.
+ *
+ * The behavior is almost equal to ssh_pki_signature_verify() but it does not
+ * require the session as argument.
+ *
+ * @note The key size is validated against the default key size policy of the
+ * library. In presence of the session/bind using ssh_pki_signature_verify will
+ * override this check with the user configured key minimum size.
+ *
+ * @see ssh_pki_signature_verify.
+ *
+ * @param[in] sig The ssh_signature to be verified.
+ *
+ * @param[in] key The public ssh_key needed for verification.
+ *
+ * @param[in] input The input data that was signed.
+ *
+ * @param[in] input_len The length of the input data.
+ *
+ * @returns SSH_OK on success.
+ * @returns SSH_ERROR on failure.
+ */
+int
+pki_signature_verify(ssh_signature sig,
+                     const ssh_key key,
+                     const unsigned char *input,
+                     size_t input_len)
+{
+    int rc;
+    enum ssh_keytypes_e key_type;
+    bool allowed;
+
+    key_type = ssh_key_type_plain(key->type);
+
+    SSH_LOG(SSH_LOG_FUNCTIONS,
+            "Going to verify a %s type signature",
+            sig->type_c);
+
+    if (key_type != sig->type) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Can not verify %s signature with %s key",
+                sig->type_c, key->type_c);
+        return SSH_ERROR;
+    }
+
+    allowed = ssh_default_key_size_allowed(key);
+    if (!allowed) {
+        /* ssh_default_key_size_allowed is already verbose logging errors */
+        return SSH_ERROR;
+    }
+
+    /* Check if public key and hash type are compatible */
+    rc = pki_key_check_hash_compatible(key, sig->hash_type);
+    if (rc != SSH_OK) {
+        return SSH_ERROR;
+    }
+
+    if (key->type == SSH_KEYTYPE_SK_ECDSA ||
+        key->type == SSH_KEYTYPE_SK_ECDSA_CERT01 ||
+        key->type == SSH_KEYTYPE_SK_ED25519 ||
+        key->type == SSH_KEYTYPE_SK_ED25519_CERT01) {
+
+        ssh_buffer sk_buffer = NULL;
+        SHA256CTX ctx = NULL;
+        unsigned char application_hash[SHA256_DIGEST_LEN] = {0};
+        unsigned char input_hash[SHA256_DIGEST_LEN] = {0};
+
+        ctx = sha256_init();
+        if (ctx == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Can not create SHA256CTX for application hash");
+            return SSH_ERROR;
+        }
+        sha256_update(ctx, ssh_string_data(key->sk_application),
+                      ssh_string_len(key->sk_application));
+        sha256_final(application_hash, ctx);
+
+        ctx = sha256_init();
+        if (ctx == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Can not create SHA256CTX for input hash");
+            return SSH_ERROR;
+        }
+        sha256_update(ctx, input, input_len);
+        sha256_final(input_hash, ctx);
+
+        sk_buffer = ssh_buffer_new();
+        if (sk_buffer == NULL) {
+            return SSH_ERROR;
+        }
+
+        rc = ssh_buffer_pack(sk_buffer,
+                             "PbdP",
+                             SHA256_DIGEST_LEN,
+                             application_hash,
+                             sig->sk_flags,
+                             sig->sk_counter,
+                             SHA256_DIGEST_LEN,
+                             input_hash);
+        if (rc != SSH_OK) {
+            SSH_BUFFER_FREE(sk_buffer);
+            explicit_bzero(input_hash, SHA256_DIGEST_LEN);
+            explicit_bzero(application_hash, SHA256_DIGEST_LEN);
+            return SSH_ERROR;
+        }
+
+        rc = pki_verify_data_signature(sig,
+                                       key,
+                                       ssh_buffer_get(sk_buffer),
                                        ssh_buffer_get_len(sk_buffer));
 
         SSH_BUFFER_FREE(sk_buffer);

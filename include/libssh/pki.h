@@ -51,6 +51,8 @@
 #define SSH_KEY_FLAG_PRIVATE 0x0002
 #define SSH_KEY_FLAG_PKCS11_URI 0x0004
 
+#define RSA_MIN_SIZE 768
+
 /* Certificates */
 #define SSH_CERT_TYPE_USER 1
 #define SSH_CERT_TYPE_HOST 2
@@ -122,6 +124,16 @@ enum ssh_key_cert_exts_flags {
     PERMIT_USER_RC          = 1 << 5
 };
 
+struct ssh_key_cert_exts {
+    /*
+     * TODO: Figure out how to deal with custom extensions/options
+     *       (https://github.com/openssh/openssh-portable/blob/2c53d2f32b8e3992
+     *       b61682c909ae5bc5122b6e5d/PROTOCOL.certkeys#L281)
+     */
+    /* Structure for new extensions type */
+    uint32_t ext;
+};
+
 struct ssh_key_cert_struct {
     ssh_string nonce;
     unsigned int type;
@@ -131,10 +143,7 @@ struct ssh_key_cert_struct {
     char **principals;
     uint64_t valid_after, valid_before;
     cert_opt critical_options;
-    struct ssh_key_cert_exts {
-        /* Base structure for new extensions type */
-        uint32_t ext;
-    } extensions;
+    struct ssh_key_cert_exts extensions;
     ssh_key signature_key;
     ssh_signature signature;
 };
@@ -195,6 +204,10 @@ int ssh_pki_signature_verify(ssh_session session,
                              const ssh_key key,
                              const unsigned char *digest,
                              size_t dlen);
+int pki_signature_verify(ssh_signature sig,
+                         const ssh_key key,
+                         const unsigned char *input,
+                         size_t input_len);
 
 /* SSH Public Key Functions */
 int ssh_pki_export_pubkey_blob(const ssh_key key,
@@ -228,6 +241,7 @@ ssh_private_key ssh_pki_convert_key_to_privatekey(const ssh_key key);
 
 int ssh_key_algorithm_allowed(ssh_session session, const char *type);
 bool ssh_key_size_allowed(ssh_session session, ssh_key key);
+bool ssh_default_key_size_allowed(ssh_key key);
 
 /* Return the key size in bits */
 int ssh_key_size(ssh_key key);
