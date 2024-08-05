@@ -1834,15 +1834,14 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
         goto fail;
     }
 
-    /* Store the previously parsed nonce into key->cert_data */
-    key->cert_data->nonce = nonce;
-
     rc = pki_parse_cert_data(buffer, key->cert_data);
     if (rc != SSH_OK) {
         SSH_LOG(SSH_LOG_TRACE, "Error while parsing certificate fields");
         goto fail;
     }
 
+    /* Store the previously parsed nonce into key->cert_data */
+    key->cert_data->nonce = nonce;
     key->type = type;
     key->type_c = type_c;
     key->cert = cert;
@@ -1851,7 +1850,7 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
     return SSH_OK;
 
 fail:
-    ssh_key_free(key);
+    SSH_KEY_FREE(key);
     SSH_STRING_FREE(tmp_s);
     SSH_STRING_FREE(nonce);
     SSH_BUFFER_FREE(cert);
@@ -2543,6 +2542,64 @@ int ssh_pki_export_pubkey_file(const ssh_key key,
 }
 
 /**
+ * @brief Copies the certificate data, including the cert buffer, from one
+ * ssh_key to another.
+ *
+ * @param[in] dest_key  The destination ssh_key where the certificate data will
+ *                      be copied to.
+ *
+ * @param[in] src_key   The source ssh_key from which the certificate data will
+ *                      be copied.
+ *
+ * @returns SSH_OK on success.
+ * @returns SSH_ERROR on failure.
+ */
+int
+pki_copy_cert_to_key(ssh_key dest_key, const ssh_key src_key)
+{
+    ssh_buffer cert_buffer = NULL;
+    int rc;
+
+    if (src_key == NULL || src_key->cert == NULL) {
+        goto fail;
+    }
+
+    if (!is_cert_type(src_key->type)) {
+        SSH_LOG(SSH_LOG_TRACE, "Not a certificate. Error while copying "
+                               "certificate data");
+        goto fail;
+    }
+
+    cert_buffer = ssh_buffer_new();
+    if (cert_buffer == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while initializing buffer for certificate"
+                               " copy");
+        goto fail;
+    }
+
+    rc = ssh_buffer_add_buffer(cert_buffer, src_key->cert);
+    if (rc != 0) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while appending data to buffer during"
+                               " certificate copy");
+        goto fail;
+    }
+
+    dest_key->cert = cert_buffer;
+    dest_key->cert_type = src_key->type;
+    dest_key->cert_data = ssh_cert_dup(src_key->cert_data);
+    if (dest_key->cert_data == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while copying the certificate data");
+        goto fail;
+    }
+
+    return SSH_OK;
+
+fail:
+    SSH_BUFFER_FREE(cert_buffer);
+    return SSH_ERROR;
+}
+
+/**
  * @brief Copy the certificate part of a public key into a private key.
  *
  * @param[in]  certkey  The certificate key.
@@ -2551,49 +2608,35 @@ int ssh_pki_export_pubkey_file(const ssh_key key,
  *
  * @returns SSH_OK on success, SSH_ERROR otherwise.
  **/
-int ssh_pki_copy_cert_to_privkey(const ssh_key certkey, ssh_key privkey) {
-  ssh_buffer cert_buffer;
-  int rc, cmp;
+int
+ssh_pki_copy_cert_to_privkey(const ssh_key certkey, ssh_key privkey)
+{
+    int rc, cmp;
 
-  if (certkey == NULL || privkey == NULL) {
-      return SSH_ERROR;
-  }
+    if (certkey == NULL || privkey == NULL) {
+        return SSH_ERROR;
+    }
 
-  if (privkey->cert != NULL) {
-      return SSH_ERROR;
-  }
+    if (privkey->cert != NULL) {
+        return SSH_ERROR;
+    }
 
-  if (certkey->cert == NULL) {
-      return SSH_ERROR;
-  }
+    if (certkey->cert == NULL) {
+        return SSH_ERROR;
+    }
 
-  /* make sure the public keys match */
-  cmp = ssh_key_cmp(certkey, privkey, SSH_KEY_CMP_PUBLIC);
-  if (cmp != 0) {
-    return SSH_ERROR;
-  }
+    /* make sure the public keys match */
+    cmp = ssh_key_cmp(certkey, privkey, SSH_KEY_CMP_PUBLIC);
+    if (cmp != 0) {
+        return SSH_ERROR;
+    }
 
-  cert_buffer = ssh_buffer_new();
-  if (cert_buffer == NULL) {
-      return SSH_ERROR;
-  }
+    rc = pki_copy_cert_to_key(privkey, certkey);
+    if (rc != SSH_OK) {
+        return SSH_ERROR;
+    }
 
-  rc = ssh_buffer_add_buffer(cert_buffer, certkey->cert);
-  if (rc != 0) {
-      SSH_BUFFER_FREE(cert_buffer);
-      return SSH_ERROR;
-  }
-
-  privkey->cert = cert_buffer;
-  privkey->cert_type = certkey->type;
-
-  privkey->cert_data = ssh_cert_dup(certkey->cert_data);
-  if (privkey->cert_data == NULL) {
-      SSH_LOG(SSH_LOG_TRACE, "Error while copying the certificate data");
-      return SSH_ERROR;
-  }
-
-  return SSH_OK;
+    return SSH_OK;
 }
 
 int ssh_pki_export_signature_blob(const ssh_signature sig,

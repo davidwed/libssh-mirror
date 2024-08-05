@@ -415,64 +415,6 @@ err:
 }
 #endif /* HAVE_OPENSSL_ECC */
 
-/**
- * @brief Copies the certificate data, including the cert buffer, from one
- * ssh_key to another.
- *
- * @param[in] dest_key  The destination ssh_key where the certificate data will
- *                      be copied to.
- *
- * @param[in] src_key   The source ssh_key from which the certificate data will
- *                      be copied.
- *
- * @returns SSH_OK on success.
- * @returns SSH_ERROR on failure.
- */
-static int
-pki_copy_cert_to_key(ssh_key dest_key, const ssh_key src_key)
-{
-    ssh_buffer cert_buffer = NULL;
-    int rc;
-
-    if (src_key == NULL || src_key->cert == NULL) {
-        goto fail;
-    }
-
-    if (!is_cert_type(src_key->type)) {
-        SSH_LOG(SSH_LOG_TRACE, "Not a certificate. Error while copying "
-                               "certificate data");
-        goto fail;
-    }
-
-    cert_buffer = ssh_buffer_new();
-    if (cert_buffer == NULL) {
-        SSH_LOG(SSH_LOG_TRACE, "Error while initializing buffer for certificate"
-                               " copy");
-        goto fail;
-    }
-
-    rc = ssh_buffer_add_buffer(cert_buffer, src_key->cert);
-    if (rc != 0) {
-        SSH_LOG(SSH_LOG_TRACE, "Error while appending data to buffer during"
-                               " certificate copy");
-        goto fail;
-    }
-
-    dest_key->cert = cert_buffer;
-    dest_key->cert_type = src_key->type;
-    dest_key->cert_data = ssh_cert_dup(src_key->cert_data);
-    if (dest_key->cert_data == NULL) {
-        SSH_LOG(SSH_LOG_TRACE, "Error while copying the certificate data");
-        goto fail;
-    }
-
-    return SSH_OK;
-
-fail:
-    SSH_BUFFER_FREE(cert_buffer);
-    return SSH_ERROR;
-}
-
 ssh_key pki_key_dup(const ssh_key key, int demote)
 {
     ssh_key new = NULL;
@@ -494,7 +436,7 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
     switch (key->type) {
     case SSH_KEYTYPE_RSA:
     case SSH_KEYTYPE_RSA1:
-    case SSH_KEYTYPE_RSA_CERT01:{
+    case SSH_KEYTYPE_RSA_CERT01: {
 #if OPENSSL_VERSION_NUMBER < 0x30000000L
         const BIGNUM *n = NULL, *e = NULL, *d = NULL;
         BIGNUM *nn, *ne, *nd;

@@ -2785,9 +2785,8 @@ ssh_bind_options_set(ssh_bind sshbind,
                 return -1;
             }
 
-            /* TODO: move cert types from pki.h to libssh.h or include pki.h */
             /* Check if the loaded certificate is a host certificate */
-            if (cert_key->cert_data->type != 2) {
+            if (cert_key->cert_data->type != SSH_CERT_TYPE_HOST) {
                 SSH_KEY_FREE(cert_key);
                 SSH_LOG(SSH_FATAL,
                         "The certificate is not an Host Certificate");

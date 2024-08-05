@@ -51,6 +51,10 @@ enum ssh_key_e {
   SSH_KEY_PRIVATE
 };
 
+/* Certificates */
+#define SSH_CERT_TYPE_USER 1
+#define SSH_CERT_TYPE_HOST 2
+
 void pki_key_clean(ssh_key key);
 
 int pki_key_ecdsa_nid_from_name(const char *name);
@@ -162,6 +166,10 @@ int pki_uri_import(const char *uri_name, ssh_key *key, enum ssh_key_e key_type);
 #endif /* WITH_PKCS11_URI */
 
 bool ssh_key_size_allowed_rsa(int min_size, ssh_key key);
+
+/* SSH Certificate Functions */
+int pki_copy_cert_to_key(ssh_key dest_key, const ssh_key src_key);
+
 #ifdef __cplusplus
 }
 #endif
