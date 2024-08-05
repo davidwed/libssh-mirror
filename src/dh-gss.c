@@ -144,7 +144,7 @@ error:
     return SSH_ERROR;
 }
 
-static void ssh_client_gss_dh_remove_callbacks(ssh_session session)
+void ssh_client_gss_dh_remove_callbacks(ssh_session session)
 {
     ssh_packet_remove_callbacks(session, &ssh_gss_dh_client_callbacks);
 }

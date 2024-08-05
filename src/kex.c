@@ -47,6 +47,7 @@
 #include "libssh/bignum.h"
 #include "libssh/token.h"
 #include "libssh/gssapi.h"
+#include "libssh/dh-gss.h"
 
 #ifdef HAVE_BLOWFISH
 # define BLOWFISH ",blowfish-cbc"
@@ -952,11 +953,15 @@ static void revert_kex_callbacks(ssh_session session)
     case SSH_KEX_DH_GROUP1_SHA1:
     case SSH_KEX_DH_GROUP14_SHA1:
     case SSH_KEX_DH_GROUP14_SHA256:
-    case SSH_GSS_KEX_DH_GROUP14_SHA256:
     case SSH_KEX_DH_GROUP16_SHA512:
-    case SSH_GSS_KEX_DH_GROUP16_SHA512:
     case SSH_KEX_DH_GROUP18_SHA512:
         ssh_client_dh_remove_callbacks(session);
+        break;
+    case SSH_GSS_KEX_DH_GROUP14_SHA256:
+    case SSH_GSS_KEX_DH_GROUP16_SHA512:
+#ifdef WITH_GSSAPI
+        ssh_client_gss_dh_remove_callbacks(session);
+#endif /* WITH_GSSAPI */
         break;
 #ifdef WITH_GEX
     case SSH_KEX_DH_GEX_SHA1:
