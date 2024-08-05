@@ -786,7 +786,7 @@ int ssh_set_client_kex(ssh_session session)
             return SSH_ERROR;
         }
 
-        ok = ssh_gssapi_import_name(session, session->opts.host);
+        ok = ssh_gssapi_import_name(session->gssapi, session->opts.host);
         if (ok != SSH_OK) {
             return SSH_ERROR;
         }

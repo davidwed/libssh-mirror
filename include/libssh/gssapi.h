@@ -80,14 +80,16 @@ int ssh_gssapi_auth_mic(ssh_session session);
 void ssh_gssapi_free(ssh_session session);
 int ssh_gssapi_client_identity(ssh_session session, gss_OID_set *valid_oids);
 char *ssh_gssapi_name_to_char(gss_name_t name);
-int ssh_gssapi_import_name(ssh_session session, const char *host);
-OM_uint32 ssh_gssapi_init_ctx(ssh_session session,
+int ssh_gssapi_import_name(struct ssh_gssapi_struct *gssapi, const char *host);
+OM_uint32 ssh_gssapi_init_ctx(struct ssh_gssapi_struct *gssapi,
                     gss_buffer_desc *input_token,
                     gss_buffer_desc *output_token,
                     OM_uint32 *ret_flags);
 
 char *ssh_gssapi_oid_hash(ssh_string oid);
 char *ssh_gssapi_kex_mechs(ssh_session session, const char *gss_algs);
+int ssh_gssapi_check_client_config(ssh_session session);
+
 #ifdef __cplusplus
 }
 #endif

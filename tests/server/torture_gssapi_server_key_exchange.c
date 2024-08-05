@@ -294,12 +294,6 @@ torture_gssapi_server_key_exchange(void **state)
     session = s->ssh.session;
     assert_non_null(session);
 
-    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
-    assert_ssh_return_code(s->ssh.session, rc);
-
-    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS, "gss-group16-sha512-");
-    assert_ssh_return_code(s->ssh.session, rc);
-
     /* Valid */
     torture_setup_kdc_server(
         (void **)&s,
@@ -309,6 +303,12 @@ torture_gssapi_server_key_exchange(void **state)
         "kadmin.local list_principals",
 
         "echo bar | kinit alice");
+
+    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
+    assert_ssh_return_code(s->ssh.session, rc);
+
+    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS, "gss-group16-sha512-");
+    assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
     fprintf(stderr, "%s", ssh_get_error(session));

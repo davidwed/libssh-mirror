@@ -81,7 +81,6 @@ int ssh_client_gss_dh_init(ssh_session session){
         goto error;
     }
 
-    /* TODO: Make generic GSSAPI functions to avoid repetition */
     rc = ssh_gssapi_init(session);
     if (rc == SSH_ERROR) {
         return SSH_AUTH_ERROR;
@@ -91,7 +90,7 @@ int ssh_client_gss_dh_init(ssh_session session){
         gss_host = session->opts.gss_server_identity;
     }
 
-    rc = ssh_gssapi_import_name(session, gss_host);
+    rc = ssh_gssapi_import_name(session->gssapi, gss_host);
     if (rc != SSH_OK) {
         return SSH_AUTH_DENIED;
     }
@@ -102,7 +101,7 @@ int ssh_client_gss_dh_init(ssh_session session){
     }
 
     session->gssapi->client.flags = GSS_C_MUTUAL_FLAG | GSS_C_INTEG_FLAG;
-    maj_stat = ssh_gssapi_init_ctx(session, &input_token, &output_token, &oflags);
+    maj_stat = ssh_gssapi_init_ctx(session->gssapi, &input_token, &output_token, &oflags);
     gss_release_oid_set(&min_stat, &selected);
     if (GSS_ERROR(maj_stat)) {
         ssh_gssapi_log_error(SSH_LOG_WARN,
@@ -177,7 +176,7 @@ SSH_PACKET_CALLBACK(ssh_packet_client_gss_dh_reply){
     session->gssapi_key_exchange_mic = mic;
     input_token.length = ssh_string_len(otoken);
     input_token.value = ssh_string_data(otoken);
-    maj_stat = ssh_gssapi_init_ctx(session, &input_token, &output_token, &oflags);
+    maj_stat = ssh_gssapi_init_ctx(session->gssapi, &input_token, &output_token, &oflags);
     if (maj_stat != GSS_S_COMPLETE) {
         goto error;
     }
@@ -327,7 +326,7 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
         return SSH_ERROR;
     }
 
-    rc = ssh_gssapi_import_name(session, hostname);
+    rc = ssh_gssapi_import_name(session->gssapi, hostname);
     if (rc != SSH_OK) {
         return SSH_AUTH_DENIED;
     }

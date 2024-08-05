@@ -1228,7 +1228,13 @@ int ssh_options_set(ssh_session session, enum ssh_options_e type,
                 return -1;
             } else {
                 bool *x = (bool *)value;
-                session->opts.gssapi_key_exchange = *x;
+                rc = ssh_gssapi_check_client_config(session);
+                if (rc == SSH_OK) {
+                    session->opts.gssapi_key_exchange = *x;
+                } else {
+                    SSH_LOG(SSH_LOG_WARN, "Disabled GSSAPI key exchange");
+                    session->opts.gssapi_key_exchange = false;
+                }
             }
             break;
         case SSH_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS:
