@@ -1418,6 +1418,7 @@ int ssh_make_sessionid(ssh_session session)
     }
 
     if (server_pubkey_blob == NULL && session->opts.gssapi_key_exchange) {
+        ssh_string_free(server_pubkey_blob);
         server_pubkey_blob = ssh_string_new(0);
     }
 
@@ -1425,6 +1426,7 @@ int ssh_make_sessionid(ssh_session session)
         switch (session->next_crypto->kex_type) {
         case SSH_GSS_KEX_DH_GROUP14_SHA256:
         case SSH_GSS_KEX_DH_GROUP16_SHA512:
+            ssh_string_free(server_pubkey_blob);
             server_pubkey_blob = ssh_string_new(0);
             break;
         default:

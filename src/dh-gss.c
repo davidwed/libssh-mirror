@@ -393,6 +393,12 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
         ssh_buffer_reinit(session->out_buffer);
         goto error;
     }
+
+    ssh_string_free(otoken);
+    gss_release_name(&min_stat, &client_name);
+    gss_release_buffer(&min_stat, &output_token);
+    gss_release_buffer(&min_stat, &mic);
+
     rc = ssh_packet_send(session);
     if (rc == SSH_ERROR) {
         goto error;

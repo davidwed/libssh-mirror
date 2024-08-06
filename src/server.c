@@ -183,6 +183,8 @@ int server_set_kex(ssh_session session)
         /* Prefix the default algorithms with gsskex algs */
         session->opts.wanted_methods[SSH_KEX] =
             ssh_prefix_without_duplicates(ssh_kex_get_default_methods(SSH_KEX), gssapi_algs);
+
+        SAFE_FREE(gssapi_algs);
     }
 #endif /* WITH_GSSAPI */
 
