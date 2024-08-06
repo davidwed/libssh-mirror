@@ -88,6 +88,8 @@ enum ssh_auth_state_e {
   SSH_AUTH_STATE_PASSWORD_AUTH_SENT,
   /** We have sent a request without auth information (method 'none') */
   SSH_AUTH_STATE_AUTH_NONE_SENT,
+  /** We have sent the MIC and expecting to be authenticated */
+  SSH_AUTH_STATE_GSSAPI_KEYEX_MIC_SENT,
 };
 
 /** @internal

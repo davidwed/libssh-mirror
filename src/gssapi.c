@@ -161,7 +161,7 @@ ssh_gssapi_server_oids(gss_OID_set *selected)
 {
     OM_uint32 maj_stat, min_stat;
     size_t i;
-    char *ptr;
+    char *ptr = NULL;
     gss_OID_set supported; /* oids supported by server */
 
     maj_stat = gss_indicate_mechs(&min_stat, &supported);
@@ -682,7 +682,6 @@ ssh_gssapi_oid_hash(ssh_string oid)
         md5_ctx_free(ctx);
         return NULL;
     }
-    SSH_STRING_FREE(oid);
     rc = md5_final(h, ctx);
     if (rc != SSH_OK) {
         SAFE_FREE(h);
@@ -707,8 +706,8 @@ ssh_gssapi_check_client_config(ssh_session session)
 {
     OM_uint32 maj_stat, min_stat;
     size_t i;
-    char *ptr;
-    gss_OID_set supported;
+    char *ptr = NULL;
+    gss_OID_set supported = GSS_C_NO_OID_SET;
     gss_name_t client_id = GSS_C_NO_NAME;
     gss_buffer_desc output_token = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc input_token = GSS_C_EMPTY_BUFFER;
@@ -716,7 +715,7 @@ ssh_gssapi_check_client_config(ssh_session session)
     OM_uint32 oflags;
     struct ssh_gssapi_struct *gssapi = NULL;
     int ret = SSH_ERROR;
-    gss_OID_set one_oidset;
+    gss_OID_set one_oidset = GSS_C_NO_OID_SET;
 
     maj_stat = gss_indicate_mechs(&min_stat, &supported);
     if (maj_stat != GSS_S_COMPLETE) {
@@ -734,7 +733,7 @@ ssh_gssapi_check_client_config(ssh_session session)
         gssapi->ctx = GSS_C_NO_CONTEXT;
         gssapi->state = SSH_GSSAPI_STATE_NONE;
 
-        /* According to RFC 4462 we shouldn't use SPNEGO */
+        /* According to RFC 4462 we MUST NOT use SPNEGO */
         if (supported->elements[i].length == spnego_oid.length &&
                 memcmp(supported->elements[i].elements, spnego_oid.elements, supported->elements[i].length) == 0) {
             ret = SSH_ERROR;
@@ -1004,6 +1003,7 @@ ssh_gssapi_kex_mechs(ssh_session session, const char *gss_algs)
             offset += strlen(algs->tokens[j]) + strlen(oid_hash) + 1;
         }
         SAFE_FREE(oid_hash);
+        SSH_STRING_FREE(oids[i]);
     }
 
     rc = SSH_OK;
@@ -1025,7 +1025,7 @@ out:
 int
 ssh_gssapi_import_name(struct ssh_gssapi_struct *gssapi, const char *host)
 {
-	gss_buffer_desc hostname;
+    gss_buffer_desc hostname;
     char name_buf[256] = {0};
     OM_uint32 maj_stat, min_stat;
 

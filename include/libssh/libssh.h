@@ -150,13 +150,14 @@ enum ssh_auth_e {
 };
 
 /* auth flags */
-#define SSH_AUTH_METHOD_UNKNOWN     0x0000u
-#define SSH_AUTH_METHOD_NONE        0x0001u
-#define SSH_AUTH_METHOD_PASSWORD    0x0002u
-#define SSH_AUTH_METHOD_PUBLICKEY   0x0004u
-#define SSH_AUTH_METHOD_HOSTBASED   0x0008u
-#define SSH_AUTH_METHOD_INTERACTIVE 0x0010u
-#define SSH_AUTH_METHOD_GSSAPI_MIC  0x0020u
+#define SSH_AUTH_METHOD_UNKNOWN       0x0000u
+#define SSH_AUTH_METHOD_NONE          0x0001u
+#define SSH_AUTH_METHOD_PASSWORD      0x0002u
+#define SSH_AUTH_METHOD_PUBLICKEY     0x0004u
+#define SSH_AUTH_METHOD_HOSTBASED     0x0008u
+#define SSH_AUTH_METHOD_INTERACTIVE   0x0010u
+#define SSH_AUTH_METHOD_GSSAPI_MIC    0x0020u
+#define SSH_AUTH_METHOD_GSSAPI_KEYEX  0x0040u
 
 /* messages */
 enum ssh_requests_e {
@@ -835,6 +836,7 @@ LIBSSH_API const char *ssh_userauth_kbdint_getanswer(ssh_session session, unsign
 LIBSSH_API int ssh_userauth_kbdint_setanswer(ssh_session session, unsigned int i,
     const char *answer);
 LIBSSH_API int ssh_userauth_gssapi(ssh_session session);
+LIBSSH_API int ssh_userauth_gssapi_keyex(ssh_session session);
 LIBSSH_API const char *ssh_version(int req_version);
 
 LIBSSH_API void ssh_string_burn(ssh_string str);

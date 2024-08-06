@@ -15,6 +15,7 @@ sshd_setup(void **state)
 {
     torture_setup_sshd_server(state, false);
     torture_update_sshd_config(state,
+                               "GSSAPIAuthentication yes\n"
                                "GSSAPIKeyExchange yes\n");
 
     return 0;
@@ -99,6 +100,9 @@ torture_gssapi_key_exchange(void **state)
     assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
+    assert_int_equal(rc, 0);
+
+    rc = ssh_userauth_gssapi_keyex(session);
     assert_int_equal(rc, 0);
 }
 
