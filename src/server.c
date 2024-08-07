@@ -174,7 +174,7 @@ int server_set_kex(ssh_session session)
             return SSH_ERROR;
         }
 
-        gssapi_algs = ssh_gssapi_kex_mechs(session, GSSAPI_KEY_EXCHANGE_SUPPORTED);
+        gssapi_algs = ssh_gssapi_kex_mechs(session, session->opts.gssapi_key_exchange_algs ? session->opts.gssapi_key_exchange_algs : GSSAPI_KEY_EXCHANGE_SUPPORTED);
         if (gssapi_algs == NULL) {
             return SSH_ERROR;
         }

@@ -55,6 +55,7 @@ struct ssh_bind_struct {
   char* moduli_file;
   int rsa_min_size;
   bool gssapi_key_exchange;
+  char *gssapi_key_exchange_algs;
 };
 
 struct ssh_poll_handle_struct *ssh_bind_get_poll(struct ssh_bind_struct
