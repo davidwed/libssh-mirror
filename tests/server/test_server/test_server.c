@@ -191,6 +191,7 @@ int run_server(struct server_state_st *state)
         goto out;
     }
 
+#ifdef WITH_GSSAPI
     rc = ssh_bind_options_set(sshbind,
                               SSH_BIND_OPTIONS_GSSAPI_KEY_EXCHANGE,
                               &(state->gssapi_key_exchange));

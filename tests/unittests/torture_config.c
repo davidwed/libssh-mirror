@@ -89,6 +89,7 @@ extern LIBSSH_THREAD int ssh_log_level;
     "\tGSSAPIDelegateCredentials yes\n" \
     "\tGSSAPIServerIdentity example.com\n" \
     "\tGSSAPIClientIdentity home.sweet\n" \
+    "\tGSSAPIKexAlgorithms gss-group14-sha256-\n" \
     "\tUserKnownHostsFile "USER_KNOWN_HOSTS"\n"
 
 /* authentication methods */
@@ -610,6 +611,9 @@ static void torture_config_new(void ** state,
     assert_int_equal(session->opts.gss_delegate_creds, 1);
     assert_string_equal(session->opts.gss_server_identity, "example.com");
     assert_string_equal(session->opts.gss_client_identity, "home.sweet");
+#ifdef WITH_GSSAPI
+    assert_string_equal(session->opts.gssapi_key_exchange_algs, "gss-group14-sha256-");
+#endif /* WITH_GSSAPI */
 
     assert_int_equal(ssh_get_log_level(), SSH_LOG_TRACE);
     assert_int_equal(session->common.log_verbosity, SSH_LOG_TRACE);
