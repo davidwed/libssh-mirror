@@ -4,6 +4,7 @@
 
 #include "torture.h"
 #include <libssh/libssh.h>
+#include "libssh/crypto.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -70,7 +71,6 @@ session_teardown(void **state)
 
     ssh_disconnect(s->ssh.session);
     ssh_free(s->ssh.session);
-    torture_teardown_kdc_server(state);
 
     return 0;
 }
@@ -96,14 +96,134 @@ torture_gssapi_key_exchange(void **state)
     rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
     assert_ssh_return_code(s->ssh.session, rc);
 
+    rc = ssh_connect(session);
+    assert_int_equal(rc, 0);
+    torture_teardown_kdc_server(state);
+}
+
+static void
+torture_gssapi_key_exchange_no_tgt(void **state)
+{
+    struct torture_state *s = *state;
+    ssh_session session = s->ssh.session;
+    int rc;
+    bool t = true;
+
+    /* Don't run kinit */
+    torture_setup_kdc_server(
+        state,
+        "kadmin.local addprinc -randkey host/server.libssh.site \n"
+        "kadmin.local ktadd -k $(dirname $0)/d/ssh.keytab host/server.libssh.site \n"
+        "kadmin.local addprinc -pw bar alice \n"
+        "kadmin.local list_principals",
+
+        /* No TGT */
+        "");
+
+    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
+    assert_ssh_return_code(s->ssh.session, rc);
+
+    rc = ssh_connect(session);
+    assert_int_equal(rc, 0);
+
+    assert_int_not_equal(session->current_crypto->kex_type, SSH_GSS_KEX_DH_GROUP14_SHA256);
+    assert_int_not_equal(session->current_crypto->kex_type, SSH_GSS_KEX_DH_GROUP16_SHA512);
+
+    torture_teardown_kdc_server(state);
+}
+
+static void
+torture_gssapi_key_exchange_gss_group14_sha256(void **state)
+{
+    struct torture_state *s = *state;
+    ssh_session session = s->ssh.session;
+    int rc;
+    bool t = true;
+
+    /* Valid */
+    torture_setup_kdc_server(
+        state,
+        "kadmin.local addprinc -randkey host/server.libssh.site \n"
+        "kadmin.local ktadd -k $(dirname $0)/d/ssh.keytab host/server.libssh.site \n"
+        "kadmin.local addprinc -pw bar alice \n"
+        "kadmin.local list_principals",
+
+        "echo bar | kinit alice");
+
+    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
+    assert_ssh_return_code(s->ssh.session, rc);
+
+    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS, "gss-group14-sha256-");
+    assert_ssh_return_code(s->ssh.session, rc);
+
+    rc = ssh_connect(session);
+    assert_int_equal(rc, 0);
+
+    assert_int_equal(session->current_crypto->kex_type, SSH_GSS_KEX_DH_GROUP14_SHA256);
+
+    torture_teardown_kdc_server(state);
+}
+
+static void
+torture_gssapi_key_exchange_gss_group16_sha512(void **state)
+{
+    struct torture_state *s = *state;
+    ssh_session session = s->ssh.session;
+    int rc;
+    bool t = true;
+
+    /* Valid */
+    torture_setup_kdc_server(
+        state,
+        "kadmin.local addprinc -randkey host/server.libssh.site \n"
+        "kadmin.local ktadd -k $(dirname $0)/d/ssh.keytab host/server.libssh.site \n"
+        "kadmin.local addprinc -pw bar alice \n"
+        "kadmin.local list_principals",
+
+        "echo bar | kinit alice");
+
+    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
+    assert_ssh_return_code(s->ssh.session, rc);
+
     rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS, "gss-group16-sha512-");
     assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
     assert_int_equal(rc, 0);
 
-    rc = ssh_userauth_gssapi_keyex(session);
+    assert_true(session->current_crypto->kex_type == SSH_GSS_KEX_DH_GROUP16_SHA512);
+
+    torture_teardown_kdc_server(state);
+}
+
+static void
+torture_gssapi_key_exchange_auth(void **state)
+{
+    struct torture_state *s = *state;
+    ssh_session session = s->ssh.session;
+    int rc;
+    bool t = true;
+
+    /* Valid */
+    torture_setup_kdc_server(
+        state,
+        "kadmin.local addprinc -randkey host/server.libssh.site \n"
+        "kadmin.local ktadd -k $(dirname $0)/d/ssh.keytab host/server.libssh.site \n"
+        "kadmin.local addprinc -pw bar alice \n"
+        "kadmin.local list_principals",
+
+        "echo bar | kinit alice");
+
+    rc = ssh_options_set(s->ssh.session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
+    assert_ssh_return_code(s->ssh.session, rc);
+
+    rc = ssh_connect(session);
     assert_int_equal(rc, 0);
+
+    rc = ssh_userauth_gssapi_keyex(session);
+    assert_int_equal(rc, SSH_AUTH_SUCCESS);
+
+    torture_teardown_kdc_server(state);
 }
 
 int
@@ -112,6 +232,18 @@ torture_run_tests(void)
     int rc;
     struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(torture_gssapi_key_exchange,
+                                        session_setup,
+                                        session_teardown),
+        cmocka_unit_test_setup_teardown(torture_gssapi_key_exchange_no_tgt,
+                                        session_setup,
+                                        session_teardown),
+        cmocka_unit_test_setup_teardown(torture_gssapi_key_exchange_gss_group14_sha256,
+                                        session_setup,
+                                        session_teardown),
+        cmocka_unit_test_setup_teardown(torture_gssapi_key_exchange_gss_group16_sha512,
+                                        session_setup,
+                                        session_teardown),
+        cmocka_unit_test_setup_teardown(torture_gssapi_key_exchange_auth,
                                         session_setup,
                                         session_teardown),
     };
