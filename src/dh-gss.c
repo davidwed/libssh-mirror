@@ -83,7 +83,7 @@ int ssh_client_gss_dh_init(ssh_session session){
 
     rc = ssh_gssapi_init(session);
     if (rc == SSH_ERROR) {
-        return SSH_AUTH_ERROR;
+        goto error;
     }
 
     if (session->opts.gss_server_identity != NULL) {
@@ -92,12 +92,12 @@ int ssh_client_gss_dh_init(ssh_session session){
 
     rc = ssh_gssapi_import_name(session->gssapi, gss_host);
     if (rc != SSH_OK) {
-        return SSH_AUTH_DENIED;
+        goto error;
     }
 
     rc = ssh_gssapi_client_identity(session, &selected);
     if (rc == SSH_ERROR) {
-        return SSH_AUTH_DENIED;
+        goto error;
     }
 
     session->gssapi->client.flags = GSS_C_MUTUAL_FLAG | GSS_C_INTEG_FLAG;
@@ -315,7 +315,7 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
 
     rc = ssh_gssapi_init(session);
     if (rc == SSH_ERROR) {
-        return SSH_AUTH_ERROR;
+        goto error;
     }
 
     rc = gethostname(hostname, 64);
@@ -323,12 +323,12 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
         SSH_LOG(SSH_LOG_TRACE,
                 "Error getting hostname: %s",
                 ssh_strerror(errno, err_msg, SSH_ERRNO_MSG_MAX));
-        return SSH_ERROR;
+        goto error;
     }
 
     rc = ssh_gssapi_import_name(session->gssapi, hostname);
     if (rc != SSH_OK) {
-        return SSH_AUTH_DENIED;
+        goto error;
     }
 
     maj_stat = gss_acquire_cred(&min_stat, session->gssapi->client.server_name, 0,
@@ -352,6 +352,8 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
                              min_stat);
         goto error;
     }
+    SSH_STRING_FREE(otoken);
+    gss_release_name(&min_stat, &client_name);
     if (!(ret_flags & GSS_C_INTEG_FLAG) || !(ret_flags & GSS_C_MUTUAL_FLAG)) {
         SSH_LOG(SSH_LOG_WARN, "GSSAPI(accept) integrity and mutual flags were not set");
         goto error;
@@ -394,8 +396,6 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
         goto error;
     }
 
-    ssh_string_free(otoken);
-    gss_release_name(&min_stat, &client_name);
     gss_release_buffer(&min_stat, &output_token);
     gss_release_buffer(&min_stat, &mic);
 

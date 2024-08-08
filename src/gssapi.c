@@ -178,10 +178,11 @@ ssh_gssapi_server_oids(gss_OID_set *selected)
         /* According to RFC 4462 we MUST NOT use SPNEGO */
         if (supported->elements[i].length == spnego_oid.length &&
                 memcmp(supported->elements[i].elements, spnego_oid.elements, supported->elements[i].length) == 0) {
+            SAFE_FREE(ptr);
             continue;
         }
         SSH_LOG(SSH_LOG_DEBUG, "Supported mech %zu: %s", i, ptr);
-        free(ptr);
+        SAFE_FREE(ptr);
     }
 
     *selected = supported;
