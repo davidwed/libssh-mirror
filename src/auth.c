@@ -2376,7 +2376,6 @@ int ssh_userauth_gssapi_keyex(ssh_session session)
     OM_uint32 maj_stat, min_stat;
     gss_buffer_desc mic_token_buf = GSS_C_EMPTY_BUFFER;
 
-    /* TODO: add a check to see if we've done GSSAPI key exchange */
     switch(session->pending_call_state) {
     case SSH_PENDING_CALL_NONE:
         break;
@@ -2388,6 +2387,18 @@ int ssh_userauth_gssapi_keyex(ssh_session session)
                 "Wrong state (%d) during pending SSH call",
                 session->pending_call_state);
         return SSH_ERROR;
+    }
+
+    /* Check if GSSAPI Key exchange was performed */
+    switch (session->current_crypto->kex_type) {
+        case SSH_GSS_KEX_DH_GROUP14_SHA256:
+        case SSH_GSS_KEX_DH_GROUP16_SHA512:
+            break;
+        default:
+            ssh_set_error(session,
+                          SSH_FATAL,
+                          "Attempt to authenticate with \"gssapi-keyex\" without doing GSSAPI Key exchange.");
+            return SSH_ERROR;
     }
 
     rc = ssh_userauth_request_service(session);
