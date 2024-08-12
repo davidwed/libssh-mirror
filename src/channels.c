@@ -64,7 +64,7 @@
  * This controls how much data the peer can send before needing to receive
  * a round-trip SSH2_MSG_CHANNEL_WINDOW_ADJUST message that increases the window.
  */
-#define WINDOW_DEFAULT (64*CHANNEL_MAX_PACKET)
+#define WINDOW_DEFAULT (uint32_t)(64*CHANNEL_MAX_PACKET)
 
 /**
  * @defgroup libssh_channel The SSH channel functions
@@ -815,7 +815,7 @@ SSH_PACKET_CALLBACK(channel_rcv_request)
         channel->exit.status = true;
 
         SSH_LOG(SSH_LOG_PACKET,
-                "received exit-status %u",
+                "received exit-status %" PRIu32,
                 channel->exit.code);
 
         ssh_callbacks_execute_list(channel->callbacks,
