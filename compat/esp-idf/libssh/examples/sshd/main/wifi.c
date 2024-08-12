@@ -25,7 +25,7 @@ static void disconnect_handler(void* arg, esp_event_base_t event_base,
 
 void initialize_wifi(void)
 {
-    tcpip_adapter_init();
+    esp_netif_init();
     wifi_event_group = xEventGroupCreate();
     ESP_ERROR_CHECK( esp_event_loop_create_default() );
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -46,5 +46,5 @@ void wifi_sta_join(const char* ssid, const char* pass)
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK( esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
     ESP_ERROR_CHECK( esp_wifi_connect() );
-    xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, 0, 1, 5000/portTICK_RATE_MS);
+    xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, 0, 1, 5000/portTICK_PERIOD_MS);
 }
