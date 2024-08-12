@@ -31,6 +31,7 @@
 
 #include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -187,6 +188,23 @@ int ssh_gettimeofday(struct timeval *__p, void *__t);
 #define _XCLOSESOCKET close
 
 #endif /* _WIN32 */
+
+#if defined(_WIN32) || defined(ESP_PLATFORM)
+#ifndef gai_strerror
+#ifdef _WIN32
+static char WSAAPI *gai_strerrorA(int code)
+#else /* ESP_PLATFORM */
+static char *gai_strerror(int code)
+#endif /* _WIN32 */
+{
+    static char buf[256];
+
+    snprintf(buf, sizeof(buf), "Undetermined error code (%d)", code);
+
+    return buf;
+}
+#endif /* gai_strerror */
+#endif /* _WIN32 || ESP_PLATFORM */
 
 #include "libssh/libssh.h"
 #include "libssh/callbacks.h"
