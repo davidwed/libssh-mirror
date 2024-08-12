@@ -1000,7 +1000,7 @@ ssh_socket_connect_proxycommand(ssh_socket s, const char *command)
 }
 #endif /* WITH_EXEC */
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(ESP_PLATFORM)
 #ifdef HAVE_PTHREAD
 static int
 verify_knownhost(ssh_session session)
@@ -1293,5 +1293,5 @@ ssh_socket_connect_proxyjump(ssh_socket s)
 
 #endif /* HAVE_PTHREAD */
 
-#endif /* _WIN32 */
+#endif /* _WIN32 || ESP_PLATFORM */
 /** @} */
