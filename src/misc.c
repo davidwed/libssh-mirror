@@ -2147,8 +2147,8 @@ int ssh_check_hostname_syntax(const char *hostname)
         if (it_len > ARPA_DOMAIN_MAX_LEN ||
             /* the first char must be a letter, but some virtual urls start
              * with a number */
-            isalnum(it[0]) == 0 ||
-            isalnum(it[it_len - 1]) == 0) {
+            isalnum((int)it[0]) == 0 ||
+            isalnum((int)it[it_len - 1]) == 0) {
             free(s);
             return SSH_ERROR;
         }
@@ -2193,7 +2193,7 @@ int ssh_check_username_syntax(const char *username)
         return SSH_ERROR;
     }
     for (size_t i = 0; i < username_len; i++) {
-        if (isspace(username[i]) != 0 && username[i + 1] == '-') {
+        if (isspace((int)username[i]) != 0 && username[i + 1] == '-') {
             return SSH_ERROR;
         }
     }
