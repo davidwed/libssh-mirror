@@ -263,7 +263,74 @@ int ssh_is_ipaddr(const char *str)
     free(s);
     return ssh_is_ipaddr_v4(str);
 }
-#else /* _WIN32 */
+
+#elif ESP_PLATFORM
+/* We don't have fancy stuff like users or if-names in esp-idf... */
+
+char *ssh_get_user_home_dir(void)
+{
+    return NULL;
+}
+
+/* we have read access on file */
+int ssh_file_readaccess_ok(const char *file)
+{
+    return 1;
+}
+
+/**
+ * @brief Check if the given path is an existing directory and that is
+ * accessible for writing.
+ *
+ * @param[in] path Path to the directory to be checked
+ *
+ * @return Return 1 if the directory exists and is accessible; 0 otherwise
+ * */
+int ssh_dir_writeable(const char *path)
+{
+    return 1;
+}
+
+char *ssh_get_local_username(void)
+{
+    return NULL;
+}
+
+int ssh_is_ipaddr_v4(const char *str)
+{
+    int rc = -1;
+    struct in_addr dest;
+
+    rc = inet_pton(AF_INET, str, &dest);
+    if (rc > 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+int ssh_is_ipaddr(const char *str)
+{
+    int rc = -1;
+    char *s = strdup(str);
+
+    if (s == NULL) {
+        return -1;
+    }
+    if (strchr(s, ':')) {
+        struct in6_addr dest6;
+        rc = inet_pton(AF_INET6, s, &dest6);
+        if (rc > 0) {
+            free(s);
+            return 1;
+        }
+    }
+
+    free(s);
+    return ssh_is_ipaddr_v4(str);
+}
+
+#else /* _WIN32 || ESP_PLATFORM */
 
 #ifndef NSS_BUFLEN_PASSWD
 #define NSS_BUFLEN_PASSWD 4096

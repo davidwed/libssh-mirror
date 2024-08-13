@@ -4,6 +4,10 @@
 /* Version number of package */
 #define VERSION "0.11.0"
 
+/* Local port additions */
+/* #define NI_MAXHOST 1025 */
+#include "stubs.h"
+
 #define SYSCONFDIR "etc"
 #define BINARYDIR "libssh"
 #define SOURCEDIR "libssh"
@@ -279,7 +283,3 @@
 #ifndef HAVE_COMPILER__FUNC__
 #define HAVE_COMPILER__FUNC__ 1
 #endif
-
-// Local port additions
-
-// #define NI_MAXHOST 1025
