@@ -12,23 +12,32 @@ set(srcs
   ${SRC}/bind_config.c
   ${SRC}/buffer.c
   ${SRC}/callbacks.c
+  ${SRC}/chachapoly.c
   ${SRC}/channels.c
   ${SRC}/client.c
   ${SRC}/config.c
+  ${SRC}/config_parser.c
   ${SRC}/connect.c
   ${SRC}/connector.c
+  ${SRC}/crypto_common.c
   ${SRC}/curve25519.c
-  ${SRC}/dh.c
   ${SRC}/dh-gex.c
+  ${SRC}/dh.c
   ${SRC}/dh_key.c
   ${SRC}/ecdh.c
   ${SRC}/ecdh_mbedcrypto.c
   ${SRC}/error.c
+  ${SRC}/external/bcrypt_pbkdf.c
+  ${SRC}/external/blowfish.c
+  ${SRC}/external/chacha.c
+  ${SRC}/external/curve25519_ref.c
   ${SRC}/external/ed25519.c
   ${SRC}/external/fe25519.c
   ${SRC}/external/ge25519.c
+  ${SRC}/external/poly1305.c
   ${SRC}/external/sc25519.c
   ${SRC}/getpass.c
+  ${SRC}/getrandom_mbedcrypto.c
   ${SRC}/init.c
   ${SRC}/kdf.c
   ${SRC}/kex.c
@@ -39,6 +48,7 @@ set(srcs
   ${SRC}/log.c
   ${SRC}/match.c
   ${SRC}/mbedcrypto_missing.c
+  ${SRC}/md_mbedcrypto.c
   ${SRC}/messages.c
   ${SRC}/misc.c
   ${SRC}/options.c
@@ -48,26 +58,26 @@ set(srcs
   ${SRC}/pcap.c
   ${SRC}/pki.c
   ${SRC}/pki_container_openssh.c
+  ${SRC}/pki_ed25519.c
+  ${SRC}/pki_ed25519_common.c
+  ${SRC}/pki_mbedcrypto.c
   ${SRC}/poll.c
+  ${SRC}/scp.c
   ${SRC}/server.c
   ${SRC}/session.c
-  ${SRC}/scp.c
+  # ${SRC}/sftp.c
+  # ${SRC}/sftp_aio.c
+  # ${SRC}/sftp_common.c
+  # ${SRC}/sftpserver.c
   ${SRC}/socket.c
   ${SRC}/string.c
   ${SRC}/threads.c
   ${SRC}/threads/mbedtls.c
   ${SRC}/threads/noop.c
-  ${SRC}/wrapper.c
-  ${SRC}/external/bcrypt_pbkdf.c
-  ${SRC}/external/blowfish.c
-  ${SRC}/external/chacha.c
-  ${SRC}/external/poly1305.c
-  ${SRC}/chachapoly.c
-  ${SRC}/config_parser.c
+  ${SRC}/threads/pthread.c
   ${SRC}/token.c
-  ${SRC}/pki_ed25519.c
-  ${SRC}/pki_ed25519_common.c
-  ${SRC}/pki_mbedcrypto.c
+  # ${SRC}/ttyopts.c
+  ${SRC}/wrapper.c
 )
 
 idf_component_register(SRCS            "${srcs}"
