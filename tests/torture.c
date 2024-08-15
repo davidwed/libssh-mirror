@@ -756,9 +756,10 @@ static void torture_setup_create_sshd_config(void **state, bool pam)
              "%s" /* The space for test-specific options */
              "\n"
              /* add all supported algorithms */
-             "HostKeyAlgorithms " OPENSSH_KEYS "\n"
-#if OPENSSH_VERSION_MAJOR == 8 && OPENSSH_VERSION_MINOR >= 2
-             "CASignatureAlgorithms " OPENSSH_KEYS "\n"
+             "HostKeyAlgorithms " OPENSSH_HOST_KEY_ALGOS "\n"
+#if (OPENSSH_VERSION_MAJOR == 8 && OPENSSH_VERSION_MINOR >= 2) || \
+    OPENSSH_VERSION_MAJOR >= 9
+             "CASignatureAlgorithms " OPENSSH_SIGS "\n"
 #endif
 #if (OPENSSH_VERSION_MAJOR == 9 && OPENSSH_VERSION_MINOR >= 8) || OPENSSH_VERSION_MAJOR > 9
              "PerSourcePenaltyExemptList 127.0.0.21\n"

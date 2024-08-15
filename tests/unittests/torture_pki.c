@@ -404,7 +404,7 @@ static void torture_pki_verify_mismatch(void **state)
 
                 if (is_cert_type(key_type)) {
                     torture_write_file("libssh_testkey-cert.pub",
-                       torture_get_testkey_pub(key_type));
+                       torture_get_testkey_user_cert(key_type));
                     rc = ssh_pki_import_cert_file("libssh_testkey-cert.pub", &verify_pubkey);
                     verify_key = NULL;
                 } else {

@@ -57,7 +57,7 @@ static int setup_rsa_key(void **state)
     torture_write_file(LIBSSH_RSA_TESTKEY ".pub",
                        torture_get_testkey_pub(SSH_KEYTYPE_RSA));
     torture_write_file(LIBSSH_RSA_TESTKEY "-cert.pub",
-                       torture_get_testkey_pub(SSH_KEYTYPE_RSA_CERT01));
+                       torture_get_testkey_user_cert(SSH_KEYTYPE_RSA_CERT01));
 
     return 0;
 }
@@ -93,7 +93,7 @@ static int setup_openssh_rsa_key(void **state)
     torture_write_file(LIBSSH_RSA_TESTKEY ".pub",
                        torture_get_testkey_pub(SSH_KEYTYPE_RSA));
     torture_write_file(LIBSSH_RSA_TESTKEY "-cert.pub",
-                       torture_get_testkey_pub(SSH_KEYTYPE_RSA_CERT01));
+                       torture_get_testkey_user_cert(SSH_KEYTYPE_RSA_CERT01));
 
     return 0;
 }

@@ -41,4 +41,15 @@ const char *torture_get_testkey_pub(enum ssh_keytypes_e type);
 
 const char *torture_get_testkey_pub_pem(enum ssh_keytypes_e type);
 
+const char *torture_get_testkey_user_cert(enum ssh_keytypes_e type);
+
+const char *torture_get_testkey_host_cert(enum ssh_keytypes_e type);
+
+const char *
+torture_get_testkey_expired_server_host_cert(enum ssh_keytypes_e type);
+
+const char *torture_get_testkey_host_ca(void);
+
+const char *torture_get_testkey_user_ca(void);
+
 #endif /* _TORTURE_KEY_H */

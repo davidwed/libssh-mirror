@@ -18,11 +18,11 @@
 
 #define OPENSSH_HOSTKEY_ALGOS \
   "-o HostKeyAlgorithms="        \
-  OPENSSH_KEYS
+  OPENSSH_HOST_KEY_ALGOS
 
 #define OPENSSH_PKACCEPTED_TYPES \
   "-o PubkeyAcceptedKeyTypes="  \
-  OPENSSH_KEYS
+  OPENSSH_PK_ACCEPTED_KEYS
 
 #define OPENSSH_CMD_START(hostkey_algos) \
     OPENSSH_BINARY " "                  \
