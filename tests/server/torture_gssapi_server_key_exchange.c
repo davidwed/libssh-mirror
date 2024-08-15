@@ -119,7 +119,7 @@ setup_config(void **state)
     ss->verbosity = torture_libssh_verbosity();
     ss->log_file = strdup(log_file);
 
-    ss->auth_methods = SSH_AUTH_METHOD_GSSAPI_MIC;
+    ss->auth_methods = SSH_AUTH_METHOD_GSSAPI_MIC | SSH_AUTH_METHOD_GSSAPI_KEYEX;
 
 #ifdef WITH_PCAP
     ss->with_pcap = 1;
@@ -314,6 +314,10 @@ torture_gssapi_server_key_exchange(void **state)
     rc = ssh_connect(session);
     fprintf(stderr, "%s", ssh_get_error(session));
     assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_userauth_gssapi_keyex(session);
+    assert_int_equal(rc, SSH_AUTH_SUCCESS);
+
     torture_teardown_kdc_server((void **)&s);
 }
 
