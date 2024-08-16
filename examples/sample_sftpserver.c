@@ -138,6 +138,12 @@ static struct argp_option options[] = {
      .flags = 0,
      .doc = "Get verbose output.",
      .group = 0},
+     {.name = "config",
+      .key = 'f',
+      .arg = "FILE",
+      .flags = 0,
+      .doc = "Configuration file to use.",
+      .group = 0},
     {NULL, 0, NULL, 0, NULL, 0}};
 
 /* Parse a single option. */
@@ -178,6 +184,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
     case 'v':
         ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_LOG_VERBOSITY_STR,
                              "3");
+        break;
+    case 'f':
+        ssh_bind_options_parse_config(sshbind,arg);
         break;
     case ARGP_KEY_ARG:
         if (state->arg_num >= 1)
@@ -228,6 +237,17 @@ struct session_data_struct
     int auth_attempts;
     int authenticated;
 };
+
+static int auth_none(ssh_session session, const char *user,
+                     void *userdata)
+{
+    struct session_data_struct *sdata = (struct session_data_struct *)(userdata);
+
+    sdata->authenticated = 1;
+    sdata->auth_attempts++;
+
+    return SSH_AUTH_SUCCESS;
+}
 
 static int auth_password(ssh_session session, const char *user,
                          const char *pass, void *userdata)
@@ -333,6 +353,7 @@ static void handle_session(ssh_event event, ssh_session session)
 
     struct ssh_server_callbacks_struct server_cb = {
         .userdata = &sdata,
+        .auth_none_function = auth_none,
         .auth_password_function = auth_password,
         .channel_open_request_session_function = channel_open,
     };
@@ -343,7 +364,7 @@ static void handle_session(ssh_event event, ssh_session session)
         ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD | SSH_AUTH_METHOD_PUBLICKEY);
     }
     else
-        ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD);
+        ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD | SSH_AUTH_METHOD_NONE);
 
     ssh_callbacks_init(&server_cb);
     ssh_callbacks_init(&channel_cb);

@@ -27,6 +27,8 @@ macro(fuzzer name)
     endif()
 endmacro()
 
+fuzzer(sftp_client_fuzzer)
+fuzzer(sftp_server_fuzzer)
 fuzzer(ssh_client_fuzzer)
 fuzzer(ssh_server_fuzzer)
 fuzzer(ssh_client_config_fuzzer)

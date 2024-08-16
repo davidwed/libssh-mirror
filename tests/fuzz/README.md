@@ -76,7 +76,7 @@ to use none cipher for the key exchange to be plausible.
 
    (note, that the client fuzzer fails now because of invalid hostkey signature; TODO)
 
- * Store the appropriately named traces in the fuzers directory:
+ * Store the appropriately named traces in the fuzzers directory:
 
     cp /tmp/ssh_client tests/fuzz/ssh_client_fuzzer_corpus/$(sha1sum /tmp/ssh_client | cut -d ' ' -f 1)
     cp /tmp/ssh_server tests/fuzz/ssh_server_fuzzer_corpus/$(sha1sum /tmp/ssh_server | cut -d ' ' -f 1)
