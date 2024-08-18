@@ -273,7 +273,7 @@ ssize_t sftp_aio_wait_read(sftp_aio *aio,
              * get executed.
              */
             ssh_set_error(sftp->session, SSH_FATAL,
-                          "DATA packet (%u bytes) received from sftp server "
+                          "DATA packet (%" PRIu32 " bytes) received from sftp server "
                           "cannot fit into the supplied buffer (%zu bytes)",
                           host_len, buf_size);
             sftp_set_error(sftp, SSH_FX_FAILURE);

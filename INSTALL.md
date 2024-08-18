@@ -56,6 +56,26 @@ installed on the system and if possible also dropbear. Once that is done
 enable server support with -DWITH_SERVER=ON and enable testing of it with
 -DSERVER_TESTING=ON.
 
+## Embedded & MCU  targets
+
+### esp-idf (ESP32)
+Building as [esp-idf component](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/tools/idf-component-manager.html)
+is supported.
+
+`main/idf_component.yml`:
+
+```yaml
+## IDF Component Manager Manifest File
+dependencies:
+  # Dependencies
+  libssh:
+    path: ../lib/libssh/compat/esp-idf/libssh
+    # or
+    # git: https://gitlab.com/libssh/libssh-mirror.git
+    # version: 35e8e644b131a8802575bc72db3848169c9de5a2
+    # path: compat/esp-idf/libssh
+```
+
 ## Testing build
 
     make test

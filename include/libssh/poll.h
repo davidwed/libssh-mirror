@@ -38,7 +38,11 @@ typedef struct ssh_pollfd_struct {
   short revents;    /* returned events */
 } ssh_pollfd_t;
 
+#ifdef ESP_PLATFORM
+typedef unsigned int nfds_t;
+#else
 typedef unsigned long int nfds_t;
+#endif /* ESP_PLATFORM */
 
 #ifdef _WIN32
 

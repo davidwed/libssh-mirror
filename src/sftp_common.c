@@ -467,10 +467,10 @@ static char * sftp_parse_longname(const char *longname,
      * by sftp_longname_field_e.
      */
     while (field != longname_field) {
-        if (isspace(*p)) {
+        if (isspace((int)*p)) {
             field++;
             p++;
-            while (*p && isspace(*p)) {
+            while (*p && isspace((int)*p)) {
                 p++;
             }
         } else {
@@ -479,7 +479,7 @@ static char * sftp_parse_longname(const char *longname,
     }
 
     q = p;
-    while (! isspace(*q)) {
+    while (! isspace((int)*q)) {
         q++;
     }
 

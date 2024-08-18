@@ -263,7 +263,74 @@ int ssh_is_ipaddr(const char *str)
     free(s);
     return ssh_is_ipaddr_v4(str);
 }
-#else /* _WIN32 */
+
+#elif ESP_PLATFORM
+/* We don't have fancy stuff like users or if-names in esp-idf... */
+
+char *ssh_get_user_home_dir(void)
+{
+    return NULL;
+}
+
+/* we have read access on file */
+int ssh_file_readaccess_ok(const char *file)
+{
+    return 1;
+}
+
+/**
+ * @brief Check if the given path is an existing directory and that is
+ * accessible for writing.
+ *
+ * @param[in] path Path to the directory to be checked
+ *
+ * @return Return 1 if the directory exists and is accessible; 0 otherwise
+ * */
+int ssh_dir_writeable(const char *path)
+{
+    return 1;
+}
+
+char *ssh_get_local_username(void)
+{
+    return NULL;
+}
+
+int ssh_is_ipaddr_v4(const char *str)
+{
+    int rc = -1;
+    struct in_addr dest;
+
+    rc = inet_pton(AF_INET, str, &dest);
+    if (rc > 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+int ssh_is_ipaddr(const char *str)
+{
+    int rc = -1;
+    char *s = strdup(str);
+
+    if (s == NULL) {
+        return -1;
+    }
+    if (strchr(s, ':')) {
+        struct in6_addr dest6;
+        rc = inet_pton(AF_INET6, s, &dest6);
+        if (rc > 0) {
+            free(s);
+            return 1;
+        }
+    }
+
+    free(s);
+    return ssh_is_ipaddr_v4(str);
+}
+
+#else /* _WIN32 || ESP_PLATFORM */
 
 #ifndef NSS_BUFLEN_PASSWD
 #define NSS_BUFLEN_PASSWD 4096
@@ -1971,7 +2038,7 @@ char *ssh_strreplace(const char *src, const char *pattern, const char *replace)
  */
 char *ssh_strerror(int err_num, char *buf, size_t buflen)
 {
-#if defined(__linux__) && defined(__GLIBC__) && defined(_GNU_SOURCE)
+#if (defined(__linux__) && defined(__GLIBC__) && defined(_GNU_SOURCE)) || defined(ESP_PLATFORM)
     /* GNU extension on Linux */
     return strerror_r(err_num, buf, buflen);
 #else
@@ -2147,8 +2214,8 @@ int ssh_check_hostname_syntax(const char *hostname)
         if (it_len > ARPA_DOMAIN_MAX_LEN ||
             /* the first char must be a letter, but some virtual urls start
              * with a number */
-            isalnum(it[0]) == 0 ||
-            isalnum(it[it_len - 1]) == 0) {
+            isalnum((int)it[0]) == 0 ||
+            isalnum((int)it[it_len - 1]) == 0) {
             free(s);
             return SSH_ERROR;
         }
@@ -2193,7 +2260,7 @@ int ssh_check_username_syntax(const char *username)
         return SSH_ERROR;
     }
     for (size_t i = 0; i < username_len; i++) {
-        if (isspace(username[i]) != 0 && username[i + 1] == '-') {
+        if (isspace((int)username[i]) != 0 && username[i + 1] == '-') {
             return SSH_ERROR;
         }
     }

@@ -87,19 +87,6 @@
 #error "Your system must have getaddrinfo()"
 #endif
 
-#ifdef _WIN32
-#ifndef gai_strerror
-char WSAAPI *gai_strerrorA(int code)
-{
-    static char buf[256];
-
-    snprintf(buf, sizeof(buf), "Undetermined error code (%d)", code);
-
-    return buf;
-}
-#endif /* gai_strerror */
-#endif /* _WIN32 */
-
 static int ssh_connect_socket_close(socket_t s)
 {
 #ifdef _WIN32

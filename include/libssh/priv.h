@@ -31,6 +31,7 @@
 
 #include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -187,6 +188,23 @@ int ssh_gettimeofday(struct timeval *__p, void *__t);
 #define _XCLOSESOCKET close
 
 #endif /* _WIN32 */
+
+#if defined(_WIN32) || defined(ESP_PLATFORM)
+#ifndef gai_strerror
+#ifdef _WIN32
+static char WSAAPI *gai_strerrorA(int code)
+#else /* ESP_PLATFORM */
+static char *gai_strerror(int code)
+#endif /* _WIN32 */
+{
+    static char buf[256];
+
+    snprintf(buf, sizeof(buf), "Undetermined error code (%d)", code);
+
+    return buf;
+}
+#endif /* gai_strerror */
+#endif /* _WIN32 || ESP_PLATFORM */
 
 #include "libssh/libssh.h"
 #include "libssh/callbacks.h"
@@ -395,6 +413,7 @@ void explicit_bzero(void *s, size_t n);
  */
 #define VA_APPLY_VARIADIC_MACRO(macro, tuple) macro tuple
 
+#ifndef __VA_NARG__
 #define __VA_NARG__(...) \
         (__VA_NARG_(__VA_ARGS__, __RSEQ_N()))
 #define __VA_NARG_(...) \
@@ -415,6 +434,7 @@ void explicit_bzero(void *s, size_t n);
         29, 28, 27, 26, 25, 24, 23, 22, 21, 20, \
         19, 18, 17, 16, 15, 14, 13, 12, 11, 10, \
          9,  8,  7,  6,  5,  4,  3,  2,  1,  0
+#endif /* __VA_NARG__ */
 
 #define CLOSE_SOCKET(s) do { if ((s) != SSH_INVALID_SOCKET) { _XCLOSESOCKET(s); (s) = SSH_INVALID_SOCKET;} } while(0)
 
