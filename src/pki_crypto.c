@@ -667,7 +667,7 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
         return NULL;
     }
 
-    if (is_cert_type(key->type)) {
+    if (is_cert_type(key->type) || key->cert_type != SSH_KEYTYPE_UNKNOWN) {
         rc = pki_copy_cert_to_key(new, key);
         if (rc != SSH_OK) {
             goto fail;

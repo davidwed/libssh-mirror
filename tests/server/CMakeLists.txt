@@ -12,6 +12,7 @@ set(LIBSSH_SERVER_TESTS
     torture_server_config
     torture_server_algorithms
     torture_sftpserver
+    torture_auth_host_cert
 )
 
 if (WITH_GSSAPI AND GSSAPI_FOUND AND GSSAPI_TESTING)

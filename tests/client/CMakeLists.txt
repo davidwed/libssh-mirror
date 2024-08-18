@@ -18,8 +18,7 @@ set(LIBSSH_CLIENT_TESTS
     torture_session
     torture_request_env
     torture_request_pty_modes
-    torture_client_global_requests
-    torture_auth_host_cert)
+    torture_client_global_requests)
 
 find_program(SCP_EXECUTABLE NAMES scp)
 if (SCP_EXECUTABLE)

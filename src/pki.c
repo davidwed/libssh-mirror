@@ -309,23 +309,33 @@ enum ssh_digest_e ssh_key_hash_from_name(const char *name)
         return SSH_DIGEST_AUTO;
     }
 
-    if (strcmp(name, "ssh-rsa") == 0) {
+    if (strcmp(name, "ssh-rsa") == 0 ||
+        strcmp(name, "ssh-rsa-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA1;
-    } else if (strcmp(name, "rsa-sha2-256") == 0) {
+    } else if (strcmp(name, "rsa-sha2-256") == 0 ||
+               strcmp(name, "rsa-sha2-256-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA256;
-    } else if (strcmp(name, "rsa-sha2-512") == 0) {
+    } else if (strcmp(name, "rsa-sha2-512") == 0 ||
+               strcmp(name, "rsa-sha2-512-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA512;
-    } else if (strcmp(name, "ecdsa-sha2-nistp256") == 0) {
+    } else if (strcmp(name, "ecdsa-sha2-nistp256") == 0 ||
+               strcmp(name, "ecdsa-sha2-nistp256-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA256;
-    } else if (strcmp(name, "ecdsa-sha2-nistp384") == 0) {
+    } else if (strcmp(name, "ecdsa-sha2-nistp384") == 0 ||
+               strcmp(name, "ecdsa-sha2-nistp384-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA384;
-    } else if (strcmp(name, "ecdsa-sha2-nistp521") == 0) {
+    } else if (strcmp(name, "ecdsa-sha2-nistp521") == 0 ||
+               strcmp(name, "ecdsa-sha2-nistp521-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA512;
-    } else if (strcmp(name, "ssh-ed25519") == 0) {
+    } else if (strcmp(name, "ssh-ed25519") == 0 ||
+               strcmp(name, "ssh-ed25519-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_AUTO;
-    } else if (strcmp(name, "sk-ecdsa-sha2-nistp256@openssh.com") == 0) {
+    } else if (strcmp(name, "sk-ecdsa-sha2-nistp256@openssh.com") == 0 ||
+               strcmp(name, "sk-ecdsa-sha2-nistp256-cert-v01@openssh.com") == 0)
+    {
         return SSH_DIGEST_SHA256;
-    } else if (strcmp(name, "sk-ssh-ed25519@openssh.com") == 0) {
+    } else if (strcmp(name, "sk-ssh-ed25519@openssh.com") == 0 ||
+               strcmp(name, "sk-ssh-ed25519-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_AUTO;
     }
 
@@ -651,6 +661,35 @@ enum ssh_keytypes_e ssh_key_type_plain(enum ssh_keytypes_e type)
 }
 
 /**
+ * @brief Get the certificate key type corresponding to a plain public key type.
+ *
+ * @param[in] type   The public or certificate key type.
+ *
+ * @return           The matching certificate key type.
+ */
+enum ssh_keytypes_e ssh_key_type_cert(enum ssh_keytypes_e type)
+{
+    switch (type) {
+    case SSH_KEYTYPE_RSA:
+        return SSH_KEYTYPE_RSA_CERT01;
+    case SSH_KEYTYPE_ECDSA_P256:
+        return SSH_KEYTYPE_ECDSA_P256_CERT01;
+    case SSH_KEYTYPE_ECDSA_P384:
+        return SSH_KEYTYPE_ECDSA_P384_CERT01;
+    case SSH_KEYTYPE_ECDSA_P521:
+        return SSH_KEYTYPE_ECDSA_P521_CERT01;
+    case SSH_KEYTYPE_ED25519:
+        return SSH_KEYTYPE_ED25519_CERT01;
+    case SSH_KEYTYPE_SK_ECDSA:
+        return SSH_KEYTYPE_SK_ECDSA_CERT01;
+    case SSH_KEYTYPE_SK_ED25519:
+        return SSH_KEYTYPE_SK_ED25519_CERT01;
+    default:
+        return type;
+    }
+}
+
+/**
  * @brief Check if the key has/is a public key.
  *
  * @param[in] k         The key to check.
@@ -712,8 +751,8 @@ int ssh_key_cmp(const ssh_key k1,
         }
     }
 
-    if (k1->type == SSH_KEYTYPE_SK_ECDSA ||
-        k1->type == SSH_KEYTYPE_SK_ED25519) {
+    if (ssh_key_type_plain(k1->type) == SSH_KEYTYPE_SK_ECDSA ||
+        ssh_key_type_plain(k1->type) == SSH_KEYTYPE_SK_ED25519) {
         if (strncmp(ssh_string_get_char(k1->sk_application),
                 ssh_string_get_char(k2->sk_application),
                 ssh_string_len(k2->sk_application)) != 0) {
@@ -737,8 +776,8 @@ int ssh_key_cmp(const ssh_key k1,
                       ssh_buffer_get_len(k1->cert));
     }
 
-    if (k1->type == SSH_KEYTYPE_ED25519 ||
-        k1->type == SSH_KEYTYPE_SK_ED25519) {
+    if (ssh_key_type_plain(k1->type) == SSH_KEYTYPE_ED25519 ||
+        ssh_key_type_plain(k1->type) == SSH_KEYTYPE_SK_ED25519) {
         return pki_ed25519_key_cmp(k1, k2, what);
     }
 
@@ -2564,7 +2603,8 @@ pki_copy_cert_to_key(ssh_key dest_key, const ssh_key src_key)
         goto fail;
     }
 
-    if (!is_cert_type(src_key->type)) {
+    if (!is_cert_type(src_key->type) &&
+        src_key->cert_type == SSH_KEYTYPE_UNKNOWN) {
         SSH_LOG(SSH_LOG_TRACE, "Not a certificate. Error while copying "
                                "certificate data");
         goto fail;
@@ -2585,7 +2625,13 @@ pki_copy_cert_to_key(ssh_key dest_key, const ssh_key src_key)
     }
 
     dest_key->cert = cert_buffer;
-    dest_key->cert_type = src_key->type;
+
+    if (is_cert_type(src_key->type)) {
+        dest_key->cert_type = src_key->type;
+    } else {
+        dest_key->cert_type = ssh_key_type_cert(src_key->type);
+    }
+
     dest_key->cert_data = ssh_cert_dup(src_key->cert_data);
     if (dest_key->cert_data == NULL) {
         SSH_LOG(SSH_LOG_TRACE, "Error while copying the certificate data");

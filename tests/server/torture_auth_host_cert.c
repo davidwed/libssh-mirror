@@ -19,9 +19,31 @@ static int sshd_setup(void **state)
     return 0;
 }
 
-static int sshd_teardown(void **state) {
+static int sshd_teardown(void **state)
+{
     torture_teardown_sshd_server(state);
+    return 0;
+}
 
+static int libssh_server_setup(void **state)
+{
+    struct torture_state *s = NULL;
+    char log_file[1024];
+
+    torture_setup_socket_dir((void **)&s);
+    torture_setup_create_libssh_config((void **)&s);
+
+    snprintf(log_file,
+             sizeof(log_file),
+             "%s/sshd/log",
+             s->socket_dir);
+
+    s->log_file = strdup(log_file);
+    assert_non_null(s->log_file);
+
+    torture_setup_libssh_server((void **)&s, "./test_server/test_server");
+
+    *state = s;
     return 0;
 }
 
@@ -61,8 +83,9 @@ static int session_teardown(void **state)
 }
 
 static int
-update_sshd_config_host_cert(void **state,
+update_server_config_host_cert(void **state,
                              enum ssh_keytypes_e cert_type,
+                             bool libssh_server,
                              bool want_expired)
 {
     struct torture_state *s = NULL;
@@ -72,9 +95,10 @@ update_sshd_config_host_cert(void **state,
     int rc;
 
     s = *state;
+
     snprintf(host_certificate,
              sizeof(host_certificate),
-             "%s/sshd/ssh_host_rsa_key-cert.pub",
+             "%s/sshd/ssh_host_key-cert.pub",
              s->socket_dir);
 
     if (want_expired) {
@@ -94,7 +118,24 @@ update_sshd_config_host_cert(void **state,
              "HostCertificate %s",
              host_certificate);
 
-    rc = torture_update_sshd_config(state, additional_config);
+    if (libssh_server) {
+        /* Store the configuration in internal structure */
+        SAFE_FREE(s->srv_additional_config);
+        s->srv_additional_config = strdup(additional_config);
+        assert_non_null(s->srv_additional_config);
+
+        /* Rewrite the configuration file */
+        torture_setup_create_libssh_config(state);
+        SAFE_FREE(s->srv_additional_config);
+
+        /* Reload the server */
+        rc = torture_terminate_process(s->srv_pidfile);
+        assert_return_code(rc, errno);
+
+        torture_setup_libssh_server(state, "./test_server/test_server");
+    } else {
+        rc = torture_update_sshd_config(state, additional_config);
+    }
 
     return rc;
 }
@@ -144,7 +185,7 @@ setup_known_hosts_file(void **state, bool want_revoked)
 }
 
 static void
-torture_sshd_server_host_cert_auth(void **state)
+torture_server_host_cert_auth(void **state, bool libssh_server)
 {
     struct torture_state *s = *state;
     int rc, found, i;
@@ -161,7 +202,10 @@ torture_sshd_server_host_cert_auth(void **state)
     for (i = 0; i < NUM_SERVER_KEYS; i++) {
         cert_type = server_cert_keytypes[i];
 
-        rc = update_sshd_config_host_cert(state, cert_type, false);
+        rc = update_server_config_host_cert(state,
+                                            cert_type,
+                                            libssh_server,
+                                            false);
         assert_int_equal(rc, SSH_OK);
 
         rc = ssh_connect(session);
@@ -176,7 +220,7 @@ torture_sshd_server_host_cert_auth(void **state)
 }
 
 static void
-torture_sshd_server_host_cert_auth_revoked(void **state)
+torture_server_host_cert_auth_revoked(void **state, bool libssh_server)
 {
     struct torture_state *s = *state;
     int rc, found, i;
@@ -193,7 +237,10 @@ torture_sshd_server_host_cert_auth_revoked(void **state)
     for (i = 0; i < NUM_SERVER_KEYS; i++) {
         cert_type = server_cert_keytypes[i];
 
-        rc = update_sshd_config_host_cert(state, cert_type, false);
+        rc = update_server_config_host_cert(state,
+                                            cert_type,
+                                            libssh_server,
+                                            false);
         assert_int_equal(rc, SSH_OK);
 
         rc = ssh_connect(session);
@@ -208,7 +255,7 @@ torture_sshd_server_host_cert_auth_revoked(void **state)
 }
 
 static void
-torture_sshd_server_host_cert_auth_expired(void **state)
+torture_server_host_cert_auth_expired(void **state, bool libssh_server)
 {
     struct torture_state *s = *state;
     int rc, found, i;
@@ -225,7 +272,10 @@ torture_sshd_server_host_cert_auth_expired(void **state)
     for (i = 0; i < NUM_SERVER_KEYS; i++) {
         cert_type = server_cert_keytypes[i];
 
-        rc = update_sshd_config_host_cert(state, cert_type, true);
+        rc = update_server_config_host_cert(state,
+                                            cert_type,
+                                            libssh_server,
+                                            true);
         assert_int_equal(rc, SSH_OK);
 
         rc = ssh_connect(session);
@@ -239,9 +289,49 @@ torture_sshd_server_host_cert_auth_expired(void **state)
     SAFE_FREE(known_hosts_file);
 }
 
+/************* SSHD_SERVER *************/
+
+static void
+torture_sshd_server_host_cert_auth(void **state)
+{
+    torture_server_host_cert_auth(state, false);
+}
+
+static void
+torture_sshd_server_host_cert_auth_revoked(void **state)
+{
+    torture_server_host_cert_auth_revoked(state, false);
+}
+
+static void
+torture_sshd_server_host_cert_auth_expired(void **state)
+{
+    torture_server_host_cert_auth_expired(state, false);
+}
+
+/************* LIBSSH_SERVER *************/
+
+static void
+torture_libssh_server_host_cert_auth(void **state)
+{
+    torture_server_host_cert_auth(state, true);
+}
+
+static void
+torture_libssh_server_host_cert_auth_revoked(void **state)
+{
+    torture_server_host_cert_auth_revoked(state, true);
+}
+
+static void
+torture_libssh_server_host_cert_auth_expired(void **state)
+{
+    torture_server_host_cert_auth_expired(state, true);
+}
+
 int torture_run_tests(void) {
     int rc;
-    struct CMUnitTest tests[] = {
+    struct CMUnitTest sshd_tests[] = {
         cmocka_unit_test_setup_teardown(torture_sshd_server_host_cert_auth,
                                         session_setup,
                                         session_teardown),
@@ -255,11 +345,29 @@ int torture_run_tests(void) {
             session_teardown),
     };
 
-    /* TODO: add tests against libssh server when ready */
+    struct CMUnitTest libssh_tests[] = {
+        cmocka_unit_test_setup_teardown(torture_libssh_server_host_cert_auth,
+                                        session_setup,
+                                        session_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_libssh_server_host_cert_auth_revoked,
+            session_setup,
+            session_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_libssh_server_host_cert_auth_expired,
+            session_setup,
+            session_teardown),
+    };
+
     ssh_init();
 
-    torture_filter_tests(tests);
-    rc = cmocka_run_group_tests(tests, sshd_setup, sshd_teardown);
+    torture_filter_tests(sshd_tests);
+    rc = cmocka_run_group_tests(sshd_tests, sshd_setup, sshd_teardown);
+
+    torture_filter_tests(libssh_tests);
+    rc = cmocka_run_group_tests(libssh_tests,
+                                libssh_server_setup,
+                                sshd_teardown);
 
     ssh_finalize();
     return rc;

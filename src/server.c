@@ -85,15 +85,17 @@ int server_set_kex(ssh_session session)
 {
     struct ssh_kex_struct *server = &session->next_crypto->server_kex;
     int i, j, rc;
-    const char *wanted, *allowed;
-    char *kept;
-    char hostkeys[128] = {0};
-    enum ssh_keytypes_e keytype;
-    size_t len;
+    const char *wanted = NULL, *allowed = NULL, *cert_algos = NULL,
+               *key_algos = NULL;
+    char *kept = NULL;
+    char hostkeys[1024] = {0};
+    size_t len = sizeof(hostkeys), list_len = 0;
     int ok;
 
-    /* Skip if already set, for example for the rekey or when we do the guessing
-     * it could have been already used to make some protocol decisions. */
+    /*
+     * Skip if already set, for example for the rekey or when we do the guessing
+     * it could have been already used to make some protocol decisions.
+     */
     if (server->methods[0] != NULL) {
         return SSH_OK;
     }
@@ -104,31 +106,71 @@ int server_set_kex(ssh_session session)
         return -1;
     }
 
+#define APPEND_TO_LIST(fmt, list, ...) \
+        do { \
+            size_t ret; \
+            ret = snprintf(list + list_len, \
+                           len - list_len, \
+                           fmt, \
+                           __VA_ARGS__);\
+            if (ret < 0) { \
+                return -1; \
+            } \
+            if (ret >= (len - list_len)) { \
+                /* Handle buffer overflow, output was silently truncated */ \
+                return -1; \
+            } \
+            list_len += ret; \
+        } while (0)
+
     if (session->srv.ed25519_key != NULL) {
-        snprintf(hostkeys,
-                 sizeof(hostkeys),
-                 "%s",
-                 ssh_key_type_to_char(ssh_key_type(session->srv.ed25519_key)));
+        key_algos = session->srv.ed25519_key->type_c;
+        APPEND_TO_LIST("%s%s", hostkeys, list_len > 0 ? "," : "", key_algos);
+
+        if (session->srv.ed25519_key->cert_type != SSH_KEYTYPE_UNKNOWN) {
+            cert_algos =
+                ssh_key_type_to_char(session->srv.ed25519_key->cert_type);
+            APPEND_TO_LIST("%s%s",
+                           hostkeys,
+                           list_len > 0 ? "," : "",
+                           cert_algos);
+        }
     }
 #ifdef HAVE_ECC
     if (session->srv.ecdsa_key != NULL) {
-        len = strlen(hostkeys);
-        snprintf(hostkeys + len, sizeof(hostkeys) - len,
-                 ",%s", session->srv.ecdsa_key->type_c);
+        key_algos = session->srv.ecdsa_key->type_c;
+        APPEND_TO_LIST("%s%s", hostkeys, list_len > 0 ? "," : "", key_algos);
+
+        if (session->srv.ecdsa_key->cert_type != SSH_KEYTYPE_UNKNOWN) {
+            cert_algos =
+                ssh_key_type_to_char(session->srv.ecdsa_key->cert_type);
+            APPEND_TO_LIST("%s%s",
+                           hostkeys,
+                           list_len > 0 ? "," : "",
+                           cert_algos);
+        }
     }
 #endif
     if (session->srv.rsa_key != NULL) {
         /* We support also the SHA2 variants */
-        len = strlen(hostkeys);
-        snprintf(hostkeys + len, sizeof(hostkeys) - len,
-                 ",rsa-sha2-512,rsa-sha2-256");
+        key_algos = "rsa-sha2-512,rsa-sha2-256";
+        APPEND_TO_LIST("%s%s", hostkeys, list_len > 0 ? "," : "", key_algos);
 
-        len = strlen(hostkeys);
-        keytype = ssh_key_type(session->srv.rsa_key);
+        key_algos = session->srv.rsa_key->type_c;
+        APPEND_TO_LIST("%s%s", hostkeys, list_len > 0 ? "," : "", key_algos);
 
-        snprintf(hostkeys + len, sizeof(hostkeys) - len,
-                 ",%s", ssh_key_type_to_char(keytype));
+        if (session->srv.rsa_key->cert_type != SSH_KEYTYPE_UNKNOWN) {
+            cert_algos = "rsa-sha2-512-cert-v01@openssh.com,"
+                         "rsa-sha2-256-cert-v01@openssh.com,"
+                         "ssh-rsa-cert-v01@openssh.com";
+            APPEND_TO_LIST("%s%s",
+                           hostkeys,
+                           list_len > 0 ? "," : "",
+                           cert_algos);
+        }
     }
+
+#undef APPEND_TO_LIST
 
     if (strlen(hostkeys) == 0) {
         return -1;
@@ -144,10 +186,11 @@ int server_set_kex(ssh_session session)
         }
     }
 
-    /* It is expected for the list of allowed hostkeys to be ordered by
-     * preference */
-    kept = ssh_find_all_matching(hostkeys[0] == ',' ? hostkeys + 1 : hostkeys,
-                                 allowed);
+    /*
+     * It is expected for the list of allowed hostkeys to be ordered by
+     * preference
+     */
+    kept = ssh_find_all_matching(hostkeys,allowed);
     if (kept == NULL) {
         /* Nothing was allowed */
         return -1;
@@ -283,37 +326,42 @@ ssh_get_key_params(ssh_session session,
     int rc;
 
     switch(session->srv.hostkey) {
-      case SSH_KEYTYPE_RSA:
-        *privkey = session->srv.rsa_key;
-        break;
-      case SSH_KEYTYPE_ECDSA_P256:
-      case SSH_KEYTYPE_ECDSA_P384:
-      case SSH_KEYTYPE_ECDSA_P521:
-        *privkey = session->srv.ecdsa_key;
-        break;
-      case SSH_KEYTYPE_ED25519:
-        *privkey = session->srv.ed25519_key;
-        break;
-      case SSH_KEYTYPE_RSA1:
-      case SSH_KEYTYPE_UNKNOWN:
-      default:
+        case SSH_KEYTYPE_RSA:
+        case SSH_KEYTYPE_RSA_CERT01:
+            *privkey = session->srv.rsa_key;
+            break;
+        case SSH_KEYTYPE_ECDSA_P256:
+        case SSH_KEYTYPE_ECDSA_P384:
+        case SSH_KEYTYPE_ECDSA_P521:
+        case SSH_KEYTYPE_ECDSA_P256_CERT01:
+        case SSH_KEYTYPE_ECDSA_P384_CERT01:
+        case SSH_KEYTYPE_ECDSA_P521_CERT01:
+            *privkey = session->srv.ecdsa_key;
+            break;
+        case SSH_KEYTYPE_ED25519:
+        case SSH_KEYTYPE_ED25519_CERT01:
+            *privkey = session->srv.ed25519_key;
+            break;
+        case SSH_KEYTYPE_RSA1:
+        case SSH_KEYTYPE_UNKNOWN:
+        default:
         *privkey = NULL;
     }
 
     *digest = session->srv.hostkey_digest;
     rc = ssh_pki_export_privkey_to_pubkey(*privkey, &pubkey);
     if (rc < 0) {
-      ssh_set_error(session, SSH_FATAL,
-          "Could not get the public key from the private key");
-
-      return -1;
+        ssh_set_error(session,
+                      SSH_FATAL,
+                      "Could not get the public key from the private key");
+        return -1;
     }
 
     rc = ssh_pki_export_pubkey_blob(pubkey, &pubkey_blob);
     ssh_key_free(pubkey);
     if (rc < 0) {
-      ssh_set_error_oom(session);
-      return -1;
+        ssh_set_error_oom(session);
+        return -1;
     }
 
     rc = ssh_dh_import_next_pubkey_blob(session, pubkey_blob);
