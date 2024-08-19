@@ -2388,15 +2388,11 @@ int ssh_userauth_gssapi_keyex(ssh_session session)
     }
 
     /* Check if GSSAPI Key exchange was performed */
-    switch (session->current_crypto->kex_type) {
-        case SSH_GSS_KEX_DH_GROUP14_SHA256:
-        case SSH_GSS_KEX_DH_GROUP16_SHA512:
-            break;
-        default:
-            ssh_set_error(session,
-                          SSH_FATAL,
-                          "Attempt to authenticate with \"gssapi-keyex\" without doing GSSAPI Key exchange.");
-            return SSH_ERROR;
+    if (!ssh_kex_is_gss(session->current_crypto)) {
+        ssh_set_error(session,
+                      SSH_FATAL,
+                      "Attempt to authenticate with \"gssapi-keyex\" without doing GSSAPI Key exchange.");
+        return SSH_ERROR;
     }
 
     rc = ssh_userauth_request_service(session);

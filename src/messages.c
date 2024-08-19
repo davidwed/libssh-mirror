@@ -1028,16 +1028,12 @@ SSH_PACKET_CALLBACK(ssh_packet_userauth_request){
         OM_uint32 maj_stat, min_stat;
         ssh_buffer buf = NULL;
 
-        switch (session->current_crypto->kex_type) {
-            case SSH_GSS_KEX_DH_GROUP14_SHA256:
-            case SSH_GSS_KEX_DH_GROUP16_SHA512:
-                break;
-            default:
-                ssh_set_error(session,
-                              SSH_FATAL,
-                              "Attempt to authenticate with \"gssapi-keyex\" without doing GSSAPI Key Exchange");
-                ssh_auth_reply_default(session, 0);
-                goto error;
+        if (!ssh_kex_is_gss(session->current_crypto)) {
+            ssh_set_error(session,
+                          SSH_FATAL,
+                          "Attempt to authenticate with \"gssapi-keyex\" without doing GSSAPI Key Exchange");
+            ssh_auth_reply_default(session, 0);
+            goto error;
         }
 
         rc = ssh_buffer_unpack(packet, "S", &mic_token_string);
