@@ -362,3 +362,220 @@
    ...
    fun:krb5_mcc_generate_new*
 }
+
+# Leak in Kerberos.
+# acceptor_mprinc variable allocated in https://github.com/krb5/krb5/blob/5495454583261ab5567b9916cbcfd41a3d5bd75d/src/lib/gssapi/krb5/acquire_cred.c#L199
+# is leaked on error code path https://github.com/krb5/krb5/blob/5495454583261ab5567b9916cbcfd41a3d5bd75d/src/lib/gssapi/krb5/acquire_cred.c#L896
+# when the credentials are freed.
+{
+   Kerberos leak
+   Memcheck:Leak
+   match-leak-kinds: indirect
+   fun:calloc
+   ...
+   fun:krb5_build_principal_alloc_va
+   fun:krb5_build_principal
+   ...
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   fun:ssh_gssapi_handle_userauth
+   fun:ssh_packet_userauth_request
+   fun:ssh_packet_process
+   fun:ssh_packet_socket_callback
+   fun:ssh_socket_pollcallback
+   fun:ssh_poll_ctx_dopoll
+   fun:default_handle_session_cb
+   fun:run_server
+   fun:fork_run_server
+   fun:setup_default_server
+   ...
+   fun:_cmocka_run_group_tests
+   fun:torture_run_tests
+   fun:main
+}
+
+{
+   Kerberos leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   ...
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   fun:ssh_gssapi_handle_userauth
+   fun:ssh_packet_userauth_request
+   fun:ssh_packet_process
+   fun:ssh_packet_socket_callback
+   fun:ssh_socket_pollcallback
+   fun:ssh_poll_ctx_dopoll
+   fun:default_handle_session_cb
+   fun:run_server
+   fun:fork_run_server
+   fun:setup_default_server
+   ...
+   fun:_cmocka_run_group_tests
+   fun:torture_run_tests
+   fun:main
+}
+
+{
+   Kerberos leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   ...
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   fun:ssh_gssapi_handle_userauth
+   fun:ssh_packet_userauth_request
+   fun:ssh_packet_process
+   fun:ssh_packet_socket_callback
+   fun:ssh_socket_pollcallback
+   fun:ssh_poll_ctx_dopoll
+   fun:default_handle_session_cb
+   fun:run_server
+   fun:fork_run_server
+   fun:setup_default_server
+   ...
+   fun:_cmocka_run_group_tests
+   fun:torture_run_tests
+   fun:main
+}
+
+{
+   Kerberos leak
+   Memcheck:Leak
+   match-leak-kinds: indirect
+   fun:malloc
+   fun:strdup
+   ...
+   fun:krb5_build_principal_alloc_va
+   fun:krb5_build_principal
+   ...
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   fun:ssh_gssapi_handle_userauth
+   fun:ssh_packet_userauth_request
+   fun:ssh_packet_process
+   fun:ssh_packet_socket_callback
+   fun:ssh_socket_pollcallback
+   fun:ssh_poll_ctx_dopoll
+   fun:default_handle_session_cb
+   fun:run_server
+   fun:fork_run_server
+   fun:setup_default_server
+   ...
+   fun:_cmocka_run_group_tests
+   fun:torture_run_tests
+   fun:main
+}
+
+{
+   Kerberos leak
+   Memcheck:Leak
+   match-leak-kinds: indirect
+   fun:malloc
+   ...
+   fun:krb5_build_principal_alloc_va
+   fun:krb5_build_principal
+   ...
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   fun:ssh_gssapi_handle_userauth
+   fun:ssh_packet_userauth_request
+   fun:ssh_packet_process
+   fun:ssh_packet_socket_callback
+   fun:ssh_socket_pollcallback
+   fun:ssh_poll_ctx_dopoll
+   fun:default_handle_session_cb
+   fun:run_server
+   fun:fork_run_server
+   fun:setup_default_server
+   ...
+   fun:_cmocka_run_group_tests
+   fun:torture_run_tests
+   fun:main
+}
+{
+   Kerberos leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   fun:krb5int_setspecific
+   ...
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   fun:ssh_gssapi_handle_userauth
+   fun:ssh_packet_userauth_request
+   fun:ssh_packet_process
+   fun:ssh_packet_socket_callback
+   fun:ssh_socket_pollcallback
+   fun:ssh_poll_ctx_dopoll
+   fun:default_handle_session_cb
+   fun:run_server
+   fun:fork_run_server
+   fun:setup_default_server
+   ...
+   fun:_cmocka_run_group_tests
+   fun:torture_run_tests
+   fun:main
+}
+
+{
+   Kerberos leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   fun:strdup
+   ...
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   fun:ssh_gssapi_handle_userauth
+   fun:ssh_packet_userauth_request
+   fun:ssh_packet_process
+   fun:ssh_packet_socket_callback
+   fun:ssh_socket_pollcallback
+   fun:ssh_poll_ctx_dopoll
+   fun:default_handle_session_cb
+   fun:run_server
+   fun:fork_run_server
+   fun:setup_default_server
+   ...
+   fun:_cmocka_run_group_tests
+   fun:torture_run_tests
+   fun:main
+}
+
+{
+   Kerberos leak
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:krb5_build_principal_alloc_va
+   fun:krb5_build_principal
+   ...
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   fun:ssh_gssapi_handle_userauth
+   fun:ssh_packet_userauth_request
+   fun:ssh_packet_process
+   fun:ssh_packet_socket_callback
+   fun:ssh_socket_pollcallback
+   fun:ssh_poll_ctx_dopoll
+   fun:default_handle_session_cb
+   fun:run_server
+   fun:fork_run_server
+   fun:setup_default_server
+   ...
+   fun:_cmocka_run_group_tests
+   fun:torture_run_tests
+   fun:main
+}
