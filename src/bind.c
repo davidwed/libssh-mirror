@@ -417,6 +417,7 @@ void ssh_bind_free(ssh_bind sshbind){
   SAFE_FREE(sshbind->trusted_user_ca_keys_file);
   SAFE_FREE(sshbind->authorized_keys_file);
   SAFE_FREE(sshbind->authorized_principals_file);
+  SAFE_FREE(sshbind->revoked_keys_file);
 
   for (i = 0; i < SSH_KEX_METHODS; i++) {
     if (sshbind->wanted_methods[i]) {
@@ -526,6 +527,15 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
         session->server_opts.authorized_principals_file =
             strdup(sshbind->authorized_principals_file);
         if (session->server_opts.authorized_principals_file == NULL) {
+            ssh_set_error_oom(sshbind);
+            return SSH_ERROR;
+        }
+    }
+
+    if (sshbind->revoked_keys_file != NULL) {
+        session->server_opts.revoked_keys_file =
+            strdup(sshbind->revoked_keys_file);
+        if (session->server_opts.revoked_keys_file == NULL) {
             ssh_set_error_oom(sshbind);
             return SSH_ERROR;
         }

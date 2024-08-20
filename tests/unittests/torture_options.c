@@ -2991,6 +2991,37 @@ torture_bind_options_authorized_principals_file(void **state)
     assert_string_equal(bind->authorized_principals_file, replacement_dir_file);
 }
 
+static void
+torture_bind_options_revoked_keys_file(void **state)
+{
+    struct bind_st *test_state = NULL;
+    ssh_bind bind = NULL;
+    const char *new_dir_file = "/new/path/to/revoked_keys";
+    const char *replacement_dir_file =
+        "/replacement/path/to/revoked_keys_new";
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_REVOKED_KEYS,
+                              new_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->revoked_keys_file);
+    assert_string_equal(bind->revoked_keys_file, new_dir_file);
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_REVOKED_KEYS,
+                              replacement_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->revoked_keys_file);
+    assert_string_equal(bind->revoked_keys_file, replacement_dir_file);
+}
+
 static void torture_bind_options_set_pubkey_accepted_key_types(void **state)
 {
     struct bind_st *test_state;
@@ -3318,6 +3349,10 @@ torture_run_tests(void)
             sshbind_teardown),
         cmocka_unit_test_setup_teardown(
             torture_bind_options_authorized_principals_file,
+            sshbind_setup,
+            sshbind_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_bind_options_revoked_keys_file,
             sshbind_setup,
             sshbind_teardown),
         cmocka_unit_test_setup_teardown(

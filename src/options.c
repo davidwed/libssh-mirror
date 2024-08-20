@@ -2365,6 +2365,12 @@ static int ssh_bind_set_algo(ssh_bind sshbind,
  *                        accepted for certificate authentication.
  *                        (const char *)
  *
+ *                      - SSH_BIND_OPTIONS_REVOKED_KEYS
+ *                        Set the path to the RevokedKeys file. This
+ *                        file contains a list of revoked public keys that are
+ *                        refused for user authentication.
+ *                        (const char *)
+ *
  * @param  value        The value to set. This is a generic pointer and the
  *                      datatype which should be used is described at the
  *                      corresponding value of type above.
@@ -2933,6 +2939,22 @@ ssh_bind_options_set(ssh_bind sshbind,
         } else {
             sshbind->authorized_principals_file = ssh_path_expand_tilde(v);
             if (sshbind->authorized_principals_file == NULL) {
+                ssh_set_error_oom(sshbind);
+                return -1;
+            }
+        }
+        break;
+    case SSH_BIND_OPTIONS_REVOKED_KEYS:
+        v = value;
+        SAFE_FREE(sshbind->revoked_keys_file);
+        if (v == NULL) {
+            break;
+        } else if (v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            sshbind->revoked_keys_file = strdup(v);
+            if (sshbind->revoked_keys_file == NULL) {
                 ssh_set_error_oom(sshbind);
                 return -1;
             }

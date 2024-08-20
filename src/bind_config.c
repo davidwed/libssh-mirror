@@ -125,6 +125,11 @@ ssh_bind_config_keyword_table[] = {
         .allowed_in_match = false
     },
     {
+        .name   = "revokedkeys",
+        .opcode = BIND_CFG_REVOKED_KEYS,
+        .allowed_in_match = false
+    },
+    {
         .opcode = BIND_CFG_UNKNOWN,
     }
 };
@@ -543,6 +548,18 @@ ssh_bind_config_parse_line(ssh_bind bind,
                 SSH_LOG(SSH_LOG_TRACE,
                         "line %d: Failed to set AuthorizedPrincipalsFile "
                         "value '%s'",
+                        count,
+                        p);
+            }
+        }
+        break;
+    case BIND_CFG_REVOKED_KEYS:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(bind, SSH_BIND_OPTIONS_REVOKED_KEYS, p);
+            if (rc != 0) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "line %d: Failed to set RevokedKeys value '%s'",
                         count,
                         p);
             }

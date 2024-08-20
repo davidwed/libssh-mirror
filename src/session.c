@@ -384,6 +384,7 @@ void ssh_free(ssh_session session)
   SAFE_FREE(session->server_opts.trusted_user_ca_keys_file);
   SAFE_FREE(session->server_opts.authorized_keys_file);
   SAFE_FREE(session->server_opts.authorized_principals_file);
+  SAFE_FREE(session->server_opts.revoked_keys_file);
 
   for (i = 0; i < SSH_KEX_METHODS; i++) {
       if (session->opts.wanted_methods[i]) {

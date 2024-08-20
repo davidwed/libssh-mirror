@@ -283,6 +283,7 @@ struct ssh_session_struct {
         char *trusted_user_ca_keys_file;
         char *authorized_keys_file;
         char *authorized_principals_file;
+        char *revoked_keys_file;
     } server_opts;
 
     /* counters */
