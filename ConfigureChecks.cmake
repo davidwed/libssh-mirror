@@ -135,6 +135,8 @@ check_function_exists(strndup HAVE_STRNDUP)
 check_function_exists(strtoull HAVE_STRTOULL)
 check_function_exists(explicit_bzero HAVE_EXPLICIT_BZERO)
 check_function_exists(memset_s HAVE_MEMSET_S)
+check_function_exists(timegm HAVE_TIMEGM)
+check_function_exists(_mkgmtime HAVE__MKGMTIME)
 
 if (HAVE_GLOB_H)
     check_struct_has_member(glob_t gl_flags glob.h HAVE_GLOB_GL_FLAGS_MEMBER)

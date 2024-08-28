@@ -28,6 +28,7 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include <stdbool.h>
 #include "libssh/libssh.h"
 #define SERVERBANNER CLIENTBANNER
 
@@ -403,6 +404,10 @@ LIBSSH_API int ssh_channel_request_send_exit_signal(ssh_channel channel,
                                                 const char *lang);
 
 LIBSSH_API int ssh_send_keepalive(ssh_session session);
+LIBSSH_API int ssh_auth_user_key(ssh_session session,
+                                 ssh_key user_key,
+                                 const char *user,
+                                 bool dns);
 
 /* deprecated functions */
 SSH_DEPRECATED LIBSSH_API int ssh_accept(ssh_session session);

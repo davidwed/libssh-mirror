@@ -3276,38 +3276,39 @@ ssh_string ssh_pki_do_sign_agent(ssh_session session,
 }
 
 /**
- * @brief Checks if the given ssh_key is revoked. TODO: add KRL functionality
+ * @brief Matches an ssh_key against the public keys listed in a given file.
  *
- * @param[in] key  The ssh_key to check for revocation.
+ * The file is expected to contain public keys in the standard SSH format.
+ * Comments (lines starting with '#') and empty lines are ignored.
  *
- * @param[in] revoked_keys_file  The path to the file containing revoked keys.
+ * @param[in] key       The ssh_key to match.
  *
- * @returns 1 if the key is revoked.
- * @returns 0 if the key is not revoked.
- * @returns -1 on error.
+ * @param[in] filename  The path to the file that contains public keys.
+ *
+ * @returns 1 on a successful match.
+ * @returns 0 if no match is found.
+ * @returns -1 on failure.
  */
 int
-ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file)
+ssh_pki_match_key_in_file(ssh_key key, const char *filename)
 {
     FILE *fp = NULL;
     char err_msg[SSH_ERRNO_MSG_MAX] = {0}, line[MAX_LINE_SIZE] = {0},
          *cp = NULL, *p = NULL, *save_tok = NULL;
     enum ssh_keytypes_e key_type;
-    ssh_key revoked_key = NULL;
+    ssh_key line_key = NULL;
     int rc = 0, cmp, r, cnt = 0;
 
-    if (key == NULL || revoked_keys_file == NULL) {
+    if (key == NULL || filename == NULL) {
         SSH_LOG(SSH_LOG_TRACE, "Bad arguments");
         return -1;
     }
 
-    /* TODO: handle here KRL file format */
-
-    fp = fopen(revoked_keys_file, "r");
+    fp = fopen(filename, "r");
     if (fp == NULL) {
         SSH_LOG(SSH_LOG_TRACE,
                 "Error while opening %s: %s",
-                revoked_keys_file,
+                filename,
                 ssh_strerror(errno, err_msg, SSH_ERRNO_MSG_MAX));
         return -1;
     }
@@ -3349,7 +3350,7 @@ ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file)
             goto out;
         }
 
-        r = ssh_pki_import_pubkey_base64(p, key_type, &revoked_key);
+        r = ssh_pki_import_pubkey_base64(p, key_type, &line_key);
         if (r != SSH_OK) {
             SSH_LOG(SSH_LOG_TRACE,
                     "Failed to parse %s key",
@@ -3360,13 +3361,13 @@ ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file)
 
         if (is_cert_type(key->type)) {
             cmp = ssh_key_cmp(key->cert_data->signature_key,
-                             revoked_key,
-                             SSH_KEY_CMP_PUBLIC);
+                              line_key,
+                              SSH_KEY_CMP_PUBLIC);
         } else {
-            cmp = ssh_key_cmp(key, revoked_key, SSH_KEY_CMP_PUBLIC);
+            cmp = ssh_key_cmp(key, line_key, SSH_KEY_CMP_PUBLIC);
         }
 
-        SSH_KEY_FREE(revoked_key);
+        SSH_KEY_FREE(line_key);
         if (cmp == 0) {
             rc = 1;
             goto out;
@@ -3381,6 +3382,39 @@ ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file)
 out:
     fclose(fp);
     return rc;
+}
+
+/**
+ * @brief Checks if the given ssh_key is revoked. TODO: add KRL functionality
+ *
+ * @param[in] key  The ssh_key to check for revocation.
+ *
+ * @param[in] revoked_keys_file  The path to the file containing revoked keys.
+ *
+ * @returns 1 if the key is revoked.
+ * @returns 0 if the key is not revoked.
+ * @returns -1 on error.
+ */
+int
+ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file)
+{
+    int found = 0;
+
+    if (key == NULL || revoked_keys_file == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Bad arguments");
+        return -1;
+    }
+
+    /* TODO: handle here KRL file format */
+
+    found = ssh_pki_match_key_in_file(key, revoked_keys_file);
+    if (found < 0) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while searching for a match in revoked keys file %s",
+                revoked_keys_file);
+    }
+
+    return found;
 }
 
 #ifdef WITH_SERVER

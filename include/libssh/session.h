@@ -32,6 +32,7 @@
 #include "libssh/poll.h"
 #include "libssh/config.h"
 #include "libssh/misc.h"
+#include "libssh/auth_options.h"
 
 /* These are the different states a SSH session can be into its life */
 enum ssh_session_state_e {
@@ -286,6 +287,8 @@ struct ssh_session_struct {
         char *revoked_keys_file;
     } server_opts;
 
+    struct ssh_auth_options *auth_opts;
+
     /* counters */
     ssh_counter socket_counter;
     ssh_counter raw_counter;
@@ -303,5 +306,7 @@ int ssh_handle_packets_termination(ssh_session session,
                                    ssh_termination_function fct,
                                    void *user);
 void ssh_socket_exception_callback(int code, int errno_code, void *user);
+char *ssh_get_remote_peer_ip_address(ssh_session session);
+char *ssh_get_remote_peer_hostname(ssh_session session, bool dns);
 
 #endif /* SESSION_H_ */

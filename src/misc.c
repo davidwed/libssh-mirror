@@ -98,6 +98,17 @@
 
 #define ARPA_DOMAIN_MAX_LEN 63
 
+#if !defined(HAVE_TIMEGM)
+#   if defined(HAVE__MKGMTIME)
+#       define timegm _mkgmtime
+#   else
+#       define timegm portable_timegm
+#   endif
+#else
+    time_t portable_timegm(struct tm *tm);
+#endif
+
+
 /**
  * @defgroup libssh_misc The SSH helper functions
  * @ingroup libssh
@@ -2298,6 +2309,473 @@ ssh_format_time_to_string(uint64_t timestamp, char *buf, size_t buf_size)
 
     rc = strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S", tm_info);
     return rc;
+}
+
+/**
+ * @brief Removes the outermost square brackets from a C string.
+ *
+ * If both brackets are present, the brackets are removed, and the string
+ * is adjusted accordingly.
+ *
+ * @param str  The C string to process.\n
+ *             If NULL, the function returns immediately.
+ */
+void
+ssh_remove_square_brackets(char *str)
+{
+    size_t content_len, len;
+
+    if (str == NULL) {
+        return;
+    }
+
+    len = strlen(str);
+    if (len < 2) {
+        return;
+    }
+
+    if (str[0] == '[' && str[len - 1] == ']') {
+        content_len = len - 2;
+        memmove(str, str + 1, content_len);
+        str[content_len] = '\0';
+    }
+}
+
+/**
+ * @brief Removes surrounding quotes ("") from a C string if present.
+ *
+ * @param[in] str  The C string to process.\n
+ *                 If NULL or empty, the function returns NULL.
+ *
+ * @returns A newly allocated string without the surrounding quotes if both
+ *          opening and closing quotes are found.\n
+ *          If the string has no quotes then a copy of the input string
+ *          is returned.
+ * @returns NULL on error.
+ *
+ * @note The caller is responsible for freeing the returned string.
+ */
+char *
+ssh_dequote(const char *str)
+{
+    size_t len;
+    char *ret = NULL;
+
+    if (str == NULL || *str == '\0') {
+        return NULL;
+    }
+
+    len = strlen(str);
+    if (len > 1 && str[0] == '"' && str[len - 1] == '"') {
+        if (len == 2) {
+            SSH_LOG(SSH_LOG_DEBUG,
+                    "Nothing to de-quote. Empty value between quotes");
+            return NULL;
+        }
+
+        ret = strndup(str + 1, len - 2);
+        if (ret == NULL) {
+            SSH_LOG(SSH_LOG_DEBUG,
+                    "Memory allocation error while de-quoting %s",
+                    str);
+            return NULL;
+        }
+    } else if (len > 1 && str[0] == '"' && str[len - 1] != '"') {
+        SSH_LOG(SSH_LOG_DEBUG, "Missing closing quote");
+        return NULL;
+    } else if (len > 1 && str[0] != '"' && str[len - 1] == '"') {
+        SSH_LOG(SSH_LOG_DEBUG, "Missing opening quote");
+        return NULL;
+    } else {
+        /* If there are no quotes then return a copy of the input string */
+        ret = strdup(str);
+        if (ret == NULL) {
+            SSH_LOG(SSH_LOG_DEBUG,
+                    "Memory allocation error while duplicating %s",
+                    str);
+            return NULL;
+        }
+    }
+
+    return ret;
+}
+
+/**
+ * @brief Calculates the number of days from year 0 up to a given year. The year
+ * is not inclusive.
+ *
+ * This function computes the total number of days from the start of year 0 up
+ * to the beginning of the specified year, accounting for leap years \n
+ *
+ * The leap years (1 day more for each leap year) is calculated as follows:
+ * - Add the number of leap years by dividing the number of years by 4.\n
+ * - Subtract the years divisible by 100 to exclude non-leap centuries.\n
+ * - Add back the years divisible by 400 to include leap centuries.\n
+ *
+ * @param[in] year  The year up to which days are counted. The year is not
+ *                  inclusive.
+ *
+ * @returns The total number of days from year 0 up to but not including the
+ * specified year.
+ */
+static int
+days_from_0(int year)
+{
+    year -= 1;
+    return 365 * year + (year / 4) - (year / 100) + (year / 400);
+}
+
+/**
+ * @brief Calculates the number of days from the Epoch (January 1, 1970) to the
+ * beginning of a given year.
+ *
+ * This function calculates the number of days from year 0 to the beginning of
+ * the given year and subtracts the number of days from year 0 to the beginning
+ * of 1970. All the calculations account for leap years.
+ *
+ * @param[in] year  The year to which days are counted. The year is not
+ *                  inclusive.
+ *
+ * @return the total number of days from the Epoch (January 1, 1970)
+ * to the beginning of the specified year.
+ */
+static int
+days_from_epoch_to_year(int year)
+{
+    return days_from_0(year) - days_from_0(1970);
+}
+
+/**
+ * @brief Determines if a given year is a leap year.
+ *
+ * This function checks whether a specified year is a leap year based on the
+ * following rules:
+ * - A year is a leap year if it is divisible by 4.
+ * - However, years divisible by 100 are not leap years, unless they are also
+ * divisible by 400.
+ *
+ * @note When working with broken-down time structure, always adjust the
+ * `tm_year` field (years expressed since 1900) to a full year.
+ * @see `tm`
+ *
+ * @param[in] year  The year to check. The year MUST be validated (not a
+ *                  negative value).
+ *
+ * @returns true if the year is a leap year.
+ * @returns false otherwise.
+ */
+static bool
+is_leap_year(int year)
+{
+    return (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+}
+
+/**
+ * @brief Gets the number of days in a given month (expressed using zero-based
+ * indexing).
+ *
+ * This function returns the number of days in the specified month, taking into
+ * account whether the year is a leap year.
+ * This is needed because with February (month 1) the function will return 29
+ * days if it's a leap year, otherwise 28.
+ * For other months, it returns the standard number of days.
+ *
+ * @param[in] month  The month for which to get the number of days
+ *                   (0 = January, ..., 11 = December).
+ *
+ * @param[in] year   The year to check for leap year status.
+ *
+ * @return the number of days in the given month.
+ * @returns -1 if the month or year is invalid.
+ */
+static int
+days_from_month(int month, int year)
+{
+    static const int month_days[] = {31, 28, 31, 30, 31,
+                                     30, 31, 31, 30, 31,
+                                     30, 31};
+    if (month < 0 || month > 11 || year < 0) {
+        return -1;
+    }
+
+    if (month == 1 && is_leap_year(year)) {
+        return 29;
+    }
+    return month_days[month];
+}
+
+/**
+ * @brief Validates a broken-down time structure.
+ *
+ * This function ensures that each field of the `tm` struct is within
+ * the standard datetime range and that the day is valid for the given month
+ * and year, considering leap years for February.
+ *
+ * @note The `tm` struct fields are validated as follows:\n
+ *       - Year (`tm_year`): Must be non-negative.\n
+ *       - Month (`tm_mon`): Must be between 0 and 11
+ *                           (0 = January, 11 = December).\n
+ *       - Day (`tm_mday`): Must be between 1 and 31.\n
+ *       - Hour (`tm_hour`): Must be between 0 and 23.\n
+ *       - Minute (`tm_min`): Must be between 0 and 59.\n
+ *       - Second (`tm_sec`): Must be between 0 and 59.\n
+ *
+ *     Additionally, the function checks the day is valid for the given month:\n
+ *     - Months with 31 days\n
+ *     - Months with 30 days\n
+ *     - February: 28 or 29 days depending on whether the year is a leap year
+ *
+ *
+ * @param[in] tm Pointer to a `tm` struct containing the date and time
+ *               to be validated.
+ *
+ * @returns true if the `tm` is valid.
+ * @returns false if the `tm` is not valid.
+ *
+ * @see `tm`
+ */
+static bool
+is_valid_tm(const struct tm *tm)
+{
+    int month_days, year;
+
+    if (tm == NULL) {
+        return false;
+    }
+
+    /*
+     * Although month and day are validated later, immediately return if they
+     * do not satisfy standard datetime syntax.
+     */
+    if (tm->tm_year < 0 ||
+        tm->tm_mon < 0 || tm->tm_mon > 11 ||
+        tm->tm_mday < 1 || tm->tm_mday > 31 ||
+        tm->tm_hour < 0 || tm->tm_hour > 23 ||
+        tm->tm_min < 0 || tm->tm_min > 59 ||
+        tm->tm_sec < 0 || tm->tm_sec > 59) {
+        return false;
+    }
+
+    year = tm->tm_year + 1900;
+    month_days = days_from_month(tm->tm_mon, year);
+
+    if (month_days == -1) {
+        /* Should never reach here */
+        return false;
+    }
+
+    /* Validate day of the month */
+    if (tm->tm_mday > month_days) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @brief Converts a broken-down time structure to seconds since the Epoch time
+ * (1970-01-01 00:00:00 UTC). The input is assumed to be expressed in UTC.
+ *
+ * @note This function is a portable implementation of the `timegm` function
+ * from <time.h>. The `timegm` function is not part of the POSIX standard and
+ * may not be available on all systems. By providing a custom implementation,
+ * `portable_timegm` ensures consistent behavior across different environments
+ * where `timegm` might not be implemented or may differ in its implementation.
+ *
+ * @param[in] tm  Pointer to a `tm` struct containing the broken-down time
+ *                to be converted.
+ *
+ * @returns time since Epoch in seconds.
+ * @returns (time_t)-1 on error, with errno set.
+ */
+time_t
+portable_timegm(struct tm *tm)
+{
+    int i, year, days_since_epoch = 0;
+    time_t ret;
+
+    if (tm == NULL) {
+        errno = EINVAL;
+        return (time_t)-1;
+    }
+
+    /* Always validate tm structure */
+    if (!is_valid_tm(tm)) {
+        errno = EINVAL;
+        return (time_t)-1;
+    }
+
+    /* Adjust years (since 1900) to a full year */
+    year = tm->tm_year + 1900;
+
+    /* Calculate total days since epoch, accounting also for leap years */
+    days_since_epoch += days_from_epoch_to_year(year);
+
+    /* Add days for each month up to the given month */
+    for (i = 0; i < tm->tm_mon; i++) {
+        days_since_epoch += days_from_month(i, year);
+    }
+
+    /*
+     * Add days of the given month. We need to subtract 1 because tm_mday counts
+     * days starting from 1, but for calculating days since the epoch, we need
+     * a zero-based count.
+     * E.g., if tm_mday is 4, we want to add 3 full days to days_since_epoch
+     * and then account for the 4th day separately by counting its hours, time
+     * and seconds (if any).
+     */
+    days_since_epoch += (tm->tm_mday - 1);
+
+    ret = (days_since_epoch * (24 * 3600)) +
+          (tm->tm_hour * 3600) +
+          (tm->tm_min * 60) +
+          tm->tm_sec;
+
+    return ret;
+}
+
+/**
+ * @brief Parse a human-readable datetime string and convert it to seconds since
+ * the Epoch time.
+ *
+ * This function parses a datetime string in various formats and converts it
+ * into the corresponding number of seconds since the Unix epoch
+ * (1970-01-01 00:00:00 UTC).\n
+ * It supports datetime strings with the following formats:\n
+ * - YYYYMMDD[Z]\n
+ * - YYYYMMDDHHMM[Z]\n
+ * - YYYYMMDDHHMMSS[Z]\n
+ *
+ * @note If the datetime string ends with a 'Z', it is interpreted as being
+ * in UTC time, and the timestamp will be adjusted accordingly to reflect the
+ * correct Epoch time. If the 'Z' is not present, the datetime is assumed to be
+ * in the local time zone, and the returned timestamp will reflect this local
+ * time.
+ *
+ * @param[in] datetime    A null-terminated string representing the datetime to
+ *                        be parsed.
+ *
+ * @param[out] timestamp  A pointer to a uint64_t where the resulting epoch time
+ *                        (in seconds) will be stored.
+ *
+ * @returns 0 on success, with the converted epoch time stored in *timestamp.
+ * @returns -1 on failure (e.g. error while parsing the input string or
+ * converting it to epoch time)
+ */
+int
+ssh_convert_datetime_format_to_timestamp(const char *datetime,
+                                         uint64_t *timestamp)
+{
+    struct tm tm;
+    time_t time;
+    char *datetime_copy = NULL;
+    bool utc_tz = false;
+    int n_parsed;
+    size_t len;
+
+    if (datetime == NULL || timestamp == NULL) {
+        SSH_LOG(SSH_LOG_DEBUG, "Bad argument");
+        return -1;
+    }
+
+    len = strlen(datetime);
+    if (datetime[len - 1] == 'Z') {
+        utc_tz = true;
+        datetime_copy = strdup(datetime);
+        if (datetime_copy == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while duplicating datetime");
+            return -1;
+        }
+        datetime_copy[len - 1] = '\0';
+        len -= 1;
+    } else {
+        datetime_copy = strdup(datetime);
+        if (datetime_copy == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while duplicating datetime");
+            return -1;
+        }
+    }
+
+    /*
+     * Zero tm struct since there could be fields like hours, minutes and
+     * seconds not set by sscanf (reason: missing hours,minutes and seconds
+     * format or only missing seconds format).
+     */
+    ZERO_STRUCT(tm);
+
+    if (len != 8 && len != 12 && len != 14) {
+        SSH_LOG(SSH_LOG_DEBUG,
+                "Invalid datetime format: %s",
+                datetime);
+        return -1;
+    }
+
+    n_parsed = sscanf(datetime_copy,
+                          "%4d%2d%2d",
+                          &tm.tm_year,
+                          &tm.tm_mon,
+                          &tm.tm_mday);
+    if (n_parsed < 3) {
+        SSH_LOG(SSH_LOG_TRACE, "Invalid datetime format: %s", datetime);
+        return -1;
+    }
+
+    if (len >= 12) {
+        n_parsed = sscanf(datetime_copy + 8,
+                          "%2d%2d",
+                          &tm.tm_hour,
+                          &tm.tm_min);
+        if (n_parsed < 2) {
+            SSH_LOG(SSH_LOG_TRACE, "Invalid datetime format: %s", datetime);
+            return -1;
+        }
+    }
+
+    if (len == 14) {
+        n_parsed = sscanf(datetime_copy + 12,
+                          "%2d",
+                          &tm.tm_sec);
+        if (n_parsed < 1) {
+            SSH_LOG(SSH_LOG_TRACE, "Invalid datetime format: %s", datetime);
+            return -1;
+        }
+    }
+    SAFE_FREE(datetime_copy);
+
+    /*
+     * Adjust year and month values for tm struct to be interpreted correctly.
+     * https://man7.org/linux/man-pages/man3/tm.3type.html
+     */
+
+    /* Year since 1900 */
+    tm.tm_year -= 1900;
+    /* Months are 0-based in tm struct */
+    tm.tm_mon -= 1;
+
+    /* Validate tm struct fields */
+    if (!is_valid_tm(&tm)) {
+        SSH_LOG(SSH_LOG_DEBUG,
+                "Invalid tm fields: invalid syntax for %s datetime",
+                datetime);
+        return -1;
+    }
+
+    errno = 0;
+    if (utc_tz) {
+        time = timegm(&tm);
+    } else {
+        time = mktime(&tm);
+    }
+
+    if (time == (time_t)-1) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while converting tm struct: %s",
+                strerror(errno));
+        return -1;
+    }
+
+    *timestamp = (uint64_t)time;
+    return 0;
 }
 
 /** @} */

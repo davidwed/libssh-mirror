@@ -62,6 +62,7 @@
 
 #ifdef _WIN32
   #include <winsock2.h>
+  #include <ws2tcpip.h>
 #else /* _WIN32 */
  #include <sys/select.h> /* for fd_set * */
  #include <netdb.h>

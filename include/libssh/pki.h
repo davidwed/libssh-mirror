@@ -219,6 +219,7 @@ int ssh_pki_import_pubkey_blob(const ssh_string key_blob,
 int ssh_pki_import_cert_blob(const ssh_string cert_blob,
                              ssh_key *pkey);
 
+int ssh_pki_match_key_in_file(ssh_key key, const char *filename);
 int ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file);
 
 /* SSH Private Key Functions */

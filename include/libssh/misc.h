@@ -138,7 +138,11 @@ bool ssh_libssh_proxy_jumps(void);
 
 size_t
 ssh_format_time_to_string(uint64_t timestamp, char *buf, size_t buf_size);
-
+void ssh_remove_square_brackets(char *str);
+char *ssh_dequote(const char *str);
+int
+ssh_convert_datetime_format_to_timestamp(const char *datetime,
+                                         uint64_t *timestamp);
 #ifdef __cplusplus
 }
 #endif

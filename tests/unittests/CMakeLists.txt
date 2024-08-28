@@ -21,6 +21,7 @@ set(LIBSSH_UNIT_TESTS
     torture_session_keys
     torture_tokens
     torture_certificates_parsing
+    torture_auth_options
 )
 
 set(LIBSSH_THREAD_UNIT_TESTS

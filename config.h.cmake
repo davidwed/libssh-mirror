@@ -183,6 +183,12 @@
 /* Define to 1 if we have support for blowfish */
 #cmakedefine HAVE_BLOWFISH 1
 
+/* Define to 1 if we have support for `timegm` */
+#cmakedefine HAVE_TIMEGM 1
+
+/* Define to 1 if we have support for `_mkgmtime` */
+#cmakedefine HAVE__MKGMTIME 1
+
 /*************************** LIBRARIES ***************************/
 
 /* Define to 1 if you have the `crypto' library (-lcrypto). */
