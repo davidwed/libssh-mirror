@@ -259,10 +259,8 @@ int ssh_bind_listen(ssh_bind sshbind) {
     if (sshbind->rsa == NULL &&
         sshbind->ecdsa == NULL &&
         sshbind->ed25519 == NULL) {
-        rc = ssh_bind_import_keys(sshbind);
-        if (rc != SSH_OK) {
-            return SSH_ERROR;
-        }
+        /* Can fail */
+        ssh_bind_import_keys(sshbind);
     }
 
     if (sshbind->bindfd == SSH_INVALID_SOCKET) {
@@ -422,7 +420,7 @@ void ssh_bind_free(ssh_bind sshbind){
 int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
 {
     ssh_poll_handle handle = NULL;
-    int i, rc;
+    int i;
 
     if (sshbind == NULL) {
         return SSH_ERROR;
@@ -530,10 +528,8 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
     if (sshbind->rsa == NULL &&
         sshbind->ecdsa == NULL &&
         sshbind->ed25519 == NULL) {
-        rc = ssh_bind_import_keys(sshbind);
-        if (rc != SSH_OK) {
-            return SSH_ERROR;
-        }
+        /* Can fail */
+        ssh_bind_import_keys(sshbind);
     }
 
 #ifdef HAVE_ECC

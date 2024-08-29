@@ -142,9 +142,8 @@ int run_server(struct server_state_st *state)
     }
 
     if (state->host_key == NULL && state->rsa_key == NULL &&
-        state->ecdsa_key == NULL && state->ed25519_key) {
+        state->ecdsa_key == NULL && state->ed25519_key == NULL) {
         fprintf(stderr, "Missing host key\n");
-        goto out;
     }
 
     sshbind = ssh_bind_new();

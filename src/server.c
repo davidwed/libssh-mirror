@@ -134,10 +134,6 @@ int server_set_kex(ssh_session session)
                  ",%s", ssh_key_type_to_char(keytype));
     }
 
-    if (strlen(hostkeys) == 0) {
-        return -1;
-    }
-
     if (session->opts.wanted_methods[SSH_HOSTKEYS]) {
         allowed = session->opts.wanted_methods[SSH_HOSTKEYS];
     } else {
@@ -148,24 +144,25 @@ int server_set_kex(ssh_session session)
         }
     }
 
-    /* It is expected for the list of allowed hostkeys to be ordered by
-     * preference */
-    kept = ssh_find_all_matching(hostkeys[0] == ',' ? hostkeys + 1 : hostkeys,
-                                 allowed);
-    if (kept == NULL) {
-        /* Nothing was allowed */
-        return -1;
-    }
+    if (strlen(hostkeys) != 0) {
+        /* It is expected for the list of allowed hostkeys to be ordered by
+         * preference */
+        kept = ssh_find_all_matching(hostkeys[0] == ',' ? hostkeys + 1 : hostkeys,
+                                     allowed);
+        if (kept == NULL) {
+            /* Nothing was allowed */
+            return -1;
+        }
 
-    rc = ssh_options_set_algo(session,
-                              SSH_HOSTKEYS,
-                              kept,
-                              &session->opts.wanted_methods[SSH_HOSTKEYS]);
-    SAFE_FREE(kept);
-    if (rc < 0) {
-        return -1;
+        rc = ssh_options_set_algo(session,
+                                  SSH_HOSTKEYS,
+                                  kept,
+                                  &session->opts.wanted_methods[SSH_HOSTKEYS]);
+        SAFE_FREE(kept);
+        if (rc < 0) {
+            return -1;
+        }
     }
-
 #ifdef WITH_GSSAPI
     if (session->opts.gssapi_key_exchange) {
         ok = ssh_gssapi_init(session);
@@ -183,6 +180,10 @@ int server_set_kex(ssh_session session)
         /* Prefix the default algorithms with gsskex algs */
         session->opts.wanted_methods[SSH_KEX] =
             ssh_prefix_without_duplicates(ssh_kex_get_default_methods(SSH_KEX), gssapi_algs);
+
+        if (strlen(hostkeys) == 0) {
+            session->opts.wanted_methods[SSH_HOSTKEYS] = strdup("null");
+        }
 
         SAFE_FREE(gssapi_algs);
     }
