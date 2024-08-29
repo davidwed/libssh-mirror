@@ -1440,12 +1440,11 @@ ssh_config_parse_line(ssh_session session,
       }
       break;
     case SOC_GSSAPIKEYEXCHANGE: {
-        bool b = false;
         i = ssh_config_get_yesno(&s, -1);
-        if (i >= 0 && *parsing) {
-            b = i;
+        if (i > 0 && *parsing) {
+            bool b = true;
+            ssh_options_set(session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &b);
         }
-        ssh_options_set(session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &b);
         break;
     }
     case SOC_GSSAPIKEXALGORITHMS:

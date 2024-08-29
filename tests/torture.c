@@ -899,7 +899,7 @@ static void torture_setup_create_sshd_config(void **state, bool pam)
         }
 
         rc = system(ss);
-        assert_int_equal(rc, SSH_OK);
+        assert_int_equal(rc, 0);
     }
 
     sftp_server = getenv("TORTURE_SFTP_SERVER");

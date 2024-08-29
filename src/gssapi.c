@@ -788,7 +788,7 @@ ssh_gssapi_check_client_config(ssh_session session)
         SSH_LOG(SSH_LOG_DEBUG, "Supported mech %zu: %s", i, ptr);
         free(ptr);
 
-        /* If any one is configured then return successfully */
+        /* If atleast one mechanism is configured then return successfully */
         ret = SSH_OK;
 
 end:
