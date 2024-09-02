@@ -50,8 +50,12 @@ static const char torture_ed25119_host_ca[] =
  * USER CA KEY (RSA2048). CA key signing all user certificate types.
  ****************************************************************************/
 static const char torture_rsa_user_ca[] =
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMJ2d4Qaklic/2Si7W3GpM2m5doIR3"
-    "GJtf6jN4xFjbHg efe@rollo-tp";
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDczUbRv4vt7rJzVQ8PhILO3gIwYv"
+    "l/MGz3aEocCWiRFPg31RSRCoDCWhjY/+JhKNNimNaOKLtD76NYU023NfPSagIwm1sH"
+    "9dyTMv+xpyu/IxsCP23DIpEicFhFLXgWVJ+oL+X1izzBWT+/eYl8+JKri9mwsl3QkG"
+    "nqvrTDxOlBBw6MGCH9vb0Yjp2yFHtp6LKSJyJLsa7ZEEbtR1/vR6voMxhnAdVeMjoU"
+    "/T6EJb5E5zpnWNDyjw+J+09aqYJjealjr77hvECY3gt9PpPUFxW2uAMhyjF4MHUnqU"
+    "BTIYOBWCzGI8J2lgUE1oIhZYmzLiXryv8tlxHCbVKJk8dhyrhF user_ca";
 
 /****************************************************************************
  * RSA KEYS
