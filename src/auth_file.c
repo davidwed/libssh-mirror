@@ -299,10 +299,8 @@ ssh_authorized_keys_check_line(ssh_key key,
     char *token = NULL, *b64_key = NULL, *authkey_fp = NULL, *key_fp = NULL;
     const char *auth_opts_list = "", *name = NULL;
     struct ssh_auth_options *authkey_opts = NULL, *merged_auth_opts = NULL;
-    unsigned char *authkey_hash = NULL, *key_hash = NULL;
     enum ssh_keytypes_e key_type;
     ssh_key authorized_key = NULL;
-    size_t hlen;
     bool with_cert = is_cert_type(key->type);
     bool auth_opts_parsed = false;
 
@@ -391,21 +389,8 @@ ssh_authorized_keys_check_line(ssh_key key,
 
     if (cmp == 0) {
         /* Get authkey fingerprint */
-        r = ssh_get_publickey_hash(authorized_key,
-                                   SSH_PUBLICKEY_HASH_SHA256,
-                                   &authkey_hash,
-                                   &hlen);
-        if (r != 0) {
-            SSH_LOG(SSH_LOG_TRACE, "Error while getting authorized key hash");
-            SSH_AUTH_OPTS_FREE(authkey_opts);
-            rc = -1;
-            goto out;
-        }
-        SSH_KEY_FREE(authorized_key);
-
-        authkey_fp = ssh_get_fingerprint_hash(SSH_PUBLICKEY_HASH_SHA256,
-                                              authkey_hash,
-                                              hlen);
+        authkey_fp = ssh_pki_get_pubkey_fingerprint(authorized_key,
+                                                    SSH_PUBLICKEY_HASH_SHA256);
         if (authkey_fp == NULL) {
             SSH_LOG(SSH_LOG_TRACE,
                     "Error while retrieving authorized key fingerprint");
@@ -421,20 +406,8 @@ ssh_authorized_keys_check_line(ssh_key key,
                 authkey_fp);
 
         /* Get input key fingerprint */
-        r = ssh_get_publickey_hash(key,
-                                   SSH_PUBLICKEY_HASH_SHA256,
-                                   &key_hash,
-                                   &hlen);
-        if (r != 0) {
-            SSH_LOG(SSH_LOG_TRACE, "Error while getting input key hash");
-            SSH_AUTH_OPTS_FREE(authkey_opts);
-            rc = -1;
-            goto out;
-        }
-
-        key_fp = ssh_get_fingerprint_hash(SSH_PUBLICKEY_HASH_SHA256,
-                                          key_hash,
-                                          hlen);
+        key_fp = ssh_pki_get_pubkey_fingerprint(key,
+                                                SSH_PUBLICKEY_HASH_SHA256);
         if (key_fp == NULL) {
             SSH_LOG(SSH_LOG_TRACE,
                     "Error while retrieving input key fingerprint");
@@ -546,9 +519,7 @@ ssh_authorized_keys_check_line(ssh_key key,
 out:
     ssh_tokens_free(auth_line_tokens);
     SSH_KEY_FREE(authorized_key);
-    SAFE_FREE(key_hash);
     SAFE_FREE(key_fp);
-    SAFE_FREE(authkey_hash);
     SAFE_FREE(authkey_fp);
     return rc;
 }

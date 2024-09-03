@@ -285,6 +285,7 @@ struct ssh_session_struct {
         char *authorized_keys_file;
         char *authorized_principals_file;
         char *revoked_keys_file;
+        bool usedns;
     } server_opts;
 
     struct ssh_auth_options *auth_opts;

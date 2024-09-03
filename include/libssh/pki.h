@@ -222,6 +222,9 @@ int ssh_pki_import_cert_blob(const ssh_string cert_blob,
 int ssh_pki_match_key_in_file(ssh_key key, const char *filename);
 int ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file);
 
+char *
+ssh_pki_get_pubkey_fingerprint(ssh_key key, enum ssh_publickey_hash_type type);
+
 /* SSH Private Key Functions */
 int ssh_pki_export_privkey_blob(const ssh_key key,
                                 ssh_string *pblob);

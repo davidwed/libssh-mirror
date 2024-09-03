@@ -3417,6 +3417,59 @@ ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file)
     return found;
 }
 
+/**
+ * @brief Retrieves the fingerprint of a public key as a human-readable string.
+ *
+ * This function computes the fingerprint of a given public key, represented in
+ * a specific hash type, such as MD5, SHA1, or SHA256. The output is a string
+ * containing the fingerprint, formatted according to the specified hash type.
+ * The function uses `ssh_get_publickey_hash()` to compute the hash of the
+ * public key and then converts it to a readable fingerprint string using
+ * `ssh_get_fingerprint_hash()`.
+ *
+ * @warning Using deprecated hash types such as MD5 and SHA1 is not recommended
+*          due to security concerns. Prefer using stronger hash types like
+*          SHA256. OpenSSH uses SHA256 to print public key digests.
+ *
+ * @param[in] key   The public key for which the fingerprint is being requested.
+ *
+ * @param[in] type  The type of hash to use for the fingerprint. Common values
+ *                   include SSH_PUBLICKEY_HASH_SHA256.
+ *
+ * @returns A pointer to an allocated string containing the fingerprint of the
+ *          key.
+ * @returns NULL if an error occurred.
+ *
+ * @note The returned string should be freed by the caller.
+ *
+ * @see ssh_get_publickey_hash()
+ * @see ssh_get_fingerprint_hash()
+ */
+char *
+ssh_pki_get_pubkey_fingerprint(ssh_key key, enum ssh_publickey_hash_type type)
+{
+    int rc;
+    unsigned char *pubkey_hash = NULL;
+    size_t hlen;
+    char *fp = NULL;
+
+    if (key == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Key is NULL");
+        return NULL;
+    }
+
+    rc = ssh_get_publickey_hash(key, type, &pubkey_hash, &hlen);
+    if (rc < 0) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while retrieving public key hash");
+        return NULL;
+    }
+
+    fp = ssh_get_fingerprint_hash(type, pubkey_hash, hlen);
+    SAFE_FREE(pubkey_hash);
+
+    return fp;
+}
+
 #ifdef WITH_SERVER
 ssh_string ssh_srv_pki_do_sign_sessionid(ssh_session session,
                                          const ssh_key privkey,

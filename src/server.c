@@ -1364,29 +1364,17 @@ static int
 user_cert_check_trusted_ca(ssh_key user_key,
                            const char *trusted_user_ca_file)
 {
-    int found, rc;
-    unsigned char *ca_hash = NULL;
+    int found;
     char *ca_fp = NULL;
     const char *ca_type = NULL;
-    size_t hlen;
 
     if (!is_cert_type(user_key->type)) {
         SSH_LOG(SSH_LOG_TRACE, "Not a certificate");
         return -1;
     }
 
-    rc = ssh_get_publickey_hash(user_key->cert_data->signature_key,
-                                SSH_PUBLICKEY_HASH_SHA256,
-                                &ca_hash,
-                                &hlen);
-    if (rc != 0) {
-        SSH_LOG(SSH_LOG_TRACE, "Error while getting CA key hash");
-        return -1;
-    }
-
-    ca_fp = ssh_get_fingerprint_hash(SSH_PUBLICKEY_HASH_SHA256,
-                                       ca_hash,
-                                       hlen);
+    ca_fp = ssh_pki_get_pubkey_fingerprint(user_key->cert_data->signature_key,
+                                           SSH_PUBLICKEY_HASH_SHA256);
     if (ca_fp == NULL) {
         SSH_LOG(SSH_LOG_TRACE, "Error while retrieving CA key fingerprint");
         return -1;
@@ -1402,7 +1390,6 @@ user_cert_check_trusted_ca(ssh_key user_key,
             found ? "" : " not",
             trusted_user_ca_file);
 
-    SAFE_FREE(ca_hash);
     SAFE_FREE(ca_fp);
     return found;
 }
@@ -1427,18 +1414,12 @@ user_cert_check_trusted_ca(ssh_key user_key,
  * @param[in] user     The username of the user that is trying to authenticate.
  *                     Used for validating certificate principals if applicable
  *
- * @param[in] dns      Boolean indicating whether to use DNS to resolve
- *                     hostnames.
- *
  * @returns SSH_OK if the user key is successfully authenticated.
  * @returns SSH_ERROR on failure (e.g, key is revoked, not authorized,
  *          or an error occurred during the process).
  */
 int
-ssh_auth_user_key(ssh_session session,
-                  ssh_key user_key,
-                  const char *user,
-                  bool dns)
+ssh_auth_user_key(ssh_session session, ssh_key user_key, const char *user)
 {
     char *revoked_keys_file = session->server_opts.revoked_keys_file;
     char *authorized_keys_file = session->server_opts.authorized_keys_file;
@@ -1446,13 +1427,12 @@ ssh_auth_user_key(ssh_session session,
         session->server_opts.trusted_user_ca_keys_file;
     char *auth_principals_file =
         session->server_opts.authorized_principals_file;
-    unsigned char *user_key_hash = NULL, *ca_hash = NULL;
+    bool usedns = session->server_opts.usedns;
     char *user_key_fp = NULL, *ca_fp = NULL;
     char *remote_peer_hostname = NULL, *remote_peer_ip = NULL;
     struct ssh_auth_options *auth_opts = NULL;
     int rc, ret = SSH_ERROR, allowed = 0;
     bool with_cert;
-    size_t hlen;
 
     if (session == NULL || user_key == NULL) {
         SSH_LOG(SSH_LOG_TRACE, "Bad arguments");
@@ -1461,19 +1441,8 @@ ssh_auth_user_key(ssh_session session,
     with_cert = is_cert_type(user_key->type);
 
     /* Needed for verbose logging the user public key info */
-    rc = ssh_get_publickey_hash(user_key,
-                                SSH_PUBLICKEY_HASH_SHA256,
-                                &user_key_hash,
-                                &hlen);
-    if (rc != 0) {
-        SSH_LOG(SSH_LOG_TRACE, "Error while getting user key hash");
-        ret = SSH_ERROR;
-        goto out;
-    }
-
-    user_key_fp = ssh_get_fingerprint_hash(SSH_PUBLICKEY_HASH_SHA256,
-                                           user_key_hash,
-                                           hlen);
+    user_key_fp = ssh_pki_get_pubkey_fingerprint(user_key,
+                                                 SSH_PUBLICKEY_HASH_SHA256);
     if (user_key_fp == NULL) {
         SSH_LOG(SSH_LOG_TRACE, "Error while retrieving user key fingerprint");
         ret = SSH_ERROR;
@@ -1491,19 +1460,9 @@ ssh_auth_user_key(ssh_session session,
             goto out;
         }
 
-        rc = ssh_get_publickey_hash(user_key,
-                                    SSH_PUBLICKEY_HASH_SHA256,
-                                    &ca_hash,
-                                    &hlen);
-        if (rc != 0) {
-            SSH_LOG(SSH_LOG_TRACE, "Error while getting CA key hash");
-            ret = SSH_ERROR;
-            goto out;
-        }
-
-        ca_fp = ssh_get_fingerprint_hash(SSH_PUBLICKEY_HASH_SHA256,
-                                         ca_hash,
-                                         hlen);
+        ca_fp =
+            ssh_pki_get_pubkey_fingerprint(user_key->cert_data->signature_key,
+                                           SSH_PUBLICKEY_HASH_SHA256);
         if (ca_fp == NULL) {
             SSH_LOG(SSH_LOG_TRACE, "Error while retrieving CA key fingerprint");
             ret = SSH_ERROR;
@@ -1559,7 +1518,7 @@ ssh_auth_user_key(ssh_session session,
      * to "unknown".
      */
     remote_peer_ip = ssh_get_remote_peer_ip_address(session);
-    remote_peer_hostname = ssh_get_remote_peer_hostname(session, dns);
+    remote_peer_hostname = ssh_get_remote_peer_hostname(session, usedns);
     if (remote_peer_ip == NULL || remote_peer_hostname == NULL) {
         SSH_LOG(SSH_LOG_TRACE,
                 "Error while retrieving remote client hostname/IP address");
@@ -1684,9 +1643,7 @@ ssh_auth_user_key(ssh_session session,
     }
 
 out:
-    SAFE_FREE(user_key_hash);
     SAFE_FREE(user_key_fp);
-    SAFE_FREE(ca_hash);
     SAFE_FREE(ca_fp);
     SAFE_FREE(remote_peer_hostname);
     SAFE_FREE(remote_peer_ip);

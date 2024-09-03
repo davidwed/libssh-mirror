@@ -130,6 +130,11 @@ ssh_bind_config_keyword_table[] = {
         .allowed_in_match = false
     },
     {
+        .name   = "usedns",
+        .opcode = BIND_CFG_USE_DNS,
+        .allowed_in_match = false
+    },
+    {
         .opcode = BIND_CFG_UNKNOWN,
     }
 };
@@ -318,6 +323,7 @@ ssh_bind_config_parse_line(ssh_bind bind,
     const char *p = NULL;
     char *s = NULL, *x = NULL;
     char *keyword = NULL;
+    int r;
     size_t len;
 
     int rc = 0;
@@ -687,6 +693,18 @@ ssh_bind_config_parse_line(ssh_bind bind,
                         count, p);
             }
         }
+        break;
+    case BIND_CFG_USE_DNS:
+        r = ssh_config_get_yesno(&s, -1);
+        if (r != -1 && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(bind, SSH_BIND_OPTIONS_USE_DNS, &r);
+            if (rc == 0) {
+                break;
+            }
+        }
+        /* fail */
+        rc = -1;
+        SSH_LOG(SSH_LOG_TRACE, "line %d: Failed to set UseDNS option", count);
         break;
     case BIND_CFG_NOT_ALLOWED_IN_MATCH:
         SSH_LOG(SSH_LOG_DEBUG, "Option not allowed in Match block: %s, line: %d",

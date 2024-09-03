@@ -142,6 +142,7 @@ ssh_bind ssh_bind_new(void) {
     ptr->bindfd = SSH_INVALID_SOCKET;
     ptr->bindport = 22;
     ptr->common.log_verbosity = 0;
+    ptr->usedns = true;
 
     return ptr;
 }
@@ -540,6 +541,8 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
             return SSH_ERROR;
         }
     }
+
+    session->server_opts.usedns = sshbind->usedns;
 
     session->opts.rsa_min_size = sshbind->rsa_min_size;
 

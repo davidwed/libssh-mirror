@@ -1415,10 +1415,8 @@ enum ssh_known_hosts_e ssh_session_is_known_server(ssh_session session)
 {
     ssh_key server_pubkey = NULL;
     char *host_port = NULL, *server_fp = NULL, *ca_fp = NULL;
-    unsigned char *server_hash = NULL, *ca_hash = NULL;
     int known_host_status, with_cert, rc;
     unsigned int i;
-    size_t hlen;
 
     server_pubkey = ssh_dh_get_current_server_publickey(session);
     if (server_pubkey == NULL) {
@@ -1438,19 +1436,8 @@ enum ssh_known_hosts_e ssh_session_is_known_server(ssh_session session)
     }
 
     /* Verbose logging of the server public key info */
-    rc = ssh_get_publickey_hash(server_pubkey,
-                                SSH_PUBLICKEY_HASH_SHA256,
-                                &server_hash,
-                                &hlen);
-    if (rc != 0) {
-        SSH_LOG(SSH_LOG_TRACE, "Error while getting host key hash");
-        known_host_status = SSH_KNOWN_HOSTS_ERROR;
-        goto out;
-    }
-
-    server_fp = ssh_get_fingerprint_hash(SSH_PUBLICKEY_HASH_SHA256,
-                                         server_hash,
-                                         hlen);
+    server_fp  = ssh_pki_get_pubkey_fingerprint(server_pubkey,
+                                               SSH_PUBLICKEY_HASH_SHA256);
     if (server_fp == NULL) {
         SSH_LOG(SSH_LOG_TRACE, "Error while retrieving host key fingerprint");
         known_host_status = SSH_KNOWN_HOSTS_ERROR;
@@ -1458,19 +1445,9 @@ enum ssh_known_hosts_e ssh_session_is_known_server(ssh_session session)
     }
 
     if (with_cert) {
-        rc = ssh_get_publickey_hash(server_pubkey->cert_data->signature_key,
-                                    SSH_PUBLICKEY_HASH_SHA256,
-                                    &ca_hash,
-                                    &hlen);
-        if (rc != 0) {
-            SSH_LOG(SSH_LOG_TRACE, "Error while getting CA key hash");
-            known_host_status = SSH_KNOWN_HOSTS_ERROR;
-            goto out;
-        }
-
-        ca_fp = ssh_get_fingerprint_hash(SSH_PUBLICKEY_HASH_SHA256,
-                                         ca_hash,
-                                         hlen);
+        ca_fp =
+            ssh_pki_get_pubkey_fingerprint(server_pubkey->cert_data->signature_key,
+                                           SSH_PUBLICKEY_HASH_SHA256);
         if (ca_fp == NULL) {
             SSH_LOG(SSH_LOG_TRACE, "Error while retrieving CA key fingerprint");
             known_host_status = SSH_KNOWN_HOSTS_ERROR;
@@ -1548,9 +1525,7 @@ enum ssh_known_hosts_e ssh_session_is_known_server(ssh_session session)
 
 out:
     SAFE_FREE(host_port);
-    SAFE_FREE(server_hash);
     SAFE_FREE(server_fp);
-    SAFE_FREE(ca_hash);
     SAFE_FREE(ca_fp);
     return known_host_status;
 }

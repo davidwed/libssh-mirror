@@ -2371,6 +2371,12 @@ static int ssh_bind_set_algo(ssh_bind sshbind,
  *                        refused for user authentication.
  *                        (const char *)
  *
+ *                      - SSH_BIND_OPTIONS_USE_DNS
+ *                        Specifies whether the server should resolve the
+ *                        remote peer's hostname. By default, this option
+ *                        is set to true in the sshbind.
+ *                        (bool)
+ *
  * @param  value        The value to set. This is a generic pointer and the
  *                      datatype which should be used is described at the
  *                      corresponding value of type above.
@@ -2958,6 +2964,15 @@ ssh_bind_options_set(ssh_bind sshbind,
                 ssh_set_error_oom(sshbind);
                 return -1;
             }
+        }
+        break;
+    case SSH_BIND_OPTIONS_USE_DNS:
+        if (value == NULL) {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            bool *x = (bool *)value;
+            sshbind->usedns = *x;
         }
         break;
     default:

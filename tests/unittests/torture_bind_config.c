@@ -1735,6 +1735,48 @@ torture_bind_config_hostcertificate(void **state)
     assert_null(bind->rsa_cert_file);
 }
 
+static void
+torture_bind_config_usedns(void **state)
+{
+    struct bind_st *test_state = NULL;
+    ssh_bind bind = NULL;
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    /* Make sure that at sshbind creation the flag is set to true by default */
+    assert_true(bind->usedns);
+
+    /* Try with UseDNS on */
+    rc = ssh_bind_config_parse_string(bind, "UseDNS yes");
+    assert_int_equal(rc, SSH_OK);
+    assert_true(bind->usedns);
+
+    /* Try with UseDNS off */
+    rc = ssh_bind_config_parse_string(bind, "UseDNS no");
+    assert_int_equal(rc, SSH_OK);
+    assert_false(bind->usedns);
+
+    /* Try again with UseDNS on */
+    rc = ssh_bind_config_parse_string(bind, "UseDNS=yes");
+    assert_int_equal(rc, SSH_OK);
+    assert_true(bind->usedns);
+
+    /* Test with invalid UseDNS value and make sure the flag didn't change */
+    rc = ssh_bind_config_parse_string(bind, "UseDNS maybe");
+    assert_int_equal(rc, SSH_ERROR);
+    assert_true(bind->usedns);
+
+    /* Test that an empty UseDNS value doesn't set the flag */
+    rc = ssh_bind_config_parse_string(bind, "UseDNS");
+    assert_int_equal(rc, SSH_ERROR);
+    assert_true(bind->usedns);
+}
+
 int torture_run_tests(void)
 {
     int rc;
@@ -1912,6 +1954,9 @@ int torture_run_tests(void)
         cmocka_unit_test_setup_teardown(torture_bind_config_hostkey_algorithms_unknown_string,
                 sshbind_setup, sshbind_teardown),
         cmocka_unit_test_setup_teardown(torture_bind_config_hostcertificate,
+                                        sshbind_setup,
+                                        sshbind_teardown),
+        cmocka_unit_test_setup_teardown(torture_bind_config_usedns,
                                         sshbind_setup,
                                         sshbind_teardown),
     };

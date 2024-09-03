@@ -65,6 +65,7 @@ enum ssh_bind_options_e {
     SSH_BIND_OPTIONS_AUTHORIZED_KEYS,
     SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS,
     SSH_BIND_OPTIONS_REVOKED_KEYS,
+    SSH_BIND_OPTIONS_USE_DNS,
 };
 
 typedef struct ssh_bind_struct* ssh_bind;
@@ -406,8 +407,7 @@ LIBSSH_API int ssh_channel_request_send_exit_signal(ssh_channel channel,
 LIBSSH_API int ssh_send_keepalive(ssh_session session);
 LIBSSH_API int ssh_auth_user_key(ssh_session session,
                                  ssh_key user_key,
-                                 const char *user,
-                                 bool dns);
+                                 const char *user);
 
 /* deprecated functions */
 SSH_DEPRECATED LIBSSH_API int ssh_accept(ssh_session session);
