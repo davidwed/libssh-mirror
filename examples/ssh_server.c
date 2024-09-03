@@ -205,7 +205,7 @@ parse_opt(int argc, char **argv, ssh_bind sshbind)
 {
     int key;
 
-    while((key = getopt(argc, argv, "a:e:k:p:P:r:u:v")) != -1) {
+    while((key = getopt(argc, argv, "a:e:k:o:p:P:r:u:v")) != -1) {
         if (key == 'p') {
             ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT_STR, optarg);
         } else if (key == 'k') {
@@ -235,7 +235,7 @@ parse_opt(int argc, char **argv, ssh_bind sshbind)
                "libssh %s -- a Secure Shell protocol implementation\n"
                "\n"
                "  -a, --authorizedkeys=FILE  Set the authorized keys file.\n"
-               "  -o  --option=OPTION        Set server configuration option [-o OptionName=Value].\n"
+               "  -o, --option=OPTION        Set server configuration option [-o OptionName=Value].\n"
                "  -e, --ecdsakey=FILE        Set the ecdsa key (deprecated alias for 'k').\n"
                "  -k, --hostkey=FILE         Set a host key.  Can be used multiple times.\n"
                "                             Implies no default keys.\n"

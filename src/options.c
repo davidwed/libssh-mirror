@@ -1652,17 +1652,18 @@ int ssh_options_getopt(ssh_session session, int *argcptr, char **argv)
     char *cipher = NULL;
     char *identity = NULL;
     char *port = NULL;
+    char *key_value_option = NULL;
     char **save = NULL;
     char **tmp = NULL;
     size_t i = 0;
     int argc = *argcptr;
     int debuglevel = 0;
     int compress = 0;
-    int cont = 1;
     size_t current = 0;
     int saveoptind = optind; /* need to save 'em */
     int saveopterr = opterr;
     int opt;
+    int rc;
 
     /* Nothing to do here */
     if (argc <= 1) {
@@ -1670,10 +1671,13 @@ int ssh_options_getopt(ssh_session session, int *argcptr, char **argv)
     }
 
     opterr = 0; /* shut up getopt */
-    while((opt = getopt(argc, argv, "c:i:Cl:p:vb:r12")) != -1) {
+    while((opt = getopt(argc, argv, "c:i:Cl:o:p:vb:r12")) != -1) {
         switch(opt) {
         case 'l':
             user = optarg;
+            break;
+        case 'o':
+            key_value_option = optarg;
             break;
         case 'p':
             port = optarg;
@@ -1745,19 +1749,18 @@ int ssh_options_getopt(ssh_session session, int *argcptr, char **argv)
         optind++;
     }
 
-    ssh_set_log_level(debuglevel);
-
-    optind = saveoptind;
-
-    if(!cont) {
+    rc = ssh_set_log_level(debuglevel);
+    if (rc == SSH_ERROR) {
         SAFE_FREE(save);
         return -1;
     }
 
+    optind = saveoptind;
+
     /* first recopy the save vector into the original's */
     for (i = 0; i < current; i++) {
         /* don't erase argv[0] */
-        argv[ i + 1] = save[i];
+        argv[i + 1] = save[i];
     }
     argv[current + 1] = NULL;
     *argcptr = current + 1;
@@ -1765,38 +1768,49 @@ int ssh_options_getopt(ssh_session session, int *argcptr, char **argv)
 
     /* set a new option struct */
     if (compress) {
-        if (ssh_options_set(session, SSH_OPTIONS_COMPRESSION, "yes") < 0) {
-            cont = 0;
+        rc = ssh_options_set(session, SSH_OPTIONS_COMPRESSION, "yes");
+        if (rc < 0) {
+            return SSH_ERROR;
         }
     }
 
-    if (cont && cipher) {
-        if (ssh_options_set(session, SSH_OPTIONS_CIPHERS_C_S, cipher) < 0) {
-            cont = 0;
+    if (cipher) {
+        rc = ssh_options_set(session, SSH_OPTIONS_CIPHERS_C_S, cipher);
+        if (rc < 0) {
+            return SSH_ERROR;
         }
-        if (cont && ssh_options_set(session, SSH_OPTIONS_CIPHERS_S_C, cipher) < 0) {
-            cont = 0;
-        }
-    }
-
-    if (cont && user) {
-        if (ssh_options_set(session, SSH_OPTIONS_USER, user) < 0) {
-            cont = 0;
+        rc = ssh_options_set(session, SSH_OPTIONS_CIPHERS_S_C, cipher);
+        if (rc < 0) {
+            return SSH_ERROR;
         }
     }
 
-    if (cont && identity) {
-        if (ssh_options_set(session, SSH_OPTIONS_IDENTITY, identity) < 0) {
-            cont = 0;
+    if (user) {
+        rc = ssh_options_set(session, SSH_OPTIONS_USER, user);
+        if (rc < 0) {
+            return SSH_ERROR;
+        }
+    }
+
+    if (identity) {
+        rc = ssh_options_set(session, SSH_OPTIONS_IDENTITY, identity);
+        if (rc < 0) {
+            return SSH_ERROR;
         }
     }
 
     if (port != NULL) {
-        ssh_options_set(session, SSH_OPTIONS_PORT_STR, port);
+        rc = ssh_options_set(session, SSH_OPTIONS_PORT_STR, port);
+        if (rc < 0) {
+            return SSH_ERROR;
+        }
     }
 
-    if (!cont) {
-        return SSH_ERROR;
+    if (key_value_option != NULL) {
+        rc = ssh_config_parse_string(session, key_value_option);
+        if (rc == SSH_ERROR) {
+            return SSH_ERROR;
+        }
     }
 
     return SSH_OK;

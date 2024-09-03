@@ -480,5 +480,10 @@ LIBSSH_4_10_0    # Released
         ssh_pki_export_privkey_base64_format;
         ssh_pki_export_privkey_file_format;
         ssh_request_no_more_sessions;
-        ssh_bind_config_parse_string;
 } LIBSSH_4_9_0;
+
+LIBSSH_AFTER_4_11_0
+{
+    global:
+        ssh_bind_config_parse_string;
+} LIBSSH_4_10_0;
