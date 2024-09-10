@@ -1512,10 +1512,10 @@ enum ssh_known_hosts_e ssh_session_is_known_server(ssh_session session)
      * specifications.
      */
     if (with_cert && known_host_status == SSH_KNOWN_HOSTS_OK) {
-        rc = pki_cert_check_validity(server_pubkey,
-                                     1,
-                                     host_port,
-                                     session->opts.ca_signature_algorithms);
+        rc = pki_cert_validate(server_pubkey,
+                               SSH_CERT_TYPE_HOST,
+                               host_port,
+                               session->opts.ca_signature_algorithms);
         if (rc == SSH_ERROR) {
             SSH_LOG(SSH_LOG_TRACE,
                     "The host certificate is invalid and has been refused");

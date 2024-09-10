@@ -492,7 +492,7 @@ ssh_authorized_keys_check_line(ssh_key key,
          * Passing a NULL name as argument will skip the principal check since
          * it took place at previous step against the user specified principals.
          */
-        rc = pki_cert_check_validity(key, false, name, NULL);
+        rc = pki_cert_validate(key, SSH_CERT_TYPE_USER, name, NULL);
         if (rc != SSH_OK) {
             /* Already verbose logging the reason */
             SSH_AUTH_OPTS_FREE(merged_auth_opts);
@@ -754,7 +754,7 @@ ssh_authorized_principals_check_line(ssh_key cert,
          * There is no need to pass a principal name at this point, as the
          * authorized principals file has already verified it.
          */
-        rc = pki_cert_check_validity(cert, false, NULL, NULL);
+        rc = pki_cert_validate(cert, SSH_CERT_TYPE_USER, NULL, NULL);
         if (rc != SSH_OK) {
             /* Already verbose logging the reason */
             SSH_AUTH_OPTS_FREE(final_opts);

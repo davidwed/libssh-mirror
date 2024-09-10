@@ -851,29 +851,40 @@ fail:
  * is checked based on the type, validity dates, valid principals and allowed
  * CA signature algorithms.
  *
- * @param[in] key        The ssh_key public key of a certificate.
+ * @param[in] key        The ssh_key public key of a certificate. The key must
+ *                       be of a certificate type.
  *
- * @param[in] host_type  A boolean indicating if the function is called during
- *                       server host authentication requiring, then, a host cert
- *                       type.
+ * @param[in] cert_type  Specifies the type of certificate expected during
+ *                       validation. This should be SSH_CERT_TYPE_HOST for
+ *                       host certificates or SSH_CERT_TYPE_USER for user
+ *                       certificates.
  *
- * @param[in] name       The hostname or username to be checked against the
- *                       allowed principal names in the certificate
- *                       for host or user authentication.
+ * @param[in] name       The hostname or username to validate against the
+ *                       allowed principal names in the certificate. If `name`
+ *                       is NULL, no principal name validation will be
+ *                       performed. If the certificate explicitly restricts
+ *                       principals and name is not NULL the function will
+ *                       return an error if no valid principal is found.
  *
- * @param[in] allowed_ca_sign_algos The list of allowed CA signature algorithms.
+ * @param[in] allowed_ca_sign_algos A comma-separated list of allowed CA
+ *                       signature algorithms. If `allowed_ca_sign_algos` is
+ *                       NULL, the function will allow all signature algorithms
+ *                       by default. A non-NULL value restricts the validation
+ *                       to only those CA signature algorithms specified in the
+ *                       list.
  *
  * @returns SSH_OK if the certificate is valid.
  * @returns SSH_ERROR if the certificate is NOT valid.
  */
 int
-pki_cert_check_validity(ssh_key key,
-                        bool host_type,
-                        const char *name,
-                        const char *allowed_ca_sign_algos)
+pki_cert_validate(ssh_key key,
+                  int cert_type,
+                  const char *name,
+                  const char *allowed_ca_sign_algos)
 {
     time_t time_now;
-    int rc, valid_principal = 0;
+    int rc;
+    bool valid_principal = false;
     char datetime[64], err_msg[SSH_ERRNO_MSG_MAX] = {0};
     unsigned int i;
 
@@ -902,7 +913,7 @@ pki_cert_check_validity(ssh_key key,
      * Check if the certificate type is correct based on whether the
      * function has been called during host or user authentication
      */
-    if (host_type) {
+    if (cert_type == SSH_CERT_TYPE_HOST) {
         if (key->cert_data->type != SSH_CERT_TYPE_HOST) {
             SSH_LOG(SSH_LOG_WARN,
                     "Invalid certificate: not a host certificate");
@@ -958,7 +969,7 @@ pki_cert_check_validity(ssh_key key,
     } else if (name != NULL) {
         for (i = 0; i < key->cert_data->n_principals; i++) {
             if (strcmp(name, key->cert_data->principals[i]) == 0) {
-                valid_principal = 1;
+                valid_principal = true;
                 break;
             }
         }

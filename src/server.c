@@ -1621,7 +1621,7 @@ ssh_auth_user_key(ssh_session session, ssh_key user_key, const char *user)
             goto out;
         }
 
-        rc = pki_cert_check_validity(user_key, false, user, NULL);
+        rc = pki_cert_validate(user_key, SSH_CERT_TYPE_USER, user, NULL);
         if (rc != SSH_OK) {
             /* Already verbose logging the reason */
             SSH_AUTH_OPTS_FREE(auth_opts);
