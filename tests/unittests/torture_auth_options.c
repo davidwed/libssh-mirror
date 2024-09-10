@@ -394,6 +394,7 @@ torture_auth_options_process_comma_list(void **state)
     /* Valid input list */
     rc = auth_options_process_comma_list(input, &options, &n_options);
     assert_int_equal(rc, 0);
+    assert_non_null(options);
     assert_int_equal(n_options, 4);
 
     assert_string_equal(options[0], "one");
@@ -404,6 +405,7 @@ torture_auth_options_process_comma_list(void **state)
     /* Call again and add a new option */
     rc = auth_options_process_comma_list(to_add, &options, &n_options);
     assert_int_equal(rc, 0);
+    assert_non_null(options);
     assert_int_equal(n_options, 5);
 
     assert_string_equal(options[0], "one");
@@ -626,6 +628,97 @@ torture_ssh_auth_options_merge_cert_opts(void **state)
 }
 
 static void
+torture_ssh_auth_options_merge_cert_opts_restrict(void **state)
+{
+    /* CERTIFICATE INFO
+     * Type:            USER
+     * Serial:          6
+     * Key_ID:          test@libssh.com
+     * Principals:      user1
+     * Validity:        after->19990101 before->19991231
+     * Critical opts:   force-command=/path/to/run.sh
+     *                  source-address=127.0.0.1/32,::1/128
+     *                  verify-required
+     * Extensions:      permit-X11-forwarding, permit-agent-forwarding
+     *                  permit-port-forwarding, permit-pty, permit-user-rc
+     *                  no-touch-required
+     */
+    int rc;
+    ssh_key cert = NULL;
+    struct ssh_auth_options *merged = NULL, *src_opts = NULL;
+    const char *list = "cert-authority,restrict,"
+                       "principals=\"user1,user2,user3,user4\","
+                       "permitlisten=\"localhost:8080\","
+                       "permitopen=\"192.0.2.2:25\","
+                       "tunnel=\"0\","
+                       "command=\"/path/to/run.sh\","
+                       "from=\"10.0.0.0/24,fe80::/64\","
+                       "expiry-time=\"19990630Z\","
+                       "environment="
+                       "\"LD_PRELOAD=/path/to/randlib.so\"";
+    uint32_t flags;
+
+    (void)state;
+
+    rc = ssh_pki_import_cert_file(CERT_DIR"/all_options.cert", &cert);
+    assert_return_code(rc, errno);
+    assert_non_null(cert);
+
+    src_opts = ssh_auth_options_list_parse(list);
+    assert_non_null(src_opts);
+
+    merged = ssh_auth_options_merge_cert_opts(cert, src_opts);
+    assert_non_null(merged);
+
+    /*
+     * cert-authority should be cleared and make sure that all certificate
+     * permit flags have been cleared.
+     */
+    flags = RESTRICTED_OPT | NO_TOUCH_REQUIRED_OPT | VERIFY_REQUIRED_OPT;
+
+    /* Assert bitmap flags */
+    assert_int_equal(merged->opt_flags, flags);
+
+    /* Assert principals= */
+    assert_int_equal(merged->n_cert_principals, 4);
+    assert_string_equal(merged->cert_principals[0], "user1");
+    assert_string_equal(merged->cert_principals[1], "user2");
+    assert_string_equal(merged->cert_principals[2], "user3");
+    assert_string_equal(merged->cert_principals[3], "user4");
+
+    /* Assert permitlisten= */
+    assert_int_equal(merged->n_permit_listen, 1);
+    assert_string_equal(merged->permit_listen[0], "localhost:8080");
+
+    /* Assert permitopen= */
+    assert_int_equal(merged->n_permit_open, 1);
+    assert_string_equal(merged->permit_open[0], "192.0.2.2:25");
+
+    /* Assert tunnel= */
+    assert_int_equal(merged->tun_device, 0);
+
+    /* Assert command= */
+    assert_string_equal(merged->force_command, "/path/to/run.sh");
+
+    /* Assert from= */
+    assert_string_equal(merged->authkey_from_addr_host, "10.0.0.0/24,fe80::/64");
+
+    /* Assert source-address option */
+    assert_string_equal(merged->cert_source_address, "127.0.0.1/32,::1/128");
+
+    /* Assert environment= */
+    assert_int_equal(merged->n_envs, 1);
+    assert_string_equal(merged->envs[0], "LD_PRELOAD=/path/to/randlib.so");
+
+    /* Assert expiry-time= (overrided by auth opts list) */
+    assert_int_equal(merged->valid_before, 930700800ULL);
+
+    SSH_KEY_FREE(cert);
+    SSH_AUTH_OPTS_FREE(src_opts);
+    SSH_AUTH_OPTS_FREE(merged);
+}
+
+static void
 torture_ssh_auth_options_from_cert(void **state)
 {
     /* CERTIFICATE INFO
@@ -720,6 +813,7 @@ torture_run_tests(void)
         cmocka_unit_test(torture_auth_options_valid_permit_opts),
         cmocka_unit_test(torture_auth_options_opt_array_copy),
         cmocka_unit_test(torture_ssh_auth_options_merge_cert_opts),
+        cmocka_unit_test(torture_ssh_auth_options_merge_cert_opts_restrict),
         cmocka_unit_test(torture_ssh_auth_options_from_cert),
     };
 

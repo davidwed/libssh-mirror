@@ -53,7 +53,7 @@ struct ssh_auth_options {
 };
 
 struct ssh_auth_options *ssh_auth_option_new(void);
-void ssh_auth_options_free(struct ssh_auth_options *auth_opts);
+LIBSSH_API void ssh_auth_options_free(struct ssh_auth_options *auth_opts);
 #define SSH_AUTH_OPTS_FREE(x) \
     do { if ((x) != NULL) { ssh_auth_options_free(x); x = NULL; } } while(0)
 

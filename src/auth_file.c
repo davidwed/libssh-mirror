@@ -76,7 +76,7 @@ authorize_from_option(char *list,
      * Since hostname and ip address might be the same then perform additional
      * check only if they differ.
      */
-    rc = memcmp(remote_peer_ip, remote_peer_hostname, strlen(remote_peer_ip));
+    rc = strcmp(remote_peer_ip, remote_peer_hostname);
     if (rc != 0) {
         rc = match_pattern_list(remote_peer_hostname, list, len, 0);
         if (rc) {
@@ -766,6 +766,7 @@ ssh_authorized_principals_check_line(ssh_key cert,
     }
 
     /* No match found */
+    SSH_AUTH_OPTS_FREE(principal_opts);
     return 0;
 }
 

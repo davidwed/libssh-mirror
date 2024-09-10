@@ -472,6 +472,7 @@ auth_options_valid_permit_opts(char **permit_opts,
 
     port:
         if (strcmp(c_port, "*") == 0) {
+            SAFE_FREE(permit_entry);
             continue;
         }
 
@@ -527,6 +528,21 @@ auth_options_set_flag(struct ssh_auth_options *auth_opts,
 }
 
 /**
+ * @brief Clears all PERMIT_ options flags.
+ *
+ * @param[out] flags Pointer to a bitmask containing the permit options flags
+ */
+static void
+clear_all_permit_options(uint32_t *flags)
+{
+    *flags &= ~PERMIT_PORT_FORWARDING_OPT;
+    *flags &= ~PERMIT_AGENT_FORWARDING_OPT;
+    *flags &= ~PERMIT_X11_FORWARDING_OPT;
+    *flags &= ~PERMIT_PTY_OPT;
+    *flags &= ~PERMIT_USER_RC_OPT;
+}
+
+/**
  * @brief Enables restricted mode for authentication options. It clears the
  * following auth_opts flags:
  *
@@ -539,18 +555,14 @@ auth_options_set_flag(struct ssh_auth_options *auth_opts,
  * @param[out] auth_opts Pointer to the ssh_auth_options structure.
  */
 static void
-auth_options_toggle_restrict_mode(struct ssh_auth_options *auth_opts)
+auth_options_enable_restrict_mode(struct ssh_auth_options *auth_opts)
 {
     if (auth_opts == NULL) {
         return;
     }
 
     auth_opts->opt_flags |= RESTRICTED_OPT;
-    auth_opts->opt_flags &= ~PERMIT_PORT_FORWARDING_OPT;
-    auth_opts->opt_flags &= ~PERMIT_AGENT_FORWARDING_OPT;
-    auth_opts->opt_flags &= ~PERMIT_X11_FORWARDING_OPT;
-    auth_opts->opt_flags &= ~PERMIT_PTY_OPT;
-    auth_opts->opt_flags &= ~PERMIT_USER_RC_OPT;
+    clear_all_permit_options(&auth_opts->opt_flags);
 }
 
 /**
@@ -657,7 +669,7 @@ ssh_auth_options_list_parse(const char *list)
 
             /* Remove quotes from option value */
             value = ssh_dequote(value_q);
-            if (value == NULL || memcmp(value, value_q, strlen(value_q)) == 0) {
+            if (value == NULL || strncmp(value, value_q, strlen(value)) == 0) {
                 /* Already verbose logging the reason */
                 SSH_LOG(SSH_LOG_TRACE, "Invalid option format");
                 goto fail;
@@ -843,7 +855,7 @@ ssh_auth_options_list_parse(const char *list)
                             "\"no-restrict\" option is not recognized");
                     goto fail;
                 }
-                auth_options_toggle_restrict_mode(auth_opts);
+                auth_options_enable_restrict_mode(auth_opts);
             } else {
                 SSH_LOG(SSH_LOG_TRACE, "Option \"%s\" not supported", key);
                 goto fail;
@@ -955,8 +967,13 @@ ssh_auth_options_merge_cert_opts(ssh_key certkey,
 
     /*
      * Merge flags. Flags common to ssh_auth_opts and ssh_cert follow
-     * the same enumeration. Clear cert-authority as it's not needed anymore
-     * */
+     * the same enumeration. Clear cert-authority as it's not needed anymore.
+     * Note: if restrict option is enabled then clear all the permit flags in
+     * the certificate extensions (if any).
+     */
+    if (src_opts->opt_flags & RESTRICTED_OPT) {
+        clear_all_permit_options(&cert_data->extensions.ext);
+    }
     ret->opt_flags |= cert_data->extensions.ext;
     ret->opt_flags |= src_opts->opt_flags;
     ret->opt_flags &= ~CERT_AUTHORITY_OPT;

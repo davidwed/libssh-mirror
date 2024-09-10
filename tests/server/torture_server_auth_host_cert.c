@@ -30,6 +30,8 @@ static int libssh_server_setup(void **state)
     struct torture_state *s = NULL;
     char log_file[1024];
 
+    setenv("TORTURE_SKIP_CLEANUP", "1", 1);
+
     torture_setup_socket_dir((void **)&s);
     torture_setup_create_libssh_config((void **)&s);
 
@@ -202,6 +204,10 @@ torture_server_host_cert_auth(void **state, bool libssh_server)
     for (i = 0; i < NUM_SERVER_KEYS; i++) {
         cert_type = server_cert_keytypes[i];
 
+        if (ssh_fips_mode() && cert_type == SSH_KEYTYPE_ED25519_CERT01) {
+            continue;
+        }
+
         rc = update_server_config_host_cert(state,
                                             cert_type,
                                             libssh_server,
@@ -237,6 +243,10 @@ torture_server_host_cert_auth_revoked(void **state, bool libssh_server)
     for (i = 0; i < NUM_SERVER_KEYS; i++) {
         cert_type = server_cert_keytypes[i];
 
+        if (ssh_fips_mode() && cert_type == SSH_KEYTYPE_ED25519_CERT01) {
+            continue;
+        }
+
         rc = update_server_config_host_cert(state,
                                             cert_type,
                                             libssh_server,
@@ -271,6 +281,10 @@ torture_server_host_cert_auth_expired(void **state, bool libssh_server)
 
     for (i = 0; i < NUM_SERVER_KEYS; i++) {
         cert_type = server_cert_keytypes[i];
+
+        if (ssh_fips_mode() && cert_type == SSH_KEYTYPE_ED25519_CERT01) {
+            continue;
+        }
 
         rc = update_server_config_host_cert(state,
                                             cert_type,

@@ -29,6 +29,7 @@
 #include <libssh/libssh.h>
 #include <libssh/server.h>
 #include <libssh/callbacks.h>
+#include <libssh/auth_options.h>
 
 struct server_state_st {
     /* Arguments */
@@ -53,6 +54,8 @@ struct server_state_st {
     bool parse_global_config;
 
     char *log_file;
+
+    struct ssh_auth_options *expected_auth_opts;
 
     /* State */
     int  max_tries;

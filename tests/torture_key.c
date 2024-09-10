@@ -57,6 +57,35 @@ static const char torture_rsa_user_ca[] =
     "/T6EJb5E5zpnWNDyjw+J+09aqYJjealjr77hvECY3gt9PpPUFxW2uAMhyjF4MHUnqU"
     "BTIYOBWCzGI8J2lgUE1oIhZYmzLiXryv8tlxHCbVKJk8dhyrhF user_ca";
 
+static const char torture_rsa_private_user_ca[] =
+    "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+    "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdzc2gtcn\n"
+    "NhAAAAAwEAAQAAAQEA3M1G0b+L7e6yc1UPD4SCzt4CMGL5fzBs92hKHAlokRT4N9UUkQqA\n"
+    "wloY2P/iYSjTYpjWjii7Q++jWFNNtzXz0moCMJtbB/XckzL/sacrvyMbAj9twyKRInBYRS\n"
+    "14FlSfqC/l9Ys8wVk/v3mJfPiSq4vZsLJd0JBp6r60w8TpQQcOjBgh/b29GI6dshR7aeiy\n"
+    "kiciS7Gu2RBG7Udf70er6DMYZwHVXjI6FP0+hCW+ROc6Z1jQ8o8PiftPWqmCY3mpY6++4b\n"
+    "xAmN4LfT6T1BcVtrgDIcoxeDB1J6lAUyGDgVgsxiPCdpYFBNaCIWWJsy4l68r/LZcRwm1S\n"
+    "iZPHYcq4RQAAA8A1raQzNa2kMwAAAAdzc2gtcnNhAAABAQDczUbRv4vt7rJzVQ8PhILO3g\n"
+    "IwYvl/MGz3aEocCWiRFPg31RSRCoDCWhjY/+JhKNNimNaOKLtD76NYU023NfPSagIwm1sH\n"
+    "9dyTMv+xpyu/IxsCP23DIpEicFhFLXgWVJ+oL+X1izzBWT+/eYl8+JKri9mwsl3QkGnqvr\n"
+    "TDxOlBBw6MGCH9vb0Yjp2yFHtp6LKSJyJLsa7ZEEbtR1/vR6voMxhnAdVeMjoU/T6EJb5E\n"
+    "5zpnWNDyjw+J+09aqYJjealjr77hvECY3gt9PpPUFxW2uAMhyjF4MHUnqUBTIYOBWCzGI8\n"
+    "J2lgUE1oIhZYmzLiXryv8tlxHCbVKJk8dhyrhFAAAAAwEAAQAAAQAQnq72+MkKls392mgw\n"
+    "zdOeyJ03kSughD+fe80gQSEK0p5AbZyHslewyWFXbCNZFt6abFCyEKTP30jXTCXsZXY931\n"
+    "bc28TFW59HwS337FJhp73PtICJkJ+GDRjH1D1WyPXfjgNsMRfYoeQngHl126wGl5dCMprX\n"
+    "KRef4Mzwc3DvQPngLWuti973qn7pzguDiMiCM/3YznC8eNkyHG0KigOmK/WJsV/an2+v9S\n"
+    "efmAemvK+/QVH4X8JhT7bD9N8lDGtQD7uoBf0RtK/nKD8GVny1hjnf8FnFOPat/u6TTUJz\n"
+    "j63d5F3LD6paih8C127wiLmCShHP69xfNxbvGJldgJ4BAAAAgQDStMYavrOmxMlIXhZISs\n"
+    "xZSDdMScwjp13d6itDwCzzMLvfQGPefI76LbYEAd5LZMJKJd+ZsSBgOp7BWg5c8tP0dZUc\n"
+    "HAals9kojqgYST7sj35FvEJcTO5oFT6eAZlHw1JVOqFDcbBO05JW4K2tSlKAdGGniPu7SD\n"
+    "BaN9Y/DBYWAwAAAIEA+/sN73RssFavqDZwvpfdM2Y/XZRS3NWt+e2NQCSaHTLu5Lp4lcFt\n"
+    "SS/tpGNF4pPPags8taU3c9BAwWuXCQ7I0YuicfhFPHys75lG+Ewc8iojANBCKt/9hvtZ4i\n"
+    "krTl/z5IMzkSd2w+/4I34sKTkbp3WNz5M+LKjL6uvFlrBtuYEAAACBAOBS59mkK4C3NVWu\n"
+    "coYyS6MivuyVGsHg19xwnoIIET0ebUQkkyHTFrZIz+VxEiHQhiuYThH6EGuqrJcwOD+gla\n"
+    "GWnAcFgcDr484bfNBHSfOY4nfaXilIZcr9d/jnY3XNKKHa7YKoq3Q9X9Hze7Xl+u5mRu/g\n"
+    "NyXPStXib3UIpvjFAAAAB3VzZXJfY2EBAgM=\n"
+    "-----END OPENSSH PRIVATE KEY-----\n";
+
 /****************************************************************************
  * RSA KEYS
  ****************************************************************************/
@@ -1328,17 +1357,33 @@ torture_get_testkey_host_ca(void)
 }
 
 /**
- * @brief Retrieves the user Certificate Authority (CA) key for testing
+ * @brief Retrieves the user Certificate Authority (CA) public key for testing
  * purposes.
  *
- * This function returns the RSA(2048) user CA key as a string in OPENSSH
+ * This function returns the RSA(2048) user CA publc key as a string in OPENSSH
  * format. This CA key is the signing key of all the user certificates defined
  * in torture_key.c file.
  *
  * @returns A pointer to a string containing the RSA(2048) user CA key.
  */
 const char *
-torture_get_testkey_user_ca(void)
+torture_get_testkey_user_ca_public(void)
 {
     return torture_rsa_user_ca;
+}
+
+/**
+ * @brief Retrieves the user Certificate Authority (CA) private key for testing
+ * purposes.
+ *
+ * This function returns the RSA(2048) user CA private key as a string in
+ * OPENSSH format. This CA key is the signing key of all the user certificates
+ * defined in torture_key.c file.
+ *
+ * @returns A pointer to a string containing the RSA(2048) user CA key.
+ */
+const char *
+torture_get_testkey_user_ca_private(void)
+{
+    return torture_rsa_private_user_ca;
 }

@@ -58,6 +58,7 @@ void free_server_state(struct server_state_st *state)
     SAFE_FREE(state->log_file);
     SAFE_FREE(state->server_cb);
     SAFE_FREE(state->channel_cb);
+    SSH_AUTH_OPTS_FREE(state->expected_auth_opts);
 }
 
 /* SIGCHLD handler for cleaning up dead children. */

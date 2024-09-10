@@ -163,7 +163,7 @@ ssh_cert_dup(const ssh_cert src_cert)
     /* Copy the principals */
     if (src_cert->n_principals > 0) {
         dest_cert->n_principals = src_cert->n_principals;
-        dest_cert->principals = calloc(1, sizeof(char *));
+        dest_cert->principals = calloc(src_cert->n_principals, sizeof(char *));
 
         if (dest_cert->principals == NULL) {
             SSH_LOG(SSH_LOG_TRACE,
