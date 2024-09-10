@@ -1356,7 +1356,7 @@ get_local_timestamp_from_tm(struct tm *tm)
 static void
 torture_ssh_convert_datetime_format_to_timestamp(void **state)
 {
-    uint64_t timestamp, expected;
+    uint64_t timestamp = 0, expected;
     int rc;
     struct tm tm;
     (void)state;
@@ -1461,6 +1461,97 @@ torture_ssh_convert_datetime_format_to_timestamp(void **state)
     assert_int_equal(rc, -1);
 }
 
+static void
+torture_portable_timegm(void **state)
+{
+    time_t timestamp;
+    struct tm tm;
+    (void)state;
+
+    /* Test 1970-01-01 00:00:00 UTC */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 70;
+    tm.tm_mon = 0;
+    tm.tm_mday = 1;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 0);
+
+    /* Test 2024-01-01 00:00:00 UTC */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 0;
+    tm.tm_mday = 1;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 1704067200ULL);
+
+    /* Test 2024-01-01 08:30:45 UTC */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 0;
+    tm.tm_mday = 1;
+    tm.tm_hour = 8;
+    tm.tm_min = 30;
+    tm.tm_sec = 45;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 1704097845ULL);
+
+    /* Test 1995-10-15 00:00:00 UTC */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 95;
+    tm.tm_mon = 9;
+    tm.tm_mday = 15;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 813715200ULL);
+
+    /* Test invalid date (Feb 30, 2024) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 1;
+    tm.tm_mday = 30;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, (time_t)-1);
+    assert_int_equal(errno, EINVAL);
+
+    /* Test invalid date (April 31, 2024) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 3;
+    tm.tm_mday = 31;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, (time_t)-1);
+    assert_int_equal(errno, EINVAL);
+
+    /* Test leap year (Feb 29, 2024) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 1;
+    tm.tm_mday = 29;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 1709164800ULL);
+
+    /* Test invalid date in a non-leap year (Feb 29, 2023) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 123;
+    tm.tm_mon = 1;
+    tm.tm_mday = 29;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, (time_t)-1);
+    assert_int_equal(errno, EINVAL);
+
+    /* Test valid date in a non-leap year (Feb 28, 2023) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 123;
+    tm.tm_mon = 1;
+    tm.tm_mday = 28;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 1677542400ULL);
+
+    /* Test NULL input */
+    timestamp = portable_timegm(NULL);
+    assert_int_equal(timestamp, (time_t)-1);
+    assert_int_equal(errno, EINVAL);
+}
+
 int torture_run_tests(void) {
     int rc;
     struct CMUnitTest tests[] = {
@@ -1500,6 +1591,7 @@ int torture_run_tests(void) {
         cmocka_unit_test(torture_ssh_remove_square_brackets),
         cmocka_unit_test(torture_ssh_dequote),
         cmocka_unit_test(torture_ssh_convert_datetime_format_to_timestamp),
+        cmocka_unit_test(torture_portable_timegm),
     };
 
     ssh_init();

@@ -2704,6 +2704,7 @@ ssh_convert_datetime_format_to_timestamp(const char *datetime,
     ZERO_STRUCT(tm);
 
     if (len != 8 && len != 12 && len != 14) {
+        SAFE_FREE(datetime_copy);
         SSH_LOG(SSH_LOG_DEBUG,
                 "Invalid datetime format: %s",
                 datetime);
@@ -2716,6 +2717,7 @@ ssh_convert_datetime_format_to_timestamp(const char *datetime,
                           &tm.tm_mon,
                           &tm.tm_mday);
     if (n_parsed < 3) {
+        SAFE_FREE(datetime_copy);
         SSH_LOG(SSH_LOG_TRACE, "Invalid datetime format: %s", datetime);
         return -1;
     }
@@ -2726,6 +2728,7 @@ ssh_convert_datetime_format_to_timestamp(const char *datetime,
                           &tm.tm_hour,
                           &tm.tm_min);
         if (n_parsed < 2) {
+            SAFE_FREE(datetime_copy);
             SSH_LOG(SSH_LOG_TRACE, "Invalid datetime format: %s", datetime);
             return -1;
         }
@@ -2736,6 +2739,7 @@ ssh_convert_datetime_format_to_timestamp(const char *datetime,
                           "%2d",
                           &tm.tm_sec);
         if (n_parsed < 1) {
+            SAFE_FREE(datetime_copy);
             SSH_LOG(SSH_LOG_TRACE, "Invalid datetime format: %s", datetime);
             return -1;
         }
