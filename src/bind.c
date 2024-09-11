@@ -144,6 +144,14 @@ ssh_bind ssh_bind_new(void) {
     ptr->common.log_verbosity = 0;
     ptr->usedns = true;
 
+    ptr->ca_signature_algorithms = strdup(DEFAULT_HOSTKEY_SIGNATURE_ALGOS);
+    if (ptr->ca_signature_algorithms == NULL) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while initializing default CASignatureAlgorithms");
+        SAFE_FREE(ptr);
+        return NULL;
+    }
+
     return ptr;
 }
 
@@ -419,6 +427,7 @@ void ssh_bind_free(ssh_bind sshbind){
   SAFE_FREE(sshbind->authorized_keys_file);
   SAFE_FREE(sshbind->authorized_principals_file);
   SAFE_FREE(sshbind->revoked_keys_file);
+  SAFE_FREE(sshbind->ca_signature_algorithms);
 
   for (i = 0; i < SSH_KEX_METHODS; i++) {
     if (sshbind->wanted_methods[i]) {
@@ -540,6 +549,14 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
             ssh_set_error_oom(sshbind);
             return SSH_ERROR;
         }
+    }
+
+    /* CASignatureAlgorithms is always set by default at sshbind creation */
+    session->server_opts.ca_signature_algorithms =
+        strdup(sshbind->ca_signature_algorithms);
+    if (session->server_opts.ca_signature_algorithms == NULL) {
+        ssh_set_error_oom(sshbind);
+        return SSH_ERROR;
     }
 
     session->server_opts.usedns = sshbind->usedns;

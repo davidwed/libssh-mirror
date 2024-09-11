@@ -306,13 +306,13 @@ int ssh_options_set_algo(ssh_session session,
 }
 
 /**
- * @brief Sets the allowed CA signature algorithms for the session
+ * @brief Sets the allowed CA signature algorithms for the session/sshbind
  * based on a specified list. If the list starts with '+', the algorithms
  * are appended to the default signature algorithms list. If it starts with '-',
  * they are removed.
  *
- * @param[in] session  The ssh_session for which to set the CA signature
- *                     algorithms.
+ * @param[in] error    The place where to store a possible error. This can be
+ *                     a `ssh_session` or a `ssh_bind`.
  *
  * @param[in] list     The list of CA signature algorithms to append or remove.
  *
@@ -323,9 +323,7 @@ int ssh_options_set_algo(ssh_session session,
  * @returns -1 on failure with an appropriate error message set in the session.
  */
 static int
-ssh_options_set_algo_ca_only(ssh_session session,
-                             const char *list,
-                             char **place)
+ssh_options_set_algo_ca_only(void *error, const char *list, char **place)
 {
     char *p = NULL, *tmp = NULL;
     const char *defaults = NULL;
@@ -335,8 +333,6 @@ ssh_options_set_algo_ca_only(ssh_session session,
         p = NULL;
         goto out;
     }
-
-    p = (char *)list;
 
     if (ssh_fips_mode()) {
         defaults = FIPS_ALLOWED_HOSTKEY_SIGNATURE_ALGOS;
@@ -361,7 +357,7 @@ ssh_options_set_algo_ca_only(ssh_session session,
     default:
         /* If the first character is a symbol then it's an invalid symbol */
         if (!isalnum(list[0])) {
-            ssh_set_error(session,
+            ssh_set_error(error,
                           SSH_REQUEST_DENIED,
                           "Character '%c' is not recognized by "
                           "CASignatureAlgorithms option",
@@ -385,7 +381,7 @@ ssh_options_set_algo_ca_only(ssh_session session,
 
 out:
     if (p == NULL) {
-        ssh_set_error(session,
+        ssh_set_error(error,
                       SSH_REQUEST_DENIED,
                       "No allowed algorithm for CASignatureAlgorithms (%s)",
                       list);
@@ -2377,6 +2373,19 @@ static int ssh_bind_set_algo(ssh_bind sshbind,
  *                        is set to true in the sshbind.
  *                        (bool)
  *
+ *                      - SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS
+ *                        Set which algorithms are allowed for signing of
+ *                        certificates by certificate authorities (CAs). \n
+ *                        (const char *, comma-separated list). The list can be
+ *                        prepended by +,- which will append/remove the listed
+ *                        algorithms to/from the default list. Giving an empty
+ *                        list after + and - will cause error.\n
+ *                        The default list is:\n
+ *                        ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,
+ *                        ecdsa-sha2-nistp521,sk-ssh-ed25519\@openssh.com,
+ *                        sk-ecdsa-sha2-nistp256\@openssh.com,
+ *                        rsa-sha2-512,rsa-sha2-256
+ *
  * @param  value        The value to set. This is a generic pointer and the
  *                      datatype which should be used is described at the
  *                      corresponding value of type above.
@@ -2973,6 +2982,22 @@ ssh_bind_options_set(ssh_bind sshbind,
         } else {
             bool *x = (bool *)value;
             sshbind->usedns = *x;
+        }
+        break;
+    case SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS:
+        v = value;
+        if (v == NULL || v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            rc = ssh_options_set_algo_ca_only(
+                sshbind,
+                v,
+                &sshbind->ca_signature_algorithms);
+            if (rc < 0) {
+                ssh_set_error_oom(sshbind);
+                return -1;
+            }
         }
         break;
     default:

@@ -281,6 +281,17 @@ match_principals_entries(ssh_cert cert, struct ssh_auth_options *opts)
  *
  * @param[in] remote_peer_hostname The hostname of the remote peer.
  *
+ * @param[in] allowed_ca_sign_algos A comma-separated list of allowed CA
+ *                       signature algorithms needed for validating the
+ *                       algorithm used for certificate signature.
+ *                       If `allowed_ca_sign_algos` is NULL, any certificate
+ *                       signature algorithm is considered valid.
+ *                       A non-NULL value restricts the validation to only those
+ *                       CA signature algorithms specified in the list.
+ *
+ * @note For plain keys there is no need to set `allowed_ca_sign_algos`. It can
+ * be NULL. When processing plain keys, any value set is ignored.
+ *
  * @returns 1 if a matching key is found and authorized.
  * @returns 0 if no match is found or the key is not authorized.
  * @returns -1 on errors.
@@ -292,7 +303,8 @@ ssh_authorized_keys_check_line(ssh_key key,
                                const char *user,
                                struct ssh_auth_options **auth_opts,
                                const char *remote_peer_ip,
-                               const char *remote_peer_hostname)
+                               const char *remote_peer_hostname,
+                               const char *allowed_ca_sign_algos)
 {
     int r, cmp = -1, rc = 0, i;
     struct ssh_tokens_st *auth_line_tokens = NULL;
@@ -440,12 +452,13 @@ ssh_authorized_keys_check_line(ssh_key key,
 
         /* If processing a certificate merge auth opts, if any */
         merged_auth_opts = ssh_auth_options_merge_cert_opts(key, authkey_opts);
-        SSH_AUTH_OPTS_FREE(authkey_opts);
+        //SSH_AUTH_OPTS_FREE(authkey_opts);
         if (merged_auth_opts == NULL) {
             SSH_LOG(SSH_LOG_TRACE,
                     "Error while merging authentication options between "
                     "option list (line %d) and certificate options",
                     count);
+            SSH_AUTH_OPTS_FREE(authkey_opts);
             rc = -1;
             goto out;
         }
@@ -459,6 +472,7 @@ ssh_authorized_keys_check_line(ssh_key key,
             /* Already verbose logging the reason */
             SSH_LOG(SSH_LOG_TRACE,
                     "Certificate refused by authentication options");
+            SSH_AUTH_OPTS_FREE(authkey_opts);
             SSH_AUTH_OPTS_FREE(merged_auth_opts);
             rc = 0;
             goto out;
@@ -467,14 +481,16 @@ ssh_authorized_keys_check_line(ssh_key key,
         /*
          * Always prefer user specified principals. If there is no certificate
          * principal matching at least one of the user specified principals
-         * then fail immediately.
+         * then fail immediately. Note that if authkey_opts contains
+         * principals then they have been merged while merging auth options.
          */
-        if (merged_auth_opts->cert_principals != NULL &&
+        if (authkey_opts->cert_principals != NULL &&
             !match_principals_entries(key->cert_data, merged_auth_opts)) {
             SSH_LOG(SSH_LOG_TRACE,
                     "No certificate principal matches user specified "
                     "principals at line %d",
                     count);
+            SSH_AUTH_OPTS_FREE(authkey_opts);
             SSH_AUTH_OPTS_FREE(merged_auth_opts);
             rc = 0;
             goto out;
@@ -484,7 +500,7 @@ ssh_authorized_keys_check_line(ssh_key key,
          * Set name to requested user only if the previous principal check did
          * not take place, otherwise leave it to NULL.
          */
-        if (merged_auth_opts->cert_principals == NULL) {
+        if (authkey_opts->cert_principals == NULL) {
             name = user;
         }
 
@@ -492,7 +508,11 @@ ssh_authorized_keys_check_line(ssh_key key,
          * Passing a NULL name as argument will skip the principal check since
          * it took place at previous step against the user specified principals.
          */
-        rc = pki_cert_validate(key, SSH_CERT_TYPE_USER, name, NULL);
+        SSH_AUTH_OPTS_FREE(authkey_opts);
+        rc = pki_cert_validate(key,
+                               SSH_CERT_TYPE_USER,
+                               name,
+                               allowed_ca_sign_algos);
         if (rc != SSH_OK) {
             /* Already verbose logging the reason */
             SSH_AUTH_OPTS_FREE(merged_auth_opts);
@@ -545,6 +565,17 @@ out:
  *
  * @param[in] remote_peer_hostname The hostname of the remote peer.
  *
+ * @param[in] allowed_ca_sign_algos A comma-separated list of allowed CA
+ *                       signature algorithms needed for validating the
+ *                       algorithm used for certificate signature.
+ *                       If `allowed_ca_sign_algos` is NULL, any certificate
+ *                       signature algorithm is considered valid.
+ *                       A non-NULL value restricts the validation to only those
+ *                       CA signature algorithms specified in the list.
+ *
+ * @note For plain keys there is no need to set `allowed_ca_sign_algos`. It can
+ * be NULL. When processing plain keys, any value set is ignored.
+ *
  * @returns 1 if a matching key is found and authorized.
  * @returns 0 if no match is found or the key is not authorized.
  * @returns -1 on errors.
@@ -555,7 +586,8 @@ ssh_authorized_keys_check_file(ssh_key key,
                                const char *user,
                                struct ssh_auth_options **auth_opts,
                                const char *remote_peer_ip,
-                               const char *remote_peer_hostname)
+                               const char *remote_peer_hostname,
+                               const char *allowed_ca_sign_algos)
 {
     char line[MAX_LINE_SIZE] = {0};
     unsigned int count = 0;
@@ -601,7 +633,8 @@ ssh_authorized_keys_check_file(ssh_key key,
                                                user,
                                                auth_opts,
                                                remote_peer_ip,
-                                               remote_peer_hostname);
+                                               remote_peer_hostname,
+                                               allowed_ca_sign_algos);
         if (found < 0) {
             fclose(fp);
             return -1;
@@ -636,6 +669,17 @@ ssh_authorized_keys_check_file(ssh_key key,
  *
  * @param[in] remote_peer_hostname The hostname of the remote peer.
  *
+ * @param[in] allowed_ca_sign_algos A comma-separated list of allowed CA
+ *                       signature algorithms needed for validating the
+ *                       algorithm used for certificate signature.
+ *                       If `allowed_ca_sign_algos` is NULL, any certificate
+ *                       signature algorithm is considered valid.
+ *                       A non-NULL value restricts the validation to only those
+ *                       CA signature algorithms specified in the list.
+ *
+ * @note For plain keys there is no need to set `allowed_ca_sign_algos`. It can
+ * be NULL. When processing plain keys, any value set is ignored.
+ *
  * @returns 1 if a matching principal is found and authorized.
  * @returns 0 if no match is found or the principal is not authorized.
  * @returns -1 on error.
@@ -646,7 +690,8 @@ ssh_authorized_principals_check_line(ssh_key cert,
                                      unsigned char count,
                                      struct ssh_auth_options **auth_opts,
                                      const char *remote_peer_ip,
-                                     const char *remote_peer_hostname)
+                                     const char *remote_peer_hostname,
+                                     const char *allowed_ca_sign_algos)
 {
     struct ssh_auth_options *principal_opts = NULL, *final_opts = NULL;
     char *p = NULL, *save_tok = NULL;
@@ -754,7 +799,10 @@ ssh_authorized_principals_check_line(ssh_key cert,
          * There is no need to pass a principal name at this point, as the
          * authorized principals file has already verified it.
          */
-        rc = pki_cert_validate(cert, SSH_CERT_TYPE_USER, NULL, NULL);
+        rc = pki_cert_validate(cert,
+                               SSH_CERT_TYPE_USER,
+                               NULL,
+                               allowed_ca_sign_algos);
         if (rc != SSH_OK) {
             /* Already verbose logging the reason */
             SSH_AUTH_OPTS_FREE(final_opts);
@@ -790,6 +838,17 @@ ssh_authorized_principals_check_line(ssh_key cert,
  *
  * @param[in] remote_peer_hostname The hostname of the remote peer.
  *
+ * @param[in] allowed_ca_sign_algos A comma-separated list of allowed CA
+ *                       signature algorithms needed for validating the
+ *                       algorithm used for certificate signature.
+ *                       If `allowed_ca_sign_algos` is NULL, any certificate
+ *                       signature algorithm is considered valid.
+ *                       A non-NULL value restricts the validation to only those
+ *                       CA signature algorithms specified in the list.
+ *
+ * @note For plain keys there is no need to set `allowed_ca_sign_algos`. It can
+ * be NULL. When processing plain keys, any value set is ignored.
+ *
  * @returns 1 if a matching principal is found and authorized.
  * @returns 0 if no match is found or the principal is not authorized.
  * @returns -1 on error.
@@ -799,7 +858,8 @@ ssh_authorized_principals_check_file(ssh_key cert,
                                      const char *filename,
                                      struct ssh_auth_options **auth_opts,
                                      const char *remote_peer_ip,
-                                     const char *remote_peer_hostname)
+                                     const char *remote_peer_hostname,
+                                     const char *allowed_ca_sign_algos)
 {
     char line[MAX_LINE_SIZE] = {0};
     unsigned int count = 0;
@@ -859,7 +919,8 @@ ssh_authorized_principals_check_file(ssh_key cert,
                                                      count,
                                                      auth_opts,
                                                      remote_peer_ip,
-                                                     remote_peer_hostname);
+                                                     remote_peer_hostname,
+                                                     allowed_ca_sign_algos);
         if (found < 0) {
             fclose(fp);
             return -1;

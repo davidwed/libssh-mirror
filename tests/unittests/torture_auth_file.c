@@ -246,7 +246,8 @@ torture_authorized_keys_cert_no_options(void **state)
                                         user,
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
 
@@ -260,7 +261,8 @@ torture_authorized_keys_cert_no_options(void **state)
                                         user,
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
 }
 
@@ -295,7 +297,8 @@ torture_authorized_keys_cert_principals(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -306,7 +309,8 @@ torture_authorized_keys_cert_principals(void **state)
                                         "john",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
 
     /*
@@ -322,7 +326,8 @@ torture_authorized_keys_cert_principals(void **state)
                                         "alice",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -332,7 +337,8 @@ torture_authorized_keys_cert_principals(void **state)
                                         "doe",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -348,7 +354,8 @@ torture_authorized_keys_cert_principals(void **state)
                                         "userX",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -366,7 +373,8 @@ torture_authorized_keys_cert_principals(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 }
@@ -402,7 +410,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -425,7 +434,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
 
     /* The first match is "libssh-test" -> no need to wrap it for Windows*/
     assert_int_equal(rc, 1);
@@ -447,7 +457,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
 #ifdef _WIN32
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
@@ -462,7 +473,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
 #ifdef _WIN32
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
@@ -485,7 +497,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -504,7 +517,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -524,7 +538,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 
@@ -544,7 +559,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 
@@ -558,7 +574,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 
@@ -574,7 +591,8 @@ torture_authorized_keys_cert_from_option(void **state)
                                         "bob",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 }
@@ -613,7 +631,8 @@ torture_authorized_keys_cert_command_option(void **state)
                                         "alice",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -630,7 +649,8 @@ torture_authorized_keys_cert_command_option(void **state)
                                         "alice",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     /*
      * The function returns -1 instead of a non-matching key (0). This is good
      * because it alerts the user that there is an error in how the "command"
@@ -675,9 +695,59 @@ torture_authorized_keys_cert_expiry_time_option(void **state)
                                         "alice",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
+}
+
+static void
+torture_authorized_keys_cert_ca_algos(void **state)
+{
+    /* CERTIFICATE INFO (ALL CERTS HAVE THE SAME KEY ID, SERIAL AND SIGNING CA)
+     * Principals:      (none)
+     * Validity:        forever
+     * Critical opts:   (none)
+     * Extensions:      permit-X11-forwarding, permit-agent-forwarding
+     *                  permit-port-forwarding, permit-pty, permit-user-rc
+     *                  (default)
+     */
+    struct test_auth_file *ta = *state;
+    int rc;
+
+    /* Test arguments */
+    /* cert-authority option is mandatory for authorizing a certificate */
+    const char *opt_list = "cert-authority";
+    const char *remote_ip = "not-needed";
+    const char *remote_hostname = "not-needed";
+    const char *user = "user";
+
+    /* Setup authorized_keys file and certificate as testing key */
+    setup_authorized_keys_file((void **)&ta, opt_list, true);
+    setup_test_key((void **)&ta, CERT_NO_ALL, true);
+
+    rc = ssh_authorized_keys_check_file(ta->test_key,
+                                        ta->auth_file,
+                                        user,
+                                        &ta->auth_opts,
+                                        remote_ip,
+                                        remote_hostname,
+                                        DEFAULT_HOSTKEY_SIGNATURE_ALGOS);
+    assert_int_equal(rc, 1);
+    SSH_AUTH_OPTS_FREE(ta->auth_opts);
+
+    /*
+     * The list of allowed CA signature algorithms does not include the
+     * certificate rsa-sha2-512
+     */
+    rc = ssh_authorized_keys_check_file(ta->test_key,
+                                        ta->auth_file,
+                                        user,
+                                        &ta->auth_opts,
+                                        remote_ip,
+                                        remote_hostname,
+                                        "ssh-ed25519,ecdsa-sha2-nistp521");
+    assert_int_equal(rc, 0);
 }
 
 static void
@@ -700,7 +770,8 @@ torture_authorized_keys_plain_key_no_options(void **state)
                                         "libssh_user",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -713,7 +784,8 @@ torture_authorized_keys_plain_key_no_options(void **state)
                                         "libssh_user",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 }
@@ -754,7 +826,8 @@ torture_authorized_keys_plain_key_from_option(void **state)
                                         "libssh_user",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
 
     /* The first match is "libssh-test" -> no need to wrap it for Windows*/
     assert_int_equal(rc, 1);
@@ -775,7 +848,8 @@ torture_authorized_keys_plain_key_from_option(void **state)
                                         "libssh_user",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
 #ifdef _WIN32
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
@@ -797,7 +871,8 @@ torture_authorized_keys_plain_key_from_option(void **state)
                                         "libssh_user",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -815,7 +890,8 @@ torture_authorized_keys_plain_key_from_option(void **state)
                                         "libssh_user",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -835,7 +911,8 @@ torture_authorized_keys_plain_key_from_option(void **state)
                                         "libssh_user",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 
@@ -849,7 +926,8 @@ torture_authorized_keys_plain_key_from_option(void **state)
                                         "libssh_user",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 }
@@ -884,7 +962,8 @@ torture_authorized_keys_plain_key_expiry_time_option(void **state)
                                         "libssh_user",
                                         &ta->auth_opts,
                                         remote_ip,
-                                        remote_hostname);
+                                        remote_hostname,
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 }
@@ -905,7 +984,8 @@ torture_authorized_keys_leading_spaces(void **state)
                                         "test",
                                         &ta->auth_opts,
                                         "unknown",
-                                        "unknown");
+                                        "unknown",
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -917,7 +997,8 @@ torture_authorized_keys_leading_spaces(void **state)
                                         "test",
                                         &ta->auth_opts,
                                         "unknown",
-                                        "unknown");
+                                        "unknown",
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -929,7 +1010,8 @@ torture_authorized_keys_leading_spaces(void **state)
                                         "test",
                                         &ta->auth_opts,
                                         "unknown",
-                                        "unknown");
+                                        "unknown",
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -941,7 +1023,8 @@ torture_authorized_keys_leading_spaces(void **state)
                                         "test",
                                         &ta->auth_opts,
                                         "unknown",
-                                        "unknown");
+                                        "unknown",
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -953,7 +1036,8 @@ torture_authorized_keys_leading_spaces(void **state)
                                         "test",
                                         &ta->auth_opts,
                                         "unknown",
-                                        "unknown");
+                                        "unknown",
+                                        NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -965,7 +1049,8 @@ torture_authorized_keys_leading_spaces(void **state)
                                         "test",
                                         &ta->auth_opts,
                                         "unknown",
-                                        "unknown");
+                                        "unknown",
+                                        NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 }
@@ -1007,7 +1092,8 @@ torture_authorized_principals_no_options(void **state)
                                               ta->auth_file,
                                               &ta->auth_opts,
                                               remote_ip,
-                                              remote_hostname);
+                                              remote_hostname,
+                                              NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 
@@ -1020,7 +1106,8 @@ torture_authorized_principals_no_options(void **state)
                                               ta->auth_file,
                                               &ta->auth_opts,
                                               remote_ip,
-                                              remote_hostname);
+                                              remote_hostname,
+                                              NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
@@ -1031,7 +1118,8 @@ torture_authorized_principals_no_options(void **state)
                                               ta->auth_file,
                                               &ta->auth_opts,
                                               remote_ip,
-                                              remote_hostname);
+                                              remote_hostname,
+                                              NULL);
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
 }
@@ -1059,7 +1147,8 @@ torture_authorized_principals_options(void **state)
                                               ta->auth_file,
                                               &ta->auth_opts,
                                               remote_ip,
-                                              remote_hostname);
+                                              remote_hostname,
+                                              NULL);
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     assert_string_equal(ta->auth_opts->authkey_from_addr_host, "93.85.12.58");
@@ -1076,7 +1165,8 @@ torture_authorized_principals_options(void **state)
                                               ta->auth_file,
                                               &ta->auth_opts,
                                               remote_ip,
-                                              remote_hostname);
+                                              remote_hostname,
+                                              NULL);
     assert_int_equal(rc, -1);
     assert_null(ta->auth_opts);
 
@@ -1087,7 +1177,8 @@ torture_authorized_principals_options(void **state)
                                               ta->auth_file,
                                               &ta->auth_opts,
                                               remote_ip,
-                                              remote_hostname);
+                                              remote_hostname,
+                                              NULL);
     assert_int_equal(rc, -1);
     assert_null(ta->auth_opts);
 
@@ -1099,7 +1190,8 @@ torture_authorized_principals_options(void **state)
                                               ta->auth_file,
                                               &ta->auth_opts,
                                               remote_ip,
-                                              remote_hostname);
+                                              remote_hostname,
+                                              NULL);
     assert_int_equal(rc, -1);
     assert_null(ta->auth_opts);
 }
@@ -1127,7 +1219,8 @@ torture_authorized_principals_invalid_key_type(void **state)
                                               ta->auth_file,
                                               &ta->auth_opts,
                                               remote_ip,
-                                              remote_hostname);
+                                              remote_hostname,
+                                              NULL);
     assert_int_equal(rc, -1);
     assert_null(ta->auth_opts);
 }
@@ -1154,6 +1247,10 @@ torture_run_tests(void)
             teardown_auth_file_state),
         cmocka_unit_test_setup_teardown(
             torture_authorized_keys_cert_expiry_time_option,
+            setup_auth_file_state,
+            teardown_auth_file_state),
+        cmocka_unit_test_setup_teardown(
+            torture_authorized_keys_cert_ca_algos,
             setup_auth_file_state,
             teardown_auth_file_state),
         cmocka_unit_test_setup_teardown(

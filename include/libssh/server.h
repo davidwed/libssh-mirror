@@ -66,6 +66,7 @@ enum ssh_bind_options_e {
     SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS,
     SSH_BIND_OPTIONS_REVOKED_KEYS,
     SSH_BIND_OPTIONS_USE_DNS,
+    SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
 };
 
 typedef struct ssh_bind_struct* ssh_bind;

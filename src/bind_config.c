@@ -706,6 +706,21 @@ ssh_bind_config_parse_line(ssh_bind bind,
         rc = -1;
         SSH_LOG(SSH_LOG_TRACE, "line %d: Failed to set UseDNS option", count);
         break;
+    case BIND_CFG_CA_SIGNATURE_ALGORITHMS:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(bind,
+                                      SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                                      p);
+            if (rc != 0) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "line %d: Failed to set CASignatureAlgorithms "
+                        "value '%s'",
+                        count,
+                        p);
+            }
+        }
+        break;
     case BIND_CFG_NOT_ALLOWED_IN_MATCH:
         SSH_LOG(SSH_LOG_DEBUG, "Option not allowed in Match block: %s, line: %d",
                 keyword, count);

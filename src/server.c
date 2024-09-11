@@ -109,7 +109,7 @@ int server_set_kex(ssh_session session)
 
 #define APPEND_TO_LIST(fmt, list, ...) \
         do { \
-            size_t ret; \
+            int ret; \
             ret = snprintf(list + list_len, \
                            len - list_len, \
                            fmt, \
@@ -117,11 +117,11 @@ int server_set_kex(ssh_session session)
             if (ret < 0) { \
                 return -1; \
             } \
-            if (ret >= (len - list_len)) { \
+            if ((size_t)ret >= (len - list_len)) { \
                 /* Handle buffer overflow, output was silently truncated */ \
                 return -1; \
             } \
-            list_len += ret; \
+            list_len += (size_t)ret; \
         } while (0)
 
     if (session->srv.ed25519_key != NULL) {
@@ -1361,8 +1361,7 @@ int ssh_send_keepalive(ssh_session session)
  * @returns -1 on errors.
  */
 static int
-user_cert_check_trusted_ca(ssh_key user_key,
-                           const char *trusted_user_ca_file)
+user_cert_check_trusted_ca(ssh_key user_key, const char *trusted_user_ca_file)
 {
     int found;
     char *ca_fp = NULL;
@@ -1427,6 +1426,8 @@ ssh_auth_user_key(ssh_session session, ssh_key user_key, const char *user)
         session->server_opts.trusted_user_ca_keys_file;
     char *auth_principals_file =
         session->server_opts.authorized_principals_file;
+    char *ca_signature_algorithms =
+        session->server_opts.ca_signature_algorithms;
     bool usedns = session->server_opts.usedns;
     char *user_key_fp = NULL, *ca_fp = NULL;
     char *remote_peer_hostname = NULL, *remote_peer_ip = NULL;
@@ -1536,7 +1537,8 @@ ssh_auth_user_key(ssh_session session, ssh_key user_key, const char *user)
                                                  user,
                                                  &auth_opts,
                                                  remote_peer_ip,
-                                                 remote_peer_hostname);
+                                                 remote_peer_hostname,
+                                                 ca_signature_algorithms);
 
         /* If allowed the key can be accepted */
         if (allowed) {
@@ -1580,7 +1582,8 @@ ssh_auth_user_key(ssh_session session, ssh_key user_key, const char *user)
                                                       auth_principals_file,
                                                       &auth_opts,
                                                       remote_peer_ip,
-                                                      remote_peer_hostname);
+                                                      remote_peer_hostname,
+                                                      ca_signature_algorithms);
             if (rc) {
                 /* Already verbose logging */
                 session->auth_opts = auth_opts;
@@ -1621,7 +1624,10 @@ ssh_auth_user_key(ssh_session session, ssh_key user_key, const char *user)
             goto out;
         }
 
-        rc = pki_cert_validate(user_key, SSH_CERT_TYPE_USER, user, NULL);
+        rc = pki_cert_validate(user_key,
+                               SSH_CERT_TYPE_USER,
+                               user,
+                               ca_signature_algorithms);
         if (rc != SSH_OK) {
             /* Already verbose logging the reason */
             SSH_AUTH_OPTS_FREE(auth_opts);

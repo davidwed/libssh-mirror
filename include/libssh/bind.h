@@ -65,6 +65,7 @@ struct ssh_bind_struct {
   char *authorized_principals_file;
   char *revoked_keys_file;
   bool usedns;
+  char *ca_signature_algorithms;
 };
 
 struct ssh_poll_handle_struct *ssh_bind_get_poll(struct ssh_bind_struct

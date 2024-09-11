@@ -584,7 +584,7 @@ session_setup(void **state)
 {
     struct test_server_st *tss = *state;
     struct torture_state *s = NULL;
-    int verbosity = 4;
+    int verbosity = torture_libssh_verbosity();
     const char *all_keytypes = NULL;
     bool b = false;
     int rc;
@@ -722,6 +722,12 @@ torture_cert_auth_only_authorized_keys_no_option(void **state)
     expected->opt_flags = PERMIT_X11_FORWARDING_OPT | PERMIT_USER_RC_OPT |
                           PERMIT_PORT_FORWARDING_OPT | PERMIT_PTY_OPT |
                           PERMIT_AGENT_FORWARDING_OPT;
+    expected->n_cert_principals = 1;
+    expected->cert_principals = calloc(1, sizeof(char *));
+    assert_non_null(expected->cert_principals);
+    expected->cert_principals[0] = strdup("libssh");
+    assert_non_null(expected->cert_principals[0]);
+
     tss->ss->expected_auth_opts = expected;
 
     /* Run server now */
@@ -874,6 +880,7 @@ torture_cert_auth_only_authorized_keys_principals_option(void **state)
 
     /* Restart and test a matching principal this time */
     ssh_disconnect(session);
+    ssh_free(session);
     torture_terminate_process(tss->state->srv_pidfile);
 
     /**--------------------------------------------------*/
@@ -907,6 +914,11 @@ torture_cert_auth_only_authorized_keys_principals_option(void **state)
     /**--------------------------------------------------*/
 
     /* Try auth now */
+    session_setup(state);
+    session = tss->state->ssh.session;
+    rc = ssh_options_set(session, SSH_OPTIONS_USER, SSHD_DEFAULT_USER);
+    assert_int_equal(rc, SSH_OK);
+
     rc = ssh_connect(session);
     assert_int_equal(rc, SSH_OK);
 
@@ -1006,6 +1018,7 @@ torture_cert_auth_only_authorized_keys_match_user(void **state)
 
     /* Restart and test a matching user this time */
     ssh_disconnect(session);
+    ssh_free(session);
     torture_terminate_process(tss->state->srv_pidfile);
 
     /**--------------------------------------------------*/
@@ -1015,6 +1028,12 @@ torture_cert_auth_only_authorized_keys_match_user(void **state)
     expected->opt_flags = PERMIT_X11_FORWARDING_OPT | PERMIT_USER_RC_OPT |
                           PERMIT_PORT_FORWARDING_OPT | PERMIT_PTY_OPT |
                           PERMIT_AGENT_FORWARDING_OPT;
+    expected->n_cert_principals = 1;
+    expected->cert_principals = calloc(1, sizeof(char *));
+    assert_non_null(expected->cert_principals);
+    expected->cert_principals[0] = strdup("userABCD");
+    assert_non_null(expected->cert_principals[0]);
+
     tss->ss->expected_auth_opts = expected;
 
     /* Run server now */
@@ -1022,6 +1041,8 @@ torture_cert_auth_only_authorized_keys_match_user(void **state)
     /**--------------------------------------------------*/
 
     /* Try auth now */
+    session_setup(state);
+    session = tss->state->ssh.session;
     rc = ssh_options_set(session, SSH_OPTIONS_USER, "userABCD");
     assert_int_equal(rc, SSH_OK);
 
@@ -1214,6 +1235,7 @@ torture_cert_auth_only_authorized_keys_source_address(void **state)
     SSH_KEY_FREE(privkey);
     SSH_KEY_FREE(cert);
     ssh_disconnect(session);
+    ssh_free(session);
     torture_terminate_process(tss->state->srv_pidfile);
 
     /**--------------------------------------------------*/
@@ -1226,6 +1248,13 @@ torture_cert_auth_only_authorized_keys_source_address(void **state)
                           PERMIT_PORT_FORWARDING_OPT | PERMIT_PTY_OPT |
                           PERMIT_AGENT_FORWARDING_OPT;
     expected->cert_source_address = strdup("127.0.0.0/8");
+
+    expected->n_cert_principals = 1;
+    expected->cert_principals = calloc(1, sizeof(char *));
+    assert_non_null(expected->cert_principals);
+    expected->cert_principals[0] = strdup("libssh");
+    assert_non_null(expected->cert_principals[0]);
+
     tss->ss->expected_auth_opts = expected;
 
     /* Run server now */
@@ -1255,6 +1284,11 @@ torture_cert_auth_only_authorized_keys_source_address(void **state)
     assert_return_code(rc, errno);
 
     /* Try auth now */
+    session_setup(state);
+    session = tss->state->ssh.session;
+    rc = ssh_options_set(session, SSH_OPTIONS_USER, SSHD_DEFAULT_USER);
+    assert_int_equal(rc, SSH_OK);
+
     rc = ssh_connect(session);
     assert_int_equal(rc, SSH_OK);
 
@@ -1276,6 +1310,7 @@ torture_cert_auth_only_authorized_keys_source_address(void **state)
 
     /* Restart and test also a matching "from" option */
     ssh_disconnect(session);
+    ssh_free(session);
     torture_terminate_process(tss->state->srv_pidfile);
 
     setenv("TORTURE_SKIP_CLEANUP", "1", 1);
@@ -1301,6 +1336,11 @@ torture_cert_auth_only_authorized_keys_source_address(void **state)
     /**--------------------------------------------------*/
 
     /* Try auth now */
+    session_setup(state);
+    session = tss->state->ssh.session;
+    rc = ssh_options_set(session, SSH_OPTIONS_USER, SSHD_DEFAULT_USER);
+    assert_int_equal(rc, SSH_OK);
+
     rc = ssh_connect(session);
     assert_int_equal(rc, SSH_OK);
 
@@ -1545,6 +1585,7 @@ torture_cert_auth_trusted_user_ca(void **state)
 
     /* Restart and test a matching key in TrustedUserCAKeys file */
     ssh_disconnect(session);
+    ssh_free(session);
     torture_terminate_process(tss->state->srv_pidfile);
 
     /**--------------------------------------------------*/
@@ -1561,6 +1602,12 @@ torture_cert_auth_trusted_user_ca(void **state)
     expected->opt_flags = PERMIT_X11_FORWARDING_OPT | PERMIT_USER_RC_OPT |
                           PERMIT_PORT_FORWARDING_OPT | PERMIT_PTY_OPT |
                           PERMIT_AGENT_FORWARDING_OPT;
+    expected->n_cert_principals = 1;
+    expected->cert_principals = calloc(1, sizeof(char *));
+    assert_non_null(expected->cert_principals);
+    expected->cert_principals[0] = strdup("libssh");
+    assert_non_null(expected->cert_principals[0]);
+
     tss->ss->expected_auth_opts = expected;
 
     /* Run server now */
@@ -1568,6 +1615,11 @@ torture_cert_auth_trusted_user_ca(void **state)
     /**--------------------------------------------------*/
 
     /* Try auth now */
+    session_setup(state);
+    session = tss->state->ssh.session;
+    rc = ssh_options_set(session, SSH_OPTIONS_USER, SSHD_DEFAULT_USER);
+    assert_int_equal(rc, SSH_OK);
+
     rc = ssh_connect(session);
     assert_int_equal(rc, SSH_OK);
 
@@ -1672,6 +1724,7 @@ torture_cert_auth_trusted_user_ca_and_authorized_principals_file(void **state)
 
     /* Restart and test a matching principal in AuthorizedPrincipals file */
     ssh_disconnect(session);
+    ssh_free(session);
     torture_terminate_process(tss->state->srv_pidfile);
 
     /**--------------------------------------------------*/
@@ -1687,6 +1740,12 @@ torture_cert_auth_trusted_user_ca_and_authorized_principals_file(void **state)
     expected->opt_flags = PERMIT_X11_FORWARDING_OPT | PERMIT_USER_RC_OPT |
                           PERMIT_PORT_FORWARDING_OPT | PERMIT_PTY_OPT |
                           PERMIT_AGENT_FORWARDING_OPT;
+    expected->n_cert_principals = 1;
+    expected->cert_principals = calloc(1, sizeof(char *));
+    assert_non_null(expected->cert_principals);
+    expected->cert_principals[0] = strdup("libssh");
+    assert_non_null(expected->cert_principals[0]);
+
     expected->force_command = strdup("/usr/bin/date");
     assert_non_null(expected->force_command);
     tss->ss->expected_auth_opts = expected;
@@ -1696,6 +1755,11 @@ torture_cert_auth_trusted_user_ca_and_authorized_principals_file(void **state)
     /**--------------------------------------------------*/
 
     /* Try auth now */
+    session_setup(state);
+    session = tss->state->ssh.session;
+    rc = ssh_options_set(session, SSH_OPTIONS_USER, SSHD_DEFAULT_USER);
+    assert_int_equal(rc, SSH_OK);
+
     rc = ssh_connect(session);
     assert_int_equal(rc, SSH_OK);
 
