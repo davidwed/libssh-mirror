@@ -272,7 +272,7 @@ static void torture_pki_verify_mismatch(void **state)
 
             rc = ssh_pki_generate(sig_type, skey_attrs.size_arg, &key);
             assert_true(rc == SSH_OK);
-            assert_non_null(key);
+            assert_ptr_not_equal(key, NULL);
             assert_int_equal(key->type, sig_type);
             assert_string_equal(key->type_c, skey_attrs.type_c);
             bits = ssh_key_size(key);
@@ -378,7 +378,7 @@ static void torture_pki_verify_mismatch(void **state)
                                                   import_sig->hash_type);
                 if (ssh_key_type_plain(verify_pubkey->type) == sig_type) {
                     /* Importing with the same key type should work */
-                    assert_non_null(new_sig);
+                    assert_ptr_not_equal(new_sig, NULL);
                     assert_int_equal(new_sig->type, key->type);
                     assert_string_equal(new_sig->type_c, skey_attrs.sig_type_c);
 

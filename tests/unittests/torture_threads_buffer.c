@@ -130,7 +130,8 @@ static void *thread_growing_buffer_shifting(void *threadid)
     for (i = 0; i < BUFFER_LIMIT; ++i) {
         ssh_buffer_get_u8(buffer,&c);
         ssh_buffer_add_data(buffer,"A",1);
-        if (buffer != NULL && buffer->used >= 128) {
+        assert_ptr_not_equal(buffer, NULL);
+        if (buffer->used >= 128) {
             if (ssh_buffer_get_len(buffer) * 4 < buffer->allocated) {
                 assert_true(ssh_buffer_get_len(buffer) * 4 >= buffer->allocated);
                 /* Teardown */

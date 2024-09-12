@@ -559,7 +559,7 @@ static void torture_pki_ecdsa_duplicate_then_demote(void **state)
 
     rc = ssh_pki_export_privkey_to_pubkey(privkey_dup, &pubkey);
     assert_int_equal(rc, 0);
-    assert_non_null(pubkey);
+    assert_ptr_not_equal(pubkey, NULL);
     assert_int_equal(pubkey->ecdsa_nid, privkey->ecdsa_nid);
 
     SSH_KEY_FREE(pubkey);
