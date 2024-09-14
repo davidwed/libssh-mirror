@@ -115,6 +115,7 @@ enum ssh_keytypes_e ssh_key_type_from_signature_name(const char *name);
 enum ssh_keytypes_e ssh_key_type_plain(enum ssh_keytypes_e type);
 enum ssh_digest_e ssh_key_type_to_hash(ssh_session session,
                                        enum ssh_keytypes_e type);
+enum ssh_digest_e key_type_to_hash(enum ssh_keytypes_e type);
 enum ssh_digest_e ssh_key_hash_from_name(const char *name);
 
 #define is_ecdsa_key_type(t) \
