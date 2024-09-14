@@ -480,6 +480,298 @@ static void torture_knownhosts_new_file(void **state)
     SAFE_FREE(tmp_dir);
 }
 
+static void
+torture_knownhosts_get_known_hosts_entry(void **state)
+{
+    struct torture_state *s = *state;
+    ssh_session session = s->ssh.session;
+    char *known_hosts_file = NULL;
+    char tmp_file[1024] = {0};
+    char key_file[1024] = {0};
+    ssh_key expected_key = NULL;
+    enum ssh_known_hosts_e found;
+    struct ssh_knownhosts_entry *entry = NULL;
+    FILE *file = NULL;
+    int rc, cmp;
+
+    snprintf(key_file,
+             sizeof(key_file),
+             "%s/%s",
+             s->socket_dir,
+             "test_server_key");
+    torture_write_file(key_file,
+                       torture_get_testkey_pub(SSH_KEYTYPE_ECDSA_P521));
+    rc = ssh_pki_import_pubkey_file(key_file, &expected_key);
+    assert_int_equal(rc, SSH_OK);
+    assert_non_null(expected_key);
+
+    snprintf(tmp_file,
+             sizeof(tmp_file),
+             "%s/%s",
+             s->socket_dir,
+             TMP_FILE_TEMPLATE);
+
+    known_hosts_file = torture_create_temp_file(tmp_file);
+    assert_non_null(known_hosts_file);
+
+    file = fopen(known_hosts_file, "w");
+    assert_non_null(file);
+    fprintf(file,
+            "127.0.0.10 %s\n"
+            "127.0.0.10,libssh %s\n"
+            "127.0.0.10,hostname %s\n"
+            "127.0.0.200 %s\n",
+            torture_get_testkey_pub(SSH_KEYTYPE_ECDSA_P521),
+            torture_get_testkey_pub(SSH_KEYTYPE_ECDSA_P521),
+            torture_get_testkey_pub(SSH_KEYTYPE_ECDSA_P521),
+            torture_get_testkey_pub(SSH_KEYTYPE_RSA));
+    fclose(file);
+
+    rc = ssh_options_set(session, SSH_OPTIONS_KNOWNHOSTS, known_hosts_file);
+    assert_ssh_return_code(session, rc);
+
+    rc = ssh_connect(session);
+    assert_ssh_return_code(session, rc);
+
+    found = ssh_session_get_known_hosts_entry(session, &entry);
+    assert_non_null(entry);
+
+    assert_string_equal(entry->hostname, "127.0.0.10");
+    /*
+     * To know if `ssh_known_hosts_check_server_key` stops at the first match
+     * found then unparsed field should be equal to "127.0.0.10".
+     */
+    assert_string_equal(entry->unparsed, "127.0.0.10");
+    cmp = ssh_key_cmp(entry->publickey, expected_key, SSH_KEY_CMP_PUBLIC);
+    assert_int_equal(cmp, 0);
+    assert_string_equal(entry->comment, "aris@kalix86");
+
+    assert_int_equal(found, SSH_KNOWN_HOSTS_OK);
+
+    SSH_KNOWNHOSTS_ENTRY_FREE(entry);
+    SSH_KEY_FREE(expected_key);
+    SAFE_FREE(known_hosts_file);
+}
+
+static void
+torture_knownhosts_get_known_hosts_entry_revoked(void **state)
+{
+    struct torture_state *s = *state;
+    ssh_session session = s->ssh.session;
+    char *known_hosts_file = NULL;
+    char tmp_file[1024] = {0};
+    enum ssh_known_hosts_e found;
+    struct ssh_knownhosts_entry *entry = NULL;
+    FILE *file = NULL;
+    int rc;
+
+    snprintf(tmp_file,
+             sizeof(tmp_file),
+             "%s/%s",
+             s->socket_dir,
+             TMP_FILE_TEMPLATE);
+
+    known_hosts_file = torture_create_temp_file(tmp_file);
+    assert_non_null(known_hosts_file);
+
+    file = fopen(known_hosts_file, "w");
+    assert_non_null(file);
+    fprintf(file,
+            "127.0.0.10 %s\n"
+            "127.0.0.10 %s\n"
+            "@revoked 127.0.0.10 %s\n"
+            "127.0.0.200 %s\n",
+            torture_get_testkey_pub(SSH_KEYTYPE_ECDSA_P521),
+            torture_get_testkey_pub(SSH_KEYTYPE_ECDSA_P521),
+            torture_get_testkey_pub(SSH_KEYTYPE_ECDSA_P521),
+            torture_get_testkey_pub(SSH_KEYTYPE_RSA));
+    fclose(file);
+
+    rc = ssh_options_set(session, SSH_OPTIONS_KNOWNHOSTS, known_hosts_file);
+    assert_ssh_return_code(session, rc);
+
+    rc = ssh_connect(session);
+    assert_ssh_return_code(session, rc);
+
+    /* The 3rd entry should revoke the previous matching key (the first one) */
+    found = ssh_session_get_known_hosts_entry(session, &entry);
+    assert_null(entry);
+    assert_int_equal(found, SSH_KNOWN_HOSTS_REVOKED);
+
+    SAFE_FREE(known_hosts_file);
+}
+
+static int
+update_server_config_host_cert(void **state, enum ssh_keytypes_e cert_type)
+{
+    struct torture_state *s = NULL;
+    char host_certificate[1024];
+    char additional_config[4096];
+    const char *cert = NULL;
+
+    s = *state;
+
+    snprintf(host_certificate,
+             sizeof(host_certificate),
+             "%s/sshd/ssh_host_key-cert.pub",
+             s->socket_dir);
+
+    cert = torture_get_testkey_host_cert(cert_type);
+
+    if (cert == NULL) {
+        return SSH_ERROR;
+    }
+
+    torture_write_file(host_certificate, cert);
+
+    snprintf(additional_config,
+             sizeof(additional_config),
+             "HostCertificate %s",
+             host_certificate);
+
+    return torture_update_sshd_config(state, additional_config);
+}
+
+static void
+torture_knownhosts_get_known_hosts_entry_cert(void **state)
+{
+    struct torture_state *s = *state;
+    ssh_session session = s->ssh.session;
+    char *known_hosts_file = NULL;
+    char tmp_file[1024] = {0};
+    char key_file[1024] = {0};
+    ssh_key expected_key = NULL;
+    enum ssh_known_hosts_e found;
+    struct ssh_knownhosts_entry *entry = NULL;
+    FILE *file = NULL;
+    int rc, cmp;
+
+    rc = update_server_config_host_cert(state, SSH_KEYTYPE_ECDSA_P521_CERT01);
+    assert_int_equal(rc, SSH_OK);
+
+    snprintf(key_file,
+             sizeof(key_file),
+             "%s/%s",
+             s->socket_dir,
+             "test_server_key");
+    torture_write_file(key_file, torture_get_testkey_host_ca_public());
+    rc = ssh_pki_import_pubkey_file(key_file, &expected_key);
+    assert_int_equal(rc, SSH_OK);
+    assert_non_null(expected_key);
+
+    snprintf(tmp_file,
+             sizeof(tmp_file),
+             "%s/%s",
+             s->socket_dir,
+             TMP_FILE_TEMPLATE);
+
+    known_hosts_file = torture_create_temp_file(tmp_file);
+    assert_non_null(known_hosts_file);
+
+    file = fopen(known_hosts_file, "w");
+    assert_non_null(file);
+    fprintf(file,
+            "127.0.0.10 %s\n"
+            "@cert-authority 127.0.0.10 %s\n"
+            "127.0.0.200 %s\n"
+            "@cert-authority 127.0.0.10,libssh %s\n",
+            torture_get_testkey_pub(SSH_KEYTYPE_ECDSA_P521),
+            torture_get_testkey_host_ca_public(),
+            torture_get_testkey_pub(SSH_KEYTYPE_RSA),
+            torture_get_testkey_host_ca_public());
+    fclose(file);
+
+    rc = ssh_options_set(session, SSH_OPTIONS_KNOWNHOSTS, known_hosts_file);
+    assert_ssh_return_code(session, rc);
+
+    rc = ssh_connect(session);
+    assert_ssh_return_code(session, rc);
+
+    found = ssh_session_get_known_hosts_entry(session, &entry);
+    assert_non_null(entry);
+
+    assert_string_equal(entry->hostname, "127.0.0.10");
+    /*
+     * To know if `ssh_known_hosts_check_server_key` stops at the first match
+     * found then unparsed field should be equal to "127.0.0.10".
+     */
+    assert_string_equal(entry->unparsed, "127.0.0.10");
+    cmp = ssh_key_cmp(entry->publickey, expected_key, SSH_KEY_CMP_PUBLIC);
+    assert_int_equal(cmp, 0);
+    assert_string_equal(entry->comment, "host_ca");
+
+    assert_int_equal(found, SSH_KNOWN_HOSTS_OK);
+
+    SSH_KNOWNHOSTS_ENTRY_FREE(entry);
+    SSH_KEY_FREE(expected_key);
+    SAFE_FREE(known_hosts_file);
+}
+
+static void
+torture_knownhosts_get_known_hosts_entry_cert_revoked_ca(void **state)
+{
+    struct torture_state *s = *state;
+    ssh_session session = s->ssh.session;
+    char *known_hosts_file = NULL;
+    char tmp_file[1024] = {0};
+    char key_file[1024] = {0};
+    ssh_key expected_key = NULL;
+    enum ssh_known_hosts_e found;
+    struct ssh_knownhosts_entry *entry = NULL;
+    FILE *file = NULL;
+    int rc;
+
+    rc = update_server_config_host_cert(state, SSH_KEYTYPE_ECDSA_P521_CERT01);
+    assert_int_equal(rc, SSH_OK);
+
+    snprintf(key_file,
+             sizeof(key_file),
+             "%s/%s",
+             s->socket_dir,
+             "test_server_key");
+    torture_write_file(key_file, torture_get_testkey_host_ca_public());
+    rc = ssh_pki_import_pubkey_file(key_file, &expected_key);
+    assert_int_equal(rc, SSH_OK);
+    assert_non_null(expected_key);
+
+    snprintf(tmp_file,
+             sizeof(tmp_file),
+             "%s/%s",
+             s->socket_dir,
+             TMP_FILE_TEMPLATE);
+
+    known_hosts_file = torture_create_temp_file(tmp_file);
+    assert_non_null(known_hosts_file);
+
+    /* Test revoked CA after a valid CA */
+    file = fopen(known_hosts_file, "w");
+    assert_non_null(file);
+    fprintf(file,
+            "@cert-authority 127.0.0.10 %s\n"
+            "127.0.0.10 %s\n"
+            "@revoked 127.0.0.10 %s\n"
+            "127.0.0.200 %s\n",
+            torture_get_testkey_host_ca_public(),
+            torture_get_testkey_pub(SSH_KEYTYPE_ECDSA_P521),
+            torture_get_testkey_host_ca_public(),
+            torture_get_testkey_pub(SSH_KEYTYPE_RSA));
+    fclose(file);
+
+    rc = ssh_options_set(session, SSH_OPTIONS_KNOWNHOSTS, known_hosts_file);
+    assert_ssh_return_code(session, rc);
+
+    rc = ssh_connect(session);
+    assert_ssh_return_code(session, rc);
+
+    found = ssh_session_get_known_hosts_entry(session, &entry);
+    assert_null(entry);
+
+    assert_int_equal(found, SSH_KNOWN_HOSTS_REVOKED);
+
+    SSH_KEY_FREE(expected_key);
+    SAFE_FREE(known_hosts_file);
+}
+
 int torture_run_tests(void) {
     int rc;
     struct CMUnitTest tests[] = {
@@ -507,6 +799,22 @@ int torture_run_tests(void) {
         cmocka_unit_test_setup_teardown(torture_knownhosts_new_file,
                                         session_setup,
                                         session_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_knownhosts_get_known_hosts_entry,
+            session_setup,
+            session_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_knownhosts_get_known_hosts_entry_revoked,
+            session_setup,
+            session_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_knownhosts_get_known_hosts_entry_cert,
+            session_setup,
+            session_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_knownhosts_get_known_hosts_entry_cert_revoked_ca,
+            session_setup,
+            session_teardown),
     };
 
     ssh_init();

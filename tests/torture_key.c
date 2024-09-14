@@ -40,11 +40,44 @@ enum torture_cert_type_e {
 };
 
 /****************************************************************************
- * HOST CA KEY (ED25519). CA key signing all host certificate types.
+ * HOST CA KEY (RSA2048). CA key signing all host certificate types.
  ****************************************************************************/
-static const char torture_ed25119_host_ca[] =
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMJ2d4Qaklic/2Si7W3GpM2m5doIR3"
-    "GJtf6jN4xFjbHg efe@rollo-tp";
+static const char torture_rsa_host_ca[] =
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDXzAm7Y8e4gNrSjaTDoFOEyxaO17c"
+    "sVNolSJbgoI9xPVS94f7M0M8PT+qLmTfFZHDErKxMtK42dX5VndOWfmpuz9yvDZjpPa"
+    "Z72OOU4+lHKQVMvqmq693Bl2HaFNL8g7GENv45y4c7mZkC5pCFyAf7gNqJFh5PTE6s2"
+    "JhmYpe0Ui3JLIkZFs0FhkC7P29nHZ+VXMaYKCr4ZEETmG9my3Lr8N8vIKu1DpWQx1vA"
+    "sTRHwh1iR+CHo1Jzmfe/nU9711U0WpBc8hTl4ljxuxEsICzSmwEUgy2nRV5Wzpp0biP"
+    "8UUULrrRJVTWivjrfcAy1rURihs9LvMPzZ21qEuywlBB5 host_ca";
+
+static const char torture_rsa_private_host_ca[] =
+    "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+    "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdzc2gtcn\n"
+    "NhAAAAAwEAAQAAAQEA18wJu2PHuIDa0o2kw6BThMsWjte3LFTaJUiW4KCPcT1UveH+zNDP\n"
+    "D0/qi5k3xWRwxKysTLSuNnV+VZ3Tln5qbs/crw2Y6T2me9jjlOPpRykFTL6pquvdwZdh2h\n"
+    "TS/IOxhDb+OcuHO5mZAuaQhcgH+4DaiRYeT0xOrNiYZmKXtFItySyJGRbNBYZAuz9vZx2f\n"
+    "lVzGmCgq+GRBE5hvZsty6/DfLyCrtQ6VkMdbwLE0R8IdYkfgh6NSc5n3v51Pe9dVNFqQXP\n"
+    "IU5eJY8bsRLCAs0psBFIMtp0VeVs6adG4j/FFFC660SVU1or4633AMta1EYobPS7zD82dt\n"
+    "ahLssJQQeQAAA8CYmSaImJkmiAAAAAdzc2gtcnNhAAABAQDXzAm7Y8e4gNrSjaTDoFOEyx\n"
+    "aO17csVNolSJbgoI9xPVS94f7M0M8PT+qLmTfFZHDErKxMtK42dX5VndOWfmpuz9yvDZjp\n"
+    "PaZ72OOU4+lHKQVMvqmq693Bl2HaFNL8g7GENv45y4c7mZkC5pCFyAf7gNqJFh5PTE6s2J\n"
+    "hmYpe0Ui3JLIkZFs0FhkC7P29nHZ+VXMaYKCr4ZEETmG9my3Lr8N8vIKu1DpWQx1vAsTRH\n"
+    "wh1iR+CHo1Jzmfe/nU9711U0WpBc8hTl4ljxuxEsICzSmwEUgy2nRV5Wzpp0biP8UUULrr\n"
+    "RJVTWivjrfcAy1rURihs9LvMPzZ21qEuywlBB5AAAAAwEAAQAAAQAXRbgj9yQOFAllTSTA\n"
+    "ey0epFdLstxcgc8f17b7xR0LGZHmw3Va6cb20AfLo8u1tDoMH9IaGJ80HNIx0gpET+BTEI\n"
+    "QsdcMwnjcy4oZSo4ygIb6iUuqR1guNifGh1v6VAG/XwiWDHp24Mf2kKDDcWKDxwOjwgUvm\n"
+    "AeT3M4ml+wqAxexVbFf91mdWNQCaxubU7OBfRKiebKw2H9ABpVeGIDdEzSB1FIGcFp5hBS\n"
+    "fTJVInb5diW1D/doKoTeRixbsySIDGfz3t5zo3C0R0pMWtbLfhai1XCuaJmq3g6TacPbfK\n"
+    "NtPkL787tTjqOQH4A6U62N8nL+mT+VaNa8BjcsSIs4dtAAAAgQDUl9Qvj/t4yoDF8UMl1e\n"
+    "KZv8hN/9R7EQIu6M3hZIvLv1oNeYSMv96eqOD/0IBAnihqYZVYmV9aWJ4ic6ZZEo6pjeUg\n"
+    "y4GoP5UIhDUndUdL9BOBszphny7T4a8nUtWCwDGtelzM1aSn0F5kaYlxCunmFodNOqKlRW\n"
+    "wvPNIb8kd6XAAAAIEA8lLdQnae0i4mOFW+leiRBUOrMypCXvE+iHyV/OyXKSIs3JktI/Pl\n"
+    "+VU0z58f7hc3I7hK1CFOQ29emaon6+1sD13fabCqgizJOrlY7YtCkcJEcS9F5+JCykBAYb\n"
+    "aF1A72l//HvV6LwmtQSGWGAsOnEQ4o/lPrKmEjT26o3YK2vh0AAACBAOP56WhnbrXF7npo\n"
+    "3yM6aQXtEiwGVze6nJ7Pqht+fy2+V335QtstQrVms4FDVD/QgzG8XQC1WQePzqTKQDDNIy\n"
+    "VZAujWtObKd3bfwHAHdwtaTI5P2MQLXHqxqwaIRUWdoLkpb3BG2le3w0bOgP+hvKwR1d6p\n"
+    "5IGXwrmZCGPv5b0NAAAAB2hvc3RfY2EBAgM=\n"
+    "-----END OPENSSH PRIVATE KEY-----";
 
 /****************************************************************************
  * USER CA KEY (RSA2048). CA key signing all user certificate types.
@@ -323,31 +356,49 @@ static const char torture_rsa_testkey_user_cert[] =
 
 static const char torture_rsa_testkey_host_cert[] =
     "ssh-rsa-cert-v01@openssh.com AAAAHHNzaC1yc2EtY2VydC12MDFAb3BlbnNz"
-    "aC5jb20AAAAgPCLOeAwpEh6+/YqtxYbRotclCFsn6gzcXgznvwep1+QAAAADAQABA"
+    "aC5jb20AAAAg/c7TBl1DzZHbEDKkxH0xwMv787cFOiLS4LqqHKezqaQAAAADAQABA"
     "AABAQCsA5ERRaUFckApnmEAFjLGdFrINk/Vsl4ts9Ur6enF6auEfJmCN1tjcAOi34"
     "lHJaO+WXbDYYj7duW3SP7H9lbCMwq79BhzJxinkcvTWCjE7G66xluL4qIdEYHrPQQ"
     "x1cztTzZTuUD+P/8fJmmnIONQOeJZptdAmB7ySwZcZOIV4An/rzu5X4klyMY/EAYV"
     "DHPKOK1/8Wsv1LRYYplvKp4YPPJ4FnU0si5qI45HIsZJbh24csM3vwSawmfCqDaAl"
     "CZFJoPgE1kyO1t+IVxIv1TDhdAVOxa6BQMRjUBThzmDXWeHMfMGL2ow63kPOtlCkP"
     "iPSADYs4ekeGg52DVm4esZAAAAAAAAAAAAAAACAAAACjEyNy4wLjAuMTAAAAAAAAA"
-    "AAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg"
-    "wnZ3hBqSWJz/ZKLtbcakzabl2ghHcYm1/qM3jEWNseAAAABTAAAAC3NzaC1lZDI1N"
-    "TE5AAAAQKjK53AJ0bReq5K8rUnkwcYAjFsRmsNN8bG3CQnh1xeg0M/IGOjOs75o4Z"
-    "7LIMuxnXLxZakvBzomLSwM5RGWdQU= aris@aris-air";
+    "AAAAAAAD//////////wAAAAAAAAAAAAAAAAAAARcAAAAHc3NoLXJzYQAAAAMBAAEA"
+    "AAEBANfMCbtjx7iA2tKNpMOgU4TLFo7XtyxU2iVIluCgj3E9VL3h/szQzw9P6ouZN"
+    "8VkcMSsrEy0rjZ1flWd05Z+am7P3K8NmOk9pnvY45Tj6UcpBUy+qarr3cGXYdoU0v"
+    "yDsYQ2/jnLhzuZmQLmkIXIB/uA2okWHk9MTqzYmGZil7RSLcksiRkWzQWGQLs/b2c"
+    "dn5VcxpgoKvhkQROYb2bLcuvw3y8gq7UOlZDHW8CxNEfCHWJH4IejUnOZ97+dT3vX"
+    "VTRakFzyFOXiWPG7ESwgLNKbARSDLadFXlbOmnRuI/xRRQuutElVNaK+Ot9wDLWtR"
+    "GKGz0u8w/NnbWoS7LCUEHkAAAEUAAAADHJzYS1zaGEyLTUxMgAAAQCY5aWkL71alL"
+    "FTRExkJ4T6F52FK/GC2EPf109dYSZmHnE4RWKjZwmQ5p1nS1IcD65exoRs9l4jcG+"
+    "KwxM2E9qJ3imjiH6dquZ0uxvnQGuWQrL5099N7BhNzFdbVl+FhIpK5HxhF+P7VNWv"
+    "WTYLcMCA+ls5oMH6uQkcmRAwDiW3LsjsIbBtANdUa7HDWefUZoARKzWAGPTIF5yoZ"
+    "ffc3pGOjRXzar4TCxsrxKUy32dUIlmTrdikKZ5Sil4aWDYqgANnbebiDm367zMpRh"
+    "YhxTol7c3QFP8mJaRoi/SiuWPGpZdJxX9aZ+OR37csnaTPcgKFBMTwLUOJaDR4zfh"
+    "G/c5+ aris@aris-air";
 
 static const char torture_rsa_testkey_expired_host_cert[] =
     "ssh-rsa-cert-v01@openssh.com AAAAHHNzaC1yc2EtY2VydC12MDFAb3BlbnNz"
-    "aC5jb20AAAAg0SwjufJNxqYL919nPBWH/iqsCvlLlMIKIN6OecFbKKsAAAADAQABA"
+    "aC5jb20AAAAg6nIPVyGDATKG+lLYDcR3XvC2G8BnPQwigt8bW0AP8hoAAAADAQABA"
     "AABAQCsA5ERRaUFckApnmEAFjLGdFrINk/Vsl4ts9Ur6enF6auEfJmCN1tjcAOi34"
     "lHJaO+WXbDYYj7duW3SP7H9lbCMwq79BhzJxinkcvTWCjE7G66xluL4qIdEYHrPQQ"
     "x1cztTzZTuUD+P/8fJmmnIONQOeJZptdAmB7ySwZcZOIV4An/rzu5X4klyMY/EAYV"
     "DHPKOK1/8Wsv1LRYYplvKp4YPPJ4FnU0si5qI45HIsZJbh24csM3vwSawmfCqDaAl"
     "CZFJoPgE1kyO1t+IVxIv1TDhdAVOxa6BQMRjUBThzmDXWeHMfMGL2ow63kPOtlCkP"
     "iPSADYs4ekeGg52DVm4esZAAAAAAAAAAAAAAACAAAACjEyNy4wLjAuMTAAAAAAAAA"
-    "AADaMAfAAAAAAOGvj8AAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg"
-    "wnZ3hBqSWJz/ZKLtbcakzabl2ghHcYm1/qM3jEWNseAAAABTAAAAC3NzaC1lZDI1N"
-    "TE5AAAAQKSx6XEOUpQEHhKqjkv9sDpi+IfTa4ZARiY6LIpB0WCKzG996MKvRtfp9U"
-    "0oX7cFe6uupZhj561OzKNP6rpFEQ8= aris@aris-air";
+    "AADaMAfAAAAAAOGvj8AAAAAAAAAAAAAAAAAAAARcAAAAHc3NoLXJzYQAAAAMBAAEA"
+    "AAEBANfMCbtjx7iA2tKNpMOgU4TLFo7XtyxU2iVIluCgj3E9VL3h/szQzw9P6ouZN"
+    "8VkcMSsrEy0rjZ1flWd05Z+am7P3K8NmOk9pnvY45Tj6UcpBUy+qarr3cGXYdoU0v"
+    "yDsYQ2/jnLhzuZmQLmkIXIB/uA2okWHk9MTqzYmGZil7RSLcksiRkWzQWGQLs/b2c"
+    "dn5VcxpgoKvhkQROYb2bLcuvw3y8gq7UOlZDHW8CxNEfCHWJH4IejUnOZ97+dT3vX"
+    "VTRakFzyFOXiWPG7ESwgLNKbARSDLadFXlbOmnRuI/xRRQuutElVNaK+Ot9wDLWtR"
+    "GKGz0u8w/NnbWoS7LCUEHkAAAEUAAAADHJzYS1zaGEyLTUxMgAAAQBu581MGDQS/J"
+    "dfOI7jZDWa62gHoIKZtL9FF+I6pZfIwywpEuWHLXXeXd3eQOTRVqRuTwJdQd5dCpj"
+    "tDf01VlK4pPrcoBv4HHgFAjd5p92intc29oTE+WjvleZZrGmBW23f/phZwigOT5Ym"
+    "TWzKW+wkp2Kr6zqofnaQy/kWQu7BWUIpoFtVturLpR2AoOSi92xFnzeajb/B4WSpz"
+    "EnSvqBYs+rI/QEHW5ViUYLxsMosGNB5tI6mRGLyvaNZ65HpoZB3g+YJp7jwumcp8O"
+    "2nejMqXoULnP3EVbLOWJZuPSXbbhmHegm22pYZvfhcp69sKGUumznwZnrYqxblJtW"
+    "JzIuL aris@aris-air";
 
 /****************************************************************************
  * DSA KEYS
@@ -499,7 +550,7 @@ static const char torture_dsa_testkey_user_cert[] =
 
 static const char torture_dsa_testkey_host_cert[] =
     "ssh-dss-cert-v01@openssh.com AAAAHHNzaC1kc3MtY2VydC12MDFAb3BlbnNza"
-    "C5jb20AAAAgdXou7wCVMA9ELFyncGtb6DD51QWUHVAJvf35NbnztSEAAACBAJTK9U8"
+    "C5jb20AAAAgBl/62rBOIyGYCkM+9LS3JFijgFykBPDK15lmigIjc5cAAACBAJTK9U8"
     "SSfdSdkOPMLNLNIelOW3OvQRz7WbP8kAKMcwEn0L9b8/C8ffKOR+gWGFES+hjsg+fA"
     "C7ltzHDxOQhKrthE5DjT0+rDA+/LQ3cZSn/6QpLbrwEgn5Uo3nXddF/t4vV7hodQn5"
     "qX3HUnFOZzpPQYGrWXK74JNRTKHblo0MXAAAAFQCvOI9tBplPs3sI0MLCF7lW+gvzx"
@@ -509,10 +560,19 @@ static const char torture_dsa_testkey_host_cert[] =
     "b7y8OVvxt5cT7iqaRMQX2XgtW09Nu9RbUIVS7n2mw3iqZG0xnG3iv1oL9gwNXMLlf+"
     "gLmsqU3788jaEZ9IhZ8VdgHAoHm6UWM7b2uADmhirI6dRZUVO+/iMGUvDxa66OI4hD"
     "V055pbwQhtxupUatThyDzIgAAAAAAAAAAAAAAAgAAAAoxMjcuMC4wLjEwAAAAAAAAA"
-    "AAAAAAA//////////8AAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIMJ"
-    "2d4Qaklic/2Si7W3GpM2m5doIR3GJtf6jN4xFjbHgAAAAUwAAAAtzc2gtZWQyNTUxO"
-    "QAAAECF7lnI7u6r+RR6PIOaTM0xqJ5y2grGshO2u1RiCQZzes4lTpIU6nY35/aF/Q9"
-    "TuflOYOYfWEIeJiT9s7Klym0C dsa.pub";
+    "AAAAAAA//////////8AAAAAAAAAAAAAAAAAAAEXAAAAB3NzaC1yc2EAAAADAQABAAA"
+    "BAQDXzAm7Y8e4gNrSjaTDoFOEyxaO17csVNolSJbgoI9xPVS94f7M0M8PT+qLmTfFZ"
+    "HDErKxMtK42dX5VndOWfmpuz9yvDZjpPaZ72OOU4+lHKQVMvqmq693Bl2HaFNL8g7G"
+    "ENv45y4c7mZkC5pCFyAf7gNqJFh5PTE6s2JhmYpe0Ui3JLIkZFs0FhkC7P29nHZ+VX"
+    "MaYKCr4ZEETmG9my3Lr8N8vIKu1DpWQx1vAsTRHwh1iR+CHo1Jzmfe/nU9711U0WpB"
+    "c8hTl4ljxuxEsICzSmwEUgy2nRV5Wzpp0biP8UUULrrRJVTWivjrfcAy1rURihs9Lv"
+    "MPzZ21qEuywlBB5AAABFAAAAAxyc2Etc2hhMi01MTIAAAEAlGu8QMnNp36DY75/CbO"
+    "0tEMvFitY3lVMje/rHkYt28CjvESBpg+M+QqYYhEVVMHWqib5KDYBQbSWjHvQIQCj9"
+    "F9o1nnVjg0D0qV0vMgpJ7xzlgngZg9LoRVoQpP289bhKGHt+Nuy41zr3Ewr8HkfCYG"
+    "PYVwTgtXoqftq+6SQcKgrfmhl/CXvIAbUv5l59gkp74eKrxOt4z/sOWFJYQ23Rodfe"
+    "SWXCymJduHwNketDY/W4cSozlJhKNYQyZXzKnVt47jeBnqvFWWu7pVwOd4kHbpN/3M"
+    "L2ZbpeRGa++43zdB/twNI1Sk5s6bTG8SzfkwXGHbAPusxvNpjCAQ3Q8Xh3Q== "
+    "dsa.pub";
 
 /****************************************************************************
  * ECDSA KEYS
@@ -608,15 +668,23 @@ static const char torture_ecdsa256_testkey_user_cert[] =
     "aris@kalix86";
 
 static const char torture_ecdsa256_testkey_host_cert[] =
-    "ecdsa-sha2-nistp256-cert-v01@openssh.com AAAAKGVjZHNhLXNoYTItbmlzdH"
-    "AyNTYtY2VydC12MDFAb3BlbnNzaC5jb20AAAAgApgTU1KQgFllNTsXqoj4D0k4ZodZ3"
-    "UYyTQz3DyKGFIwAAAAIbmlzdHAyNTYAAABBBMfvbnfPEORlrS3fsjLWGmqQvOYPtmS6"
-    "e1bRRwNBGzR6gVEMaIfiJPPTJa+wFMXBT3fpAqPjROsqv5jUHC+xOokAAAAAAAAAAAA"
-    "AAAIAAAAKMTI3LjAuMC4xMAAAAAAAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAA"
-    "AAMwAAAAtzc2gtZWQyNTUxOQAAACDCdneEGpJYnP9kou1txqTNpuXaCEdxibX+ozeMR"
-    "Y2x4AAAAFMAAAALc3NoLWVkMjU1MTkAAABASM8yrqRrm1gngWuU7+GLHi2wIp47wO7D"
-    "D0XBjWDYN4ecCVDFKWRlJu1YGJOxV4dEeV20eFNpQKATrAkfJLrNAQ== "
-    "aris@kalix86";
+    "ecdsa-sha2-nistp256-cert-v01@openssh.com AAAAKGVjZHNhLXNoYTItbmlzd"
+    "HAyNTYtY2VydC12MDFAb3BlbnNzaC5jb20AAAAghJo4UZEpmnc+G9ocgF2cH+cRCfm"
+    "olxczMPxMpqyMOssAAAAIbmlzdHAyNTYAAABBBMfvbnfPEORlrS3fsjLWGmqQvOYPt"
+    "mS6e1bRRwNBGzR6gVEMaIfiJPPTJa+wFMXBT3fpAqPjROsqv5jUHC+xOokAAAAAAAA"
+    "AAAAAAAIAAAAKMTI3LjAuMC4xMAAAAAAAAAAAAAAAAP//////////AAAAAAAAAAAAA"
+    "AAAAAABFwAAAAdzc2gtcnNhAAAAAwEAAQAAAQEA18wJu2PHuIDa0o2kw6BThMsWjte"
+    "3LFTaJUiW4KCPcT1UveH+zNDPD0/qi5k3xWRwxKysTLSuNnV+VZ3Tln5qbs/crw2Y6"
+    "T2me9jjlOPpRykFTL6pquvdwZdh2hTS/IOxhDb+OcuHO5mZAuaQhcgH+4DaiRYeT0x"
+    "OrNiYZmKXtFItySyJGRbNBYZAuz9vZx2flVzGmCgq+GRBE5hvZsty6/DfLyCrtQ6Vk"
+    "MdbwLE0R8IdYkfgh6NSc5n3v51Pe9dVNFqQXPIU5eJY8bsRLCAs0psBFIMtp0VeVs6"
+    "adG4j/FFFC660SVU1or4633AMta1EYobPS7zD82dtahLssJQQeQAAARQAAAAMcnNhL"
+    "XNoYTItNTEyAAABABK3pb37fk5o7iv/csXAoQdwxvBbrN6X+fZoNKn4Dg6h4/SNpSu"
+    "ulpciZr2af6UOIEDNzlhI7kqMrF5CjQzdHM8sZD13qK/5+4uoS7/u6ZCOLYpZf0PHK"
+    "qQHcohrMEjmL6UKgdyg+NjFfwwyCkPTcnDnH4Ldmr/EULxHc7wfSXihV08LIXYd5Fn"
+    "f4q0ABAYEG1y2mPb5nsiQRx+IEWJEyL+bNRZCHbAgSGTKFdOINlR+LD0l0qCnJzIqs"
+    "MCm/aC+jcSUf4tkzFgsbY6sT8KGoa20nONf963NTjJ17kqt1/utRhYEuLSzBJsWxyD"
+    "uxk2JmDft6TzhH9rmUjuWeZKPOhc= aris@kalix86";
 
 static const char torture_ecdsa384_private_testkey[] =
     "-----BEGIN EC PRIVATE KEY-----\n"
@@ -716,14 +784,23 @@ static const char torture_ecdsa384_testkey_user_cert[] =
 
 static const char torture_ecdsa384_testkey_host_cert[] =
     "ecdsa-sha2-nistp384-cert-v01@openssh.com AAAAKGVjZHNhLXNoYTItbmlzd"
-    "HAzODQtY2VydC12MDFAb3BlbnNzaC5jb20AAAAgU6zG4XUcWStI/gpxl/Y2F9OXR/+"
-    "iJVsMXRg1Xuiy6uwAAAAIbmlzdHAzODQAAABhBFdzgE3oGtWjVAyLf6L8Hzku7tIy7"
+    "HAzODQtY2VydC12MDFAb3BlbnNzaC5jb20AAAAgNVX4hdYXHAloMtkVHfXPtoQzEH/"
+    "TJvWZAA5V1OK9XaAAAAAIbmlzdHAzODQAAABhBFdzgE3oGtWjVAyLf6L8Hzku7tIy7"
     "MGL7U9sm2LzHP5LOCrriBoEY4r2j5Y50sB3/DunsMkt3O0nRtijJPhXcHdmpH1HIar"
     "qZgKOReVzlhtgeO54FunSh41eqxcc0BZBmgAAAAAAAAAAAAAAAgAAAAoxMjcuMC4wL"
-    "jEwAAAAAAAAAAAAAAAA//////////8AAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI"
-    "1NTE5AAAAIMJ2d4Qaklic/2Si7W3GpM2m5doIR3GJtf6jN4xFjbHgAAAAUwAAAAtzc"
-    "2gtZWQyNTUxOQAAAEAnUyZlcySFC2Y85fuyATX1JbRgkcaPFrB2VF+M6GYeKS45SCF"
-    "fRjf6Eu4kQ7PPT3jqg4ETgrRW3rncpNzIZOUK aris@kalix86";
+    "jEwAAAAAAAAAAAAAAAA//////////8AAAAAAAAAAAAAAAAAAAEXAAAAB3NzaC1yc2E"
+    "AAAADAQABAAABAQDXzAm7Y8e4gNrSjaTDoFOEyxaO17csVNolSJbgoI9xPVS94f7M0"
+    "M8PT+qLmTfFZHDErKxMtK42dX5VndOWfmpuz9yvDZjpPaZ72OOU4+lHKQVMvqmq693"
+    "Bl2HaFNL8g7GENv45y4c7mZkC5pCFyAf7gNqJFh5PTE6s2JhmYpe0Ui3JLIkZFs0Fh"
+    "kC7P29nHZ+VXMaYKCr4ZEETmG9my3Lr8N8vIKu1DpWQx1vAsTRHwh1iR+CHo1Jzmfe"
+    "/nU9711U0WpBc8hTl4ljxuxEsICzSmwEUgy2nRV5Wzpp0biP8UUULrrRJVTWivjrfc"
+    "Ay1rURihs9LvMPzZ21qEuywlBB5AAABFAAAAAxyc2Etc2hhMi01MTIAAAEAXmZebTI"
+    "wnjJz4DpHeHgy4UJ7SbhlFDqVOn3EeHzrYsAGJWEomBhMTdnxf1P7H8HIBiGQz+a7D"
+    "2181mFi1KkvHRAqWJjm/N7u/1u/jwMoLTbLBm9HNXBMpdyC7HevWdgHaZ61d/Pt6L+"
+    "VC7uH+R8NZtd0FOvHUlq/UavWsvylbqPUqoEOJ9LmaZm5eRTknPgksj97f1LbuYwfs"
+    "qEZtSDyoRXA2TemAah1VDn/lryro04OnDGN4a4wv9Ih2J9vPjNKZa9vq7WbUn4NPZo"
+    "GUHKzA3VbuS5NM9g1+HNveFZ/bZN6yC9AvUtJyOl57rAqfEBJW2NwmbwVvqwnzfAWS"
+    "4wIYQ== aris@kalix86";
 
 static const char torture_ecdsa521_private_testkey[] =
     "-----BEGIN EC PRIVATE KEY-----\n"
@@ -836,27 +913,45 @@ static const char torture_ecdsa521_testkey_user_cert[] =
 
 static const char torture_ecdsa521_testkey_host_cert[] =
     "ecdsa-sha2-nistp521-cert-v01@openssh.com AAAAKGVjZHNhLXNoYTItbmlzd"
-    "HA1MjEtY2VydC12MDFAb3BlbnNzaC5jb20AAAAgeEgBvC0vmYhYJhBbk72dVpq2p+Y"
-    "L1awMiiOnMxmG/ooAAAAIbmlzdHA1MjEAAACFBAHOg+9vHW2kJB50j7c7WkcCcOtwg"
+    "HA1MjEtY2VydC12MDFAb3BlbnNzaC5jb20AAAAgHo/I2xccpDA6TBtpE8/C6DilRp3"
+    "9k53LBbnJd5w6TJUAAAAIbmlzdHA1MjEAAACFBAHOg+9vHW2kJB50j7c7WkcCcOtwg"
     "ZdeXMpAeEl17sFnTTrT8wYo1FCzE07wV262vIC+AE3fXUJ7sJ/CkFIdk/8/gQEY1jy"
     "oXB3Bsee16VwhJGsMzGGh1FJ0XXhRJjUbG18qbH9JiSgE1N4fIM0zJG68fAyUxRxCI"
     "1wUobOOB7EmFZd18gAAAAAAAAAAAAAAAgAAAAoxMjcuMC4wLjEwAAAAAAAAAAAAAAA"
-    "A//////////8AAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIMJ2d4Qak"
-    "lic/2Si7W3GpM2m5doIR3GJtf6jN4xFjbHgAAAAUwAAAAtzc2gtZWQyNTUxOQAAAEB"
-    "3CVlyQoO7q7U5PqkPkPIo15UD+HfbAT6XloesiuqbQJ+gIBxLeOGr7A1zo7KujMr5w"
-    "En+ehax6xxk83SKZwcE aris@kalix86";
+    "A//////////8AAAAAAAAAAAAAAAAAAAEXAAAAB3NzaC1yc2EAAAADAQABAAABAQDXz"
+    "Am7Y8e4gNrSjaTDoFOEyxaO17csVNolSJbgoI9xPVS94f7M0M8PT+qLmTfFZHDErKx"
+    "MtK42dX5VndOWfmpuz9yvDZjpPaZ72OOU4+lHKQVMvqmq693Bl2HaFNL8g7GENv45y"
+    "4c7mZkC5pCFyAf7gNqJFh5PTE6s2JhmYpe0Ui3JLIkZFs0FhkC7P29nHZ+VXMaYKCr"
+    "4ZEETmG9my3Lr8N8vIKu1DpWQx1vAsTRHwh1iR+CHo1Jzmfe/nU9711U0WpBc8hTl4"
+    "ljxuxEsICzSmwEUgy2nRV5Wzpp0biP8UUULrrRJVTWivjrfcAy1rURihs9LvMPzZ21"
+    "qEuywlBB5AAABFAAAAAxyc2Etc2hhMi01MTIAAAEANQ33/pkCSTRvRTUnb9yj4d1AO"
+    "M00AZ+dY4FIKRp270y5/6AmXSgkslvWqy6DOpu83FNFyPR321WAMy3kas9eR3UI8Xr"
+    "7OgeMNa8TocEL1S4JZEBeOvYlIDTVw8Uh9kqVUfg8pTs10fK8LfC5Ef+cIC9dqS4Kg"
+    "E52AhCI5dJjwDVnp+IUQdeZgtlgnHt8ItcfuCm5vN4w7LSsAU9m6ANwUeeW7GZctmY"
+    "M3Y/LMOIrR3zhATlLuOREZEcPQC1ND445c+B2LUIAZfHGs7XdIu9eKuJnBoIaZTP09"
+    "VShiaD/baFFpqiq+l8iZNbxBr0ig5STiER2mgrzkhabyYDxTn/afg== "
+    "aris@kalix86";
 
 static const char torture_ecdsa521_testkey_expired_host_cert[] =
-    "ecdsa-sha2-nistp521-cert-v01@openssh.com AAAAKGVjZHNhLXNoYTItbmlzdH"
-    "A1MjEtY2VydC12MDFAb3BlbnNzaC5jb20AAAAg4YfgIIn5y8HoIc8O8axSYO6M/tYLf"
-    "E8wYXLsImhqlPMAAAAIbmlzdHA1MjEAAACFBAHOg+9vHW2kJB50j7c7WkcCcOtwgZde"
-    "XMpAeEl17sFnTTrT8wYo1FCzE07wV262vIC+AE3fXUJ7sJ/CkFIdk/8/gQEY1jyoXB3"
-    "Bsee16VwhJGsMzGGh1FJ0XXhRJjUbG18qbH9JiSgE1N4fIM0zJG68fAyUxRxCI1wUob"
-    "OOB7EmFZd18gAAAAAAAAAAAAAAAgAAAAoxMjcuMC4wLjEwAAAAAAAAAAA2jAHwAAAAA"
-    "Dhr4/AAAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIMJ2d4Qaklic/2Si"
-    "7W3GpM2m5doIR3GJtf6jN4xFjbHgAAAAUwAAAAtzc2gtZWQyNTUxOQAAAECqZu+qF1n"
-    "+EQez0JcVu+HW97hfBnA7SGvMT87ugEUSRPzsWZN53TgOlybsjNreOFunuIk+Qzt8W2"
-    "icn/Y9Bq8E aris@kalix86";
+    "ecdsa-sha2-nistp521-cert-v01@openssh.com AAAAKGVjZHNhLXNoYTItbmlzd"
+    "HA1MjEtY2VydC12MDFAb3BlbnNzaC5jb20AAAAgosOma/6YDKSriCeTuYgd7u/LppP"
+    "xTptK1+T7ertvjQoAAAAIbmlzdHA1MjEAAACFBAHOg+9vHW2kJB50j7c7WkcCcOtwg"
+    "ZdeXMpAeEl17sFnTTrT8wYo1FCzE07wV262vIC+AE3fXUJ7sJ/CkFIdk/8/gQEY1jy"
+    "oXB3Bsee16VwhJGsMzGGh1FJ0XXhRJjUbG18qbH9JiSgE1N4fIM0zJG68fAyUxRxCI"
+    "1wUobOOB7EmFZd18gAAAAAAAAAAAAAAAgAAAAoxMjcuMC4wLjEwAAAAAAAAAAA2jAH"
+    "wAAAAADhr4/AAAAAAAAAAAAAAAAAAAAEXAAAAB3NzaC1yc2EAAAADAQABAAABAQDXz"
+    "Am7Y8e4gNrSjaTDoFOEyxaO17csVNolSJbgoI9xPVS94f7M0M8PT+qLmTfFZHDErKx"
+    "MtK42dX5VndOWfmpuz9yvDZjpPaZ72OOU4+lHKQVMvqmq693Bl2HaFNL8g7GENv45y"
+    "4c7mZkC5pCFyAf7gNqJFh5PTE6s2JhmYpe0Ui3JLIkZFs0FhkC7P29nHZ+VXMaYKCr"
+    "4ZEETmG9my3Lr8N8vIKu1DpWQx1vAsTRHwh1iR+CHo1Jzmfe/nU9711U0WpBc8hTl4"
+    "ljxuxEsICzSmwEUgy2nRV5Wzpp0biP8UUULrrRJVTWivjrfcAy1rURihs9LvMPzZ21"
+    "qEuywlBB5AAABFAAAAAxyc2Etc2hhMi01MTIAAAEAyNPBpqiVWqF7pJHLAFYTQwK2F"
+    "6E+uoAl7bHVNlPin6kTNXaypfiMLV/Kewq83xD4EEtVk8vlOIkFAWndenaCn7BdVHF"
+    "EDoz7vxJY2nmrX1PVQypR9Jn8mnMmXoH4wUjVIH3Wc80pTJDkmIcUWMZnx7s7t4lza"
+    "68Xd89wT6CojUK1RBtSaXcd2G0v0EkW62pbzTuaMTJHOxNw61hPX5Tl+vmBfKi7RDt"
+    "Ie6qwl7FVQHZuSuUCSm8Rp8rL5D1vasyoCLs2EYwkOThDYEPRU4Dlk4/bsyfXYj6E7"
+    "2CurZij6ENI5dLbXlMvRdKxE0DgFL8IvH/0FgSRhJtc0iZKGVBiDA== "
+    "aris@kalix86";
 
 /****************************************************************************
  * ED25519 KEYS
@@ -920,22 +1015,40 @@ static const char torture_ed25519_testkey_user_cert[] =
     "aris@kalix86";
 
 static const char torture_ed25519_testkey_host_cert[] =
-    "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQ"
-    "G9wZW5zc2guY29tAAAAIMEXoE/nczFI+W7V6nurvkQJ70kTW97Vnz/+MXhe2PHDAAA"
-    "AIBWWnxuCYiOyvMYLtkgoEyEKlLV+klM+BU6Nh3PmAiqXAAAAAAAAAAAAAAACAAAAC"
-    "jEyNy4wLjAuMTAAAAAAAAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAA"
-    "Lc3NoLWVkMjU1MTkAAAAgwnZ3hBqSWJz/ZKLtbcakzabl2ghHcYm1/qM3jEWNseAAA"
-    "ABTAAAAC3NzaC1lZDI1NTE5AAAAQJN7pIGiQguYFdYs9ZchrsyF8UZFwyWc0pcSI/h"
-    "EG4oS88xg8RXvTm1nVBM+VsofybZ809FKEzyJ5mvrsi1lwA8= aris@kalix86";
+    "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG"
+    "9wZW5zc2guY29tAAAAIB8rxdxd6WKdQ4sJtuCj8s96Qit2i1UuSO7CzfwTvkziAAAAI"
+    "BWWnxuCYiOyvMYLtkgoEyEKlLV+klM+BU6Nh3PmAiqXAAAAAAAAAAAAAAACAAAACjEy"
+    "Ny4wLjAuMTAAAAAAAAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAARcAAAAHc3N"
+    "oLXJzYQAAAAMBAAEAAAEBANfMCbtjx7iA2tKNpMOgU4TLFo7XtyxU2iVIluCgj3E9VL"
+    "3h/szQzw9P6ouZN8VkcMSsrEy0rjZ1flWd05Z+am7P3K8NmOk9pnvY45Tj6UcpBUy+q"
+    "arr3cGXYdoU0vyDsYQ2/jnLhzuZmQLmkIXIB/uA2okWHk9MTqzYmGZil7RSLcksiRkW"
+    "zQWGQLs/b2cdn5VcxpgoKvhkQROYb2bLcuvw3y8gq7UOlZDHW8CxNEfCHWJH4IejUnO"
+    "Z97+dT3vXVTRakFzyFOXiWPG7ESwgLNKbARSDLadFXlbOmnRuI/xRRQuutElVNaK+Ot"
+    "9wDLWtRGKGz0u8w/NnbWoS7LCUEHkAAAEUAAAADHJzYS1zaGEyLTUxMgAAAQBOGFkeR"
+    "9Oh+nJuJTGqXOXZZh+B7LYX0MAIgWw2fPiwGi5lkqOlS5C41MN371n+lUj1SEvRX+OB"
+    "EyIT22QVPmsKrFEBYdAzCGBCG0Pr646dwHsoa3ET4vVxAH9Vn/fJNZ54ks7KMDlDQiG"
+    "BDVIZm9CXxy8pt9pWXScV3evC0nxFLvyBj8kBktBvtc/t93i16s3n4ZZJ6OlJAbMOJt"
+    "0utRytyCnEPDanMmXGwO8GsW+wAPqC0WPL1JbXRKTWkPoFpMClk8yfQv98cVCNrTGBS"
+    "gv1NGyiXJxfZY/d9lGDg5gZXwStTBOKsAjG8kftzPRWrQqRwhjT/nYhmYeM/qeSXJrT"
+    " aris@kalix86";
 
 static const char torture_ed25519_testkey_expired_host_cert[] =
     "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG"
-    "9wZW5zc2guY29tAAAAIJPYuBbaS1/kfr3QRXoD4Uh00df0KHfohHjiQZ/UYAijAAAAI"
+    "9wZW5zc2guY29tAAAAIFGZMXve97PIfom1B/tWbD3qn7ajf7Cqqn6ramKZijJRAAAAI"
     "BWWnxuCYiOyvMYLtkgoEyEKlLV+klM+BU6Nh3PmAiqXAAAAAAAAAAAAAAACAAAACjEy"
-    "Ny4wLjAuMTAAAAAAAAAAADaMAfAAAAAAOGvj8AAAAAAAAAAAAAAAAAAAADMAAAALc3N"
-    "oLWVkMjU1MTkAAAAgwnZ3hBqSWJz/ZKLtbcakzabl2ghHcYm1/qM3jEWNseAAAABTAA"
-    "AAC3NzaC1lZDI1NTE5AAAAQF58t/2ECQw5y2dgd2R5iW8qmWaCsc06z4ibnMQd0E34R"
-    "2Y1Ev3PwvQlb+7lHoUU7URwt7YLi875Q6Ke1gSGSQI= aris@kalix86";
+    "Ny4wLjAuMTAAAAAAAAAAADaMAfAAAAAAOGvj8AAAAAAAAAAAAAAAAAAAARcAAAAHc3N"
+    "oLXJzYQAAAAMBAAEAAAEBANfMCbtjx7iA2tKNpMOgU4TLFo7XtyxU2iVIluCgj3E9VL"
+    "3h/szQzw9P6ouZN8VkcMSsrEy0rjZ1flWd05Z+am7P3K8NmOk9pnvY45Tj6UcpBUy+q"
+    "arr3cGXYdoU0vyDsYQ2/jnLhzuZmQLmkIXIB/uA2okWHk9MTqzYmGZil7RSLcksiRkW"
+    "zQWGQLs/b2cdn5VcxpgoKvhkQROYb2bLcuvw3y8gq7UOlZDHW8CxNEfCHWJH4IejUnO"
+    "Z97+dT3vXVTRakFzyFOXiWPG7ESwgLNKbARSDLadFXlbOmnRuI/xRRQuutElVNaK+Ot"
+    "9wDLWtRGKGz0u8w/NnbWoS7LCUEHkAAAEUAAAADHJzYS1zaGEyLTUxMgAAAQBNza5qI"
+    "Qwm1dHr73GDpBp6KH1HjTQmE4HzqPRRXIgWjBaSEbIRpUnTxwpBvqFTMmDCmOtTWfFC"
+    "HIxiSEOCnVLAxaWEHIEPpw6gbu52jd+jeOSveW4JDnylCoAAQV30Njncs5M/To3FIH2"
+    "1wSxprAIRj6iMj1hjfpK1jST+vYUTlfkfJMwIiBggJxm9Xf0AoiytGaAB2NR257Tvvk"
+    "alalECN19j3XQV7nruvs5cTCG4HbeESv4IkM0zP6JxT0jMyIfIarrzRabZCqSGjHasG"
+    "uBJlzBzW71g//ktQpSZnXkI/EIkNuHZw0j41VsJgNZWcgFKldDbw6YmnBqYmTj+9rFE"
+    " aris@kalix86";
 
 static const char *
 torture_get_testkey_public_internal(enum ssh_keytypes_e type,
@@ -1344,23 +1457,39 @@ torture_get_testkey_expired_server_host_cert(enum ssh_keytypes_e type)
  * @brief Retrieves the host Certificate Authority (CA) key for testing
  * purposes.
  *
- * This function returns the Ed25519 host CA key as a string in OPENSSH format.
- * This CA key is the signing key of all the host certificates defined in
- * torture_key.c file.
+ * This function returns the RSA2048 host CA public key as a string in OPENSSH
+ * format. This CA key is the signing key of all the host certificates defined
+ * in torture_key.c file.
  *
- * @returns A pointer to a string containing the Ed25519 host CA key.
+ * @returns A pointer to a string containing the RSA2048 host CA key.
  */
 const char *
-torture_get_testkey_host_ca(void)
+torture_get_testkey_host_ca_public(void)
 {
-    return torture_ed25119_host_ca;
+    return torture_rsa_host_ca;
+}
+
+/**
+ * @brief Retrieves the host Certificate Authority (CA) key for testing
+ * purposes.
+ *
+ * This function returns the RSA2048 host CA private key as a string in OPENSSH
+ * format. This CA key is the signing key of all the host certificates defined
+ * in torture_key.c file.
+ *
+ * @returns A pointer to a string containing the RSA2048 host CA key.
+ */
+const char *
+torture_get_testkey_host_ca_private(void)
+{
+    return torture_rsa_private_host_ca;
 }
 
 /**
  * @brief Retrieves the user Certificate Authority (CA) public key for testing
  * purposes.
  *
- * This function returns the RSA(2048) user CA publc key as a string in OPENSSH
+ * This function returns the RSA(2048) user CA public key as a string in OPENSSH
  * format. This CA key is the signing key of all the user certificates defined
  * in torture_key.c file.
  *

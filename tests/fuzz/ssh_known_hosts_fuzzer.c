@@ -65,10 +65,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     for (it = ssh_list_get_iterator(entries);
          it != NULL;
          it = ssh_list_get_iterator(entries)) {
-        struct ssh_knownhosts_entry *entry = NULL;
+        struct priv_knownhosts_entry *priv_entry = NULL;
 
-        entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
-        ssh_knownhosts_entry_free(entry);
+        priv_entry = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+        priv_knownhosts_entry_free(priv_entry);
         ssh_list_remove(entries, it);
     }
     ssh_list_free(entries);

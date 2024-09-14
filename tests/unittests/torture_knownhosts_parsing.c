@@ -303,7 +303,6 @@ static void torture_knownhosts_parse_line_rsa(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -317,7 +316,6 @@ static void torture_knownhosts_parse_line_rsa(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "127.0.0.1");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -338,7 +336,6 @@ static void torture_knownhosts_parse_line_ecdsa(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -358,7 +355,6 @@ static void torture_knownhosts_parse_line_default_ed25519(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -378,7 +374,6 @@ static void torture_knownhosts_parse_line_port_ed25519(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "[localhost]:2222");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -399,7 +394,6 @@ static void torture_knownhosts_parse_line_port_wildcard(void **state)
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -420,7 +414,6 @@ static void torture_knownhosts_parse_line_standard_port(void **state)
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -440,7 +433,6 @@ static void torture_knownhosts_parse_line_pattern_ed25519(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -460,7 +452,6 @@ static void torture_knownhosts_parse_line_hashed_ed25519(void **state) {
                                     &entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_NONE);
     assert_string_equal(entry->hostname, "localhost");
     assert_non_null(entry->unparsed);
     assert_non_null(entry->publickey);
@@ -472,72 +463,74 @@ static void torture_knownhosts_parse_line_hashed_ed25519(void **state) {
 static void
 torture_knownhosts_parse_line_revoked_rsa(void **state)
 {
-    struct ssh_knownhosts_entry *entry = NULL;
+    struct priv_knownhosts_entry *priv_entry = NULL;
     int rc;
 
     (void)state;
 
-    rc = ssh_known_hosts_parse_line("localhost",
-                                    LOCALHOST_REVOKED_RSA,
-                                    &entry);
+    rc = known_hosts_parse_line("localhost",
+                                LOCALHOST_REVOKED_RSA,
+                                &priv_entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_REVOKED);
-    assert_string_equal(entry->hostname, "localhost");
-    assert_non_null(entry->unparsed);
-    assert_non_null(entry->publickey);
-    assert_int_equal(ssh_key_type(entry->publickey), SSH_KEYTYPE_RSA);
+    assert_int_equal(priv_entry->marker, MARK_REVOKED);
+    assert_string_equal(priv_entry->entry->hostname, "localhost");
+    assert_non_null(priv_entry->entry->unparsed);
+    assert_non_null(priv_entry->entry->publickey);
+    assert_int_equal(ssh_key_type(priv_entry->entry->publickey),
+                     SSH_KEYTYPE_RSA);
 
-    SSH_KNOWNHOSTS_ENTRY_FREE(entry);
+    priv_knownhosts_entry_free(priv_entry);
+    priv_entry = NULL;
 }
 
 static void
 torture_knownhosts_parse_line_cert_authority_rsa(void **state)
 {
-    struct ssh_knownhosts_entry *entry = NULL;
+    struct priv_knownhosts_entry *priv_entry = NULL;
     int rc;
 
     (void)state;
 
-    rc = ssh_known_hosts_parse_line("localhost",
-                                    LOCALHOST_CA_RSA,
-                                    &entry);
+    rc = known_hosts_parse_line("localhost", LOCALHOST_CA_RSA, &priv_entry);
     assert_int_equal(rc, SSH_OK);
 
-    assert_int_equal(entry->marker, MARK_CA);
-    assert_string_equal(entry->hostname, "localhost");
-    assert_non_null(entry->unparsed);
-    assert_non_null(entry->publickey);
-    assert_int_equal(ssh_key_type(entry->publickey), SSH_KEYTYPE_RSA);
+    assert_int_equal(priv_entry->marker, MARK_CA);
+    assert_string_equal(priv_entry->entry->hostname, "localhost");
+    assert_non_null(priv_entry->entry->unparsed);
+    assert_non_null(priv_entry->entry->publickey);
+    assert_int_equal(ssh_key_type(priv_entry->entry->publickey),
+                     SSH_KEYTYPE_RSA);
 
-    SSH_KNOWNHOSTS_ENTRY_FREE(entry);
+    priv_knownhosts_entry_free(priv_entry);
+    priv_entry = NULL;
 }
 
 static void
 torture_knownhosts_parse_invalid_marker_line(void **state)
 {
-    struct ssh_knownhosts_entry *entry = NULL;
+    struct priv_knownhosts_entry *priv_entry = NULL;
     int rc;
 
     (void)state;
 
-    rc = ssh_known_hosts_parse_line("localhost",
-                                    LOCALHOST_INVALID_MARKER,
-                                    &entry);
+    rc = known_hosts_parse_line("localhost",
+                                LOCALHOST_INVALID_MARKER,
+                                &priv_entry);
     assert_int_equal(rc, SSH_AGAIN);
 }
 
 static void
 torture_knownhosts_parse_invalid_marker_nc_line(void **state)
 {
-    struct ssh_knownhosts_entry *entry = NULL;
+    struct priv_knownhosts_entry *priv_entry = NULL;
     int rc;
 
     (void)state;
 
-    rc = ssh_known_hosts_parse_line("localhost",
-                                    LOCALHOST_INVALID_MARKER_NC,
-                                    &entry);
+    rc = known_hosts_parse_line("localhost",
+                                LOCALHOST_INVALID_MARKER_NC,
+                                &priv_entry);
     assert_int_equal(rc, SSH_ERROR);
 }
 
@@ -546,7 +539,7 @@ static void torture_knownhosts_read_file(void **state)
     const char *knownhosts_file = *state;
     struct ssh_list *entry_list = NULL;
     struct ssh_iterator *it = NULL;
-    struct ssh_knownhosts_entry *entry = NULL;
+    struct priv_knownhosts_entry *priv_entry = NULL;
     enum ssh_keytypes_e type;
     size_t expectations_len, i;
     int rc;
@@ -580,12 +573,13 @@ static void torture_knownhosts_read_file(void **state)
     assert_non_null(it);
 
     for (i = 0; i < expectations_len; i++) {
-        entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
-        assert_non_null(entry);
+        priv_entry = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+        assert_non_null(priv_entry);
 
-        assert_int_equal(entry->marker, expectations[i].marker);
-        assert_string_equal(entry->hostname, expectations[i].hostname);
-        type = ssh_key_type(entry->publickey);
+        assert_int_equal(priv_entry->marker, expectations[i].marker);
+        assert_string_equal(priv_entry->entry->hostname,
+                            expectations[i].hostname);
+        type = ssh_key_type(priv_entry->entry->publickey);
         assert_int_equal(type, expectations[i].type);
 
         if (i < expectations_len - 1) {
@@ -596,8 +590,9 @@ static void torture_knownhosts_read_file(void **state)
 
     it = ssh_list_get_iterator(entry_list);
     for (;it != NULL; it = it->next) {
-        entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
-        SSH_KNOWNHOSTS_ENTRY_FREE(entry);
+        priv_entry = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+        priv_knownhosts_entry_free(priv_entry);
+        priv_entry = NULL;
     }
     ssh_list_free(entry_list);
 }

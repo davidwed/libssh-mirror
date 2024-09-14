@@ -315,7 +315,6 @@ struct ssh_knownhosts_entry {
     char *unparsed;
     ssh_key publickey;
     char *comment;
-    int marker;
 };
 
 

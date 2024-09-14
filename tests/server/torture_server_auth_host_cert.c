@@ -165,7 +165,7 @@ setup_known_hosts_file(void **state, bool want_revoked)
 
     file = fopen(known_hosts_file, "w");
     if (file == NULL) {
-        return NULL;
+        goto fail;
     }
 
     if (want_revoked) {
@@ -177,13 +177,17 @@ setup_known_hosts_file(void **state, bool want_revoked)
     rc = fprintf(file,
                  "%s 127.0.0.10 %s\n",
                  marker_s,
-                 torture_get_testkey_host_ca());
+                 torture_get_testkey_host_ca_public());
     fclose(file);
     if (rc < 0) {
-        return NULL;
+        goto fail;
     }
 
     return known_hosts_file;
+
+fail:
+    SAFE_FREE(known_hosts_file);
+    return NULL;
 }
 
 static void
@@ -376,7 +380,7 @@ int torture_run_tests(void) {
     ssh_init();
 
     torture_filter_tests(sshd_tests);
-    rc = cmocka_run_group_tests(sshd_tests, sshd_setup, sshd_teardown);
+    cmocka_run_group_tests(sshd_tests, sshd_setup, sshd_teardown);
 
     torture_filter_tests(libssh_tests);
     rc = cmocka_run_group_tests(libssh_tests,
