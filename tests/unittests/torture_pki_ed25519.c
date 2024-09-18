@@ -437,7 +437,7 @@ static void torture_pki_ed25519_generate_key(void **state)
 
     assert_non_null(session);
 
-    rc = ssh_pki_generate(SSH_KEYTYPE_ED25519, 256, &key);
+    rc = ssh_pki_generate(SSH_KEYTYPE_ED25519, 0, &key);
     assert_true(rc == SSH_OK);
     assert_non_null(key);
     rc = ssh_pki_export_privkey_to_pubkey(key, &pubkey);
@@ -1011,6 +1011,96 @@ static void torture_pki_ed25519_pubkey_dup(void **state)
     SSH_KEY_FREE(dup);
 }
 
+static void
+torture_pki_ed25519_sign_verify_string(void **state)
+{
+    int rc;
+    ssh_key key = NULL, pubkey = NULL;
+    ssh_string input = NULL, signed_str = NULL;
+    const char *test_input = "Test input string";
+    char *b64_str = NULL;
+
+    (void)state; /* unused */
+
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
+
+    /* Setup: Generate the private key */
+    rc = ssh_pki_generate(SSH_KEYTYPE_ED25519, 0, &key);
+    assert_return_code(rc, errno);
+    assert_non_null(key);
+
+    /* Export public key */
+    rc = ssh_pki_export_privkey_to_pubkey(key, &pubkey);
+    assert_return_code(rc, errno);
+    assert_non_null(pubkey);
+
+    /* Create input string */
+    input = ssh_string_from_char(test_input);
+    assert_non_null(input);
+
+    /* Test signing the input string */
+    rc = ssh_pki_sign_string(key, input, &signed_str);
+    assert_return_code(rc, errno);
+    assert_non_null(signed_str);
+    b64_str = ssh_string_to_char(signed_str);
+    assert_string_not_equal(b64_str, "");
+    free(b64_str);
+
+    /* Test verifying the signature */
+    rc = ssh_pki_verify_string(pubkey, input, signed_str);
+    assert_return_code(rc, errno);
+
+    /* Cleanup */
+    ssh_string_free(signed_str);
+    ssh_string_free(input);
+    SSH_KEY_FREE(key);
+    SSH_KEY_FREE(pubkey);
+}
+
+static void
+torture_pki_ed25519_fail_sign_verify_string(void **state)
+{
+    int rc;
+    ssh_key key = NULL;
+    ssh_string input = NULL, signed_str = NULL;
+
+    (void)state; /* unused */
+
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
+
+    /* Setup: Generate private key */
+    rc = ssh_pki_generate(SSH_KEYTYPE_ED25519, 0, &key);
+    assert_int_equal(rc, SSH_OK);
+    assert_non_null(key);
+
+    /* Create input string */
+    input = ssh_string_from_char("Test input string");
+    assert_non_null(input);
+
+    /* Test signing with invalid input (NULL input) */
+    rc = ssh_pki_sign_string(key, NULL, &signed_str);
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Test signing with invalid key (NULL) */
+    rc = ssh_pki_sign_string(NULL, input, &signed_str);
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Test verifying with NULL signature */
+    rc = ssh_pki_verify_string(NULL, input, signed_str);
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Cleanup */
+    ssh_string_free(signed_str);
+    ssh_string_free(input);
+    SSH_KEY_FREE(key);
+}
+
 int torture_run_tests(void) {
     int rc;
     struct CMUnitTest tests[] = {
@@ -1076,6 +1166,8 @@ int torture_run_tests(void) {
         cmocka_unit_test(torture_pki_ed25519_verify_bad),
         cmocka_unit_test(torture_pki_ed25519_privkey_dup),
         cmocka_unit_test(torture_pki_ed25519_pubkey_dup),
+        cmocka_unit_test(torture_pki_ed25519_sign_verify_string),
+        cmocka_unit_test(torture_pki_ed25519_fail_sign_verify_string),
     };
 
     ssh_init();
