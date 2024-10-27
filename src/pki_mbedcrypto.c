@@ -402,7 +402,8 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
 #endif
 
     switch(key->type) {
-        case SSH_KEYTYPE_RSA: {
+        case SSH_KEYTYPE_RSA:
+        case SSH_KEYTYPE_RSA_CERT01: {
             mbedtls_rsa_context *rsa, *new_rsa;
 
             new->pk = malloc(sizeof(mbedtls_pk_context));
@@ -512,6 +513,9 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
         case SSH_KEYTYPE_ECDSA_P256:
         case SSH_KEYTYPE_ECDSA_P384:
         case SSH_KEYTYPE_ECDSA_P521:
+        case SSH_KEYTYPE_ECDSA_P256_CERT01:
+        case SSH_KEYTYPE_ECDSA_P384_CERT01:
+        case SSH_KEYTYPE_ECDSA_P521_CERT01:
             new->ecdsa_nid = key->ecdsa_nid;
 
             new->ecdsa = malloc(sizeof(mbedtls_ecdsa_context));
@@ -540,6 +544,7 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
 
             break;
         case SSH_KEYTYPE_ED25519:
+        case SSH_KEYTYPE_ED25519_CERT01:
             rc = pki_ed25519_key_dup(new, key);
             if (rc != SSH_OK) {
                 goto fail;
@@ -547,6 +552,13 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
             break;
         default:
             goto fail;
+    }
+
+    if (is_cert_type(key->type) || key->cert_type != SSH_KEYTYPE_UNKNOWN) {
+        rc = pki_copy_cert_to_key(new, key);
+        if (rc != SSH_OK) {
+            goto fail;
+        }
     }
 
     goto cleanup;

@@ -112,9 +112,9 @@ setup_test_key(void **state, const char *key, bool want_cert)
     torture_write_file(key_file, key);
 
     if (want_cert) {
-        rc = ssh_pki_import_cert_file(key_path, &import_key);
+        rc = ssh_pki_import_cert_file(key_file, &import_key);
     } else {
-        rc = ssh_pki_import_pubkey_file(key_path, &import_key);
+        rc = ssh_pki_import_pubkey_file(key_file, &import_key);
     }
     assert_return_code(rc, SSH_OK);
 
@@ -144,7 +144,7 @@ setup_authorized_keys_file_multiple_keys(void **state)
     ta->auth_file = auth_file;
 
     /* Write different keys testing different possible spaces at each new line*/
-    fp = fopen(auth_file, "w");
+    fp = fopen(auth_file, "wb");
     assert_non_null(fp);
 
     /* RSA 1 */
@@ -219,7 +219,8 @@ setup_authorized_principals_file(void **state,
 static void
 torture_authorized_keys_cert_no_options(void **state)
 {
-    /* CERTIFICATE INFO (ALL CERTS HAVE THE SAME KEY ID, SERIAL AND SIGNING CA)
+    /*
+     * CERTIFICATE INFO (ALL CERTS HAVE THE SAME KEY ID, SERIAL AND SIGNING CA)
      * Principals:      (none)
      * Validity:        forever
      * Critical opts:   (none)
@@ -412,9 +413,14 @@ torture_authorized_keys_cert_from_option(void **state)
                                         remote_ip,
                                         remote_hostname,
                                         NULL);
+#ifdef _WIN32
+    assert_int_equal(rc, 0);
+    assert_null(ta->auth_opts);
+#else
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
+#endif
 
     /*
      * Test "from" option. This option contains an explicit IP address, a CIDR
@@ -437,28 +443,11 @@ torture_authorized_keys_cert_from_option(void **state)
                                         remote_hostname,
                                         NULL);
 
-    /* The first match is "libssh-test" -> no need to wrap it for Windows*/
-    assert_int_equal(rc, 1);
-    assert_non_null(ta->auth_opts);
-    SSH_AUTH_OPTS_FREE(ta->auth_opts);
-
     /*
-     * There is no explicit IP address or hostname matching now. The match
-     * should be found with CIDR list. On Windows the CIDR matching check
-     * is skipped.
-     * 198.51.100.22 -> match
-     * 2001:0db8::a4d7:25ff -> match
+     * The first match is "libssh-test". The certificate contains the
+     * source-address option, which is restrictive over the matching "from="
+     * option. This test will then fail on Windows.
      */
-    opt_list = "cert-authority,"
-               "from=\"172.16.22.4,198.51.0.0/16,2001:0db8::/32,openssh-test\"";
-    setup_authorized_keys_file((void **)&ta, opt_list, true);
-    rc = ssh_authorized_keys_check_file(ta->test_key,
-                                        ta->auth_file,
-                                        "bob",
-                                        &ta->auth_opts,
-                                        remote_ip,
-                                        remote_hostname,
-                                        NULL);
 #ifdef _WIN32
     assert_int_equal(rc, 0);
     assert_null(ta->auth_opts);
@@ -468,6 +457,16 @@ torture_authorized_keys_cert_from_option(void **state)
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
 #endif
 
+    /*
+     * There is no explicit IP address or hostname matching now. The match
+     * should be found with CIDR list. On Windows the CIDR matching check
+     * is skipped and then failing the test.
+     * 198.51.100.22 -> match
+     * 2001:0db8::a4d7:25ff -> match
+     */
+    opt_list = "cert-authority,"
+               "from=\"172.16.22.4,198.51.0.0/16,2001:0db8::/32,openssh-test\"";
+    setup_authorized_keys_file((void **)&ta, opt_list, true);
     rc = ssh_authorized_keys_check_file(ta->test_key,
                                         ta->auth_file,
                                         "bob",
@@ -499,9 +498,14 @@ torture_authorized_keys_cert_from_option(void **state)
                                         remote_ip,
                                         remote_hostname,
                                         NULL);
+#ifdef _WIN32
+    assert_int_equal(rc, 0);
+    assert_null(ta->auth_opts);
+#else
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
+#endif
 
     /*
      * Test authorized user against explicit IPv6 address.
@@ -519,9 +523,14 @@ torture_authorized_keys_cert_from_option(void **state)
                                         remote_ip,
                                         remote_hostname,
                                         NULL);
+#ifdef _WIN32
+    assert_int_equal(rc, 0);
+    assert_null(ta->auth_opts);
+#else
     assert_int_equal(rc, 1);
     assert_non_null(ta->auth_opts);
     SSH_AUTH_OPTS_FREE(ta->auth_opts);
+#endif
 
     /*
      * Test "unknown" IP address and hostname. "unknown" will not match
@@ -1057,7 +1066,7 @@ torture_authorized_keys_leading_spaces(void **state)
 
 /**
  * @note Authorized principals unit tests skip some of the already tested
- * options within authorized_keys file since their validation follow the same
+ * options within authorized_keys file since their validation follows the same
  * logic.
  */
 

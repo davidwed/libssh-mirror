@@ -201,10 +201,12 @@ ssh_authorize_authkey_options(struct ssh_auth_options *auth_opts,
      * already verbose logging them).
      */
 #ifdef _WIN32
-    SSH_LOG(SSH_LOG_TRACE,
-            "\"source-address\" option is not supported on Windows. "
-            "A match against a CIDR list cannot be verified. Skipping.");
-    return SSH_ERROR;
+    if (auth_opts->cert_source_address != NULL) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "\"source-address\" option is not supported on Windows. "
+                "A match against a CIDR list cannot be verified. Skipping.");
+        return SSH_ERROR;
+    }
 #else
     if (auth_opts->cert_source_address != NULL) {
         rc = match_cidr_address_list(remote_peer_ip,
@@ -452,7 +454,6 @@ ssh_authorized_keys_check_line(ssh_key key,
 
         /* If processing a certificate merge auth opts, if any */
         merged_auth_opts = ssh_auth_options_merge_cert_opts(key, authkey_opts);
-        //SSH_AUTH_OPTS_FREE(authkey_opts);
         if (merged_auth_opts == NULL) {
             SSH_LOG(SSH_LOG_TRACE,
                     "Error while merging authentication options between "
