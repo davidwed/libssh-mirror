@@ -1013,6 +1013,9 @@ static void torture_ssh_check_hostname_syntax(void **state)
     assert_int_equal(rc, SSH_OK);
     rc = ssh_check_hostname_syntax("libssh.");
     assert_int_equal(rc, SSH_OK);
+    // IDN
+    rc = ssh_check_hostname_syntax("xn--bcher-kva.tld");
+    assert_int_equal(rc, SSH_OK);
 
     rc = ssh_check_hostname_syntax(NULL);
     assert_int_equal(rc, SSH_ERROR);
@@ -1055,6 +1058,9 @@ static void torture_ssh_check_hostname_syntax(void **state)
     rc = ssh_check_hostname_syntax(".");
     assert_int_equal(rc, SSH_ERROR);
     rc = ssh_check_hostname_syntax("..");
+    assert_int_equal(rc, SSH_ERROR);
+    // IDN non-encoded
+    rc = ssh_check_hostname_syntax("bücher.tld");
     assert_int_equal(rc, SSH_ERROR);
 }
 
