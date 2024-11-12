@@ -1020,6 +1020,7 @@ torture_pki_ecdsa_sign_verify_string(void **state, enum ssh_keytypes_e key_type)
     ssh_key key = NULL, pubkey = NULL;
     ssh_string input = NULL, signed_str = NULL;
     const char *test_input = "Test input string";
+    const char *namespace = "file";
     char *b64_str = NULL;
 
     (void)state;
@@ -1039,7 +1040,7 @@ torture_pki_ecdsa_sign_verify_string(void **state, enum ssh_keytypes_e key_type)
     assert_non_null(input);
 
     /* Test signing the input string */
-    rc = ssh_pki_sign_string(key, input, &signed_str);
+    rc = ssh_pki_sign_string(key, input, namespace, &signed_str);
     assert_return_code(rc, errno);
     assert_non_null(signed_str);
     b64_str = ssh_string_to_char(signed_str);
@@ -1047,7 +1048,7 @@ torture_pki_ecdsa_sign_verify_string(void **state, enum ssh_keytypes_e key_type)
     free(b64_str);
 
     /* Test verifying the signature */
-    rc = ssh_pki_verify_string(pubkey, input, signed_str);
+    rc = ssh_pki_verify_string(pubkey, input, namespace, signed_str);
     assert_return_code(rc, errno);
 
     /* Cleanup */
@@ -1080,7 +1081,9 @@ torture_pki_ecdsa_fail_sign_verify_string(void **state,
                                           enum ssh_keytypes_e key_type)
 {
     int rc;
-    ssh_key key = NULL;
+    ssh_key key = NULL, pubkey = NULL;
+    const char *test_input = "Test input string";
+    const char *namespace = "file";
     ssh_string input = NULL, signed_str = NULL;
 
     (void)state;
@@ -1090,26 +1093,44 @@ torture_pki_ecdsa_fail_sign_verify_string(void **state,
     assert_int_equal(rc, SSH_OK);
     assert_non_null(key);
 
+    /* Export public key */
+    rc = ssh_pki_export_privkey_to_pubkey(key, &pubkey);
+    assert_return_code(rc, errno);
+    assert_non_null(pubkey);
+
     /* Create input string */
-    input = ssh_string_from_char("Test input string");
+    input = ssh_string_from_char(test_input);
     assert_non_null(input);
 
-    /* Test signing with invalid input (NULL input) */
-    rc = ssh_pki_sign_string(key, NULL, &signed_str);
-    assert_int_equal(rc, SSH_ERROR);
-
     /* Test signing with invalid key (NULL) */
-    rc = ssh_pki_sign_string(NULL, input, &signed_str);
+    rc = ssh_pki_sign_string(NULL, input, namespace, &signed_str);
     assert_int_equal(rc, SSH_ERROR);
 
-    /* Test verifying with NULL signature */
-    rc = ssh_pki_verify_string(NULL, input, signed_str);
+    /* Test signing with invalid input (NULL) */
+    rc = ssh_pki_sign_string(key, NULL, namespace, &signed_str);
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Test signing with invalid output (NULL) */
+    rc = ssh_pki_sign_string(key, input, namespace, NULL);
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Test verifying with NULL pubkey */
+    rc = ssh_pki_verify_string(NULL, input, namespace, signed_str);
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Test verifying with NULL input */
+    rc = ssh_pki_verify_string(pubkey, NULL, namespace, signed_str);
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Test verifying with NULL signed_str */
+    rc = ssh_pki_verify_string(pubkey, input, namespace, NULL);
     assert_int_equal(rc, SSH_ERROR);
 
     /* Cleanup */
     ssh_string_free(signed_str);
     ssh_string_free(input);
     SSH_KEY_FREE(key);
+    SSH_KEY_FREE(pubkey);
 }
 
 static void
