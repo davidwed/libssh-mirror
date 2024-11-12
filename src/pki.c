@@ -2816,11 +2816,10 @@ ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespac
     ssh_buffer buffer = NULL, toverify = NULL;
     ssh_string sign_blob = NULL;
     char *b64_str = NULL;
-    unsigned char *signature;
+    unsigned char *signature = NULL;
     size_t signature_len;
-    size_t namespace_len;
+    size_t namespace_len, hash_algo_len;
     char *namespace_extracted = NULL;
-    size_t hash_algo_len;
     char *hashalg_extracted = NULL;
 
     if (pubkey == NULL || sig_namespace == NULL || signed_str == NULL) {
@@ -2839,27 +2838,31 @@ ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespac
         return SSH_ERROR;
     }
 
-    // Check minimum buffer length
+    // Validate minimum buffer length
     if (ssh_buffer_get_len(buffer) < MAGIC_PREAMBLE_LEN) {
         SSH_BUFFER_FREE(buffer);
         return SSH_ERROR;
     }
 
-    // Validate MAGIC_PREAMBLE
+    // Verify and skip preamble
     if (memcmp(ssh_buffer_get(buffer), MAGIC_PREAMBLE, MAGIC_PREAMBLE_LEN) != 0) {
         SSH_BUFFER_FREE(buffer);
         return SSH_ERROR;
     }
-    ssh_buffer_get_data(buffer, NULL, MAGIC_PREAMBLE_LEN);  // Skip past preamble
+    ssh_buffer_get_data(buffer, NULL, MAGIC_PREAMBLE_LEN);  // Advance past preamble
 
-    // Extract namespace
+    // Extract and verify namespace
     namespace_len = strlen(sig_namespace) + 1;
     if (ssh_buffer_get_len(buffer) < namespace_len) {
         SSH_BUFFER_FREE(buffer);
         return SSH_ERROR;
     }
     namespace_extracted = malloc(namespace_len);
-    ssh_buffer_get_data(buffer, namespace_extracted, namespace_len);
+    if (!namespace_extracted || ssh_buffer_get_data(buffer, namespace_extracted, namespace_len) != SSH_OK) {
+        free(namespace_extracted);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
     if (strcmp(namespace_extracted, sig_namespace) != 0) {
         free(namespace_extracted);
         SSH_BUFFER_FREE(buffer);
@@ -2877,7 +2880,11 @@ ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespac
         return SSH_ERROR;
     }
     hashalg_extracted = malloc(hash_algo_len);
-    ssh_buffer_get_data(buffer, hashalg_extracted, hash_algo_len);
+    if (!hashalg_extracted || ssh_buffer_get_data(buffer, hashalg_extracted, hash_algo_len) != SSH_OK) {
+        free(hashalg_extracted);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
     if (strcmp(hashalg_extracted, OPENSSH_SIGN_HASH_ALGO) != 0) {
         free(hashalg_extracted);
         SSH_BUFFER_FREE(buffer);
@@ -2886,8 +2893,12 @@ ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespac
     free(hashalg_extracted);
 
     // Remaining data should be the signature
-    signature = ssh_buffer_get(buffer);
     signature_len = ssh_buffer_get_len(buffer);
+    signature = ssh_buffer_get(buffer);
+    if (!signature || signature_len == 0) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
 
     // Prepare verification buffer
     toverify = ssh_buffer_new();
@@ -2895,19 +2906,19 @@ ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespac
         SSH_BUFFER_FREE(buffer);
         return SSH_ERROR;
     }
+
     rc = ssh_buffer_add_data(toverify, MAGIC_PREAMBLE, MAGIC_PREAMBLE_LEN);
     rc |= ssh_buffer_add_data(toverify, sig_namespace, strlen(sig_namespace) + 1);
     rc |= ssh_buffer_add_data(toverify, "", 1);  // Reserved
     rc |= ssh_buffer_add_data(toverify, OPENSSH_SIGN_HASH_ALGO, strlen(OPENSSH_SIGN_HASH_ALGO) + 1);
     rc |= ssh_buffer_add_data(toverify, ssh_string_data(input), ssh_string_len(input));
-
     if (rc != SSH_OK) {
         SSH_BUFFER_FREE(buffer);
         SSH_BUFFER_FREE(toverify);
         return SSH_ERROR;
     }
 
-    // Import the signature blob
+    // Import and verify signature blob
     sign_blob = ssh_string_new(signature_len);
     if (sign_blob == NULL) {
         SSH_BUFFER_FREE(buffer);
@@ -2916,7 +2927,6 @@ ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespac
     }
     memcpy(ssh_string_data(sign_blob), signature, signature_len);
 
-    // Verify the signature
     rc = ssh_pki_import_signature_blob(sign_blob, pubkey, &sign);
     SSH_STRING_FREE(sign_blob);
     if (rc != SSH_OK) {
@@ -2930,6 +2940,7 @@ ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespac
                                    ssh_buffer_get(toverify),
                                    ssh_buffer_get_len(toverify));
 
+    // Clean up
     ssh_signature_free(sign);
     SSH_BUFFER_FREE(buffer);
     SSH_BUFFER_FREE(toverify);
