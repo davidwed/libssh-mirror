@@ -2717,50 +2717,78 @@ ssh_signature pki_do_sign(const ssh_key privkey,
  * types, unless the SHA2 extension (RFC 8332) is negotiated during
  * key exchange.
  *
- * @param[in] privkey   The private key that will sign the string.
+ * @param[in]       privkey   The private key that will sign the string.
  *
- * @param[in]   input   The input string to sign.
+ * @param[in]         input   The input string to sign.
  *
- * @param[in]  output   A pointer to the output signature string.
+ * @param[in] sig_namespace   A C string to indicate context of signature.
+ *
+ * @param[in]        output   A pointer to the output signature string.
  *
  * @return  SSH_ERROR in case of error, SSH_OK otherwise.
  */
 int
-ssh_pki_sign_string(ssh_key privkey, ssh_string input, ssh_string *output)
+ssh_pki_sign_string(ssh_key privkey, ssh_string input, const char *sig_namespace, ssh_string *output)
 {
     int rc;
     enum ssh_digest_e hash_type;
     ssh_signature sign = NULL;
-    ssh_string sign_blob = NULL;
-    unsigned char *b64_str;
-    sign = NULL;
-    if (privkey == NULL) {
-        return SSH_ERROR;
-    }
-    hash_type = key_type_to_hash(privkey->type);
-    sign = pki_do_sign(privkey,
-                       ssh_string_data(input),
-                       ssh_string_len(input),
-                       hash_type);
-    if (sign == NULL) {
-        return SSH_ERROR;
-    }
-    rc = ssh_pki_export_signature_blob(sign, &sign_blob);
-    if (rc == SSH_ERROR) {
-        output = NULL;
+    ssh_buffer sign_buffer = NULL;
+    unsigned char *b64_str = NULL;
+
+    if (privkey == NULL || sig_namespace == NULL || output == NULL) {
         return SSH_ERROR;
     }
 
-    b64_str =
-      bin_to_base64(ssh_string_data(sign_blob), ssh_string_len(sign_blob));
-    if (b64_str == NULL) {
+    sign_buffer = ssh_buffer_new();
+    if (sign_buffer == NULL) {
+        SSH_BUFFER_FREE(sign_buffer);
         return SSH_ERROR;
     }
+
+    // Prepare data to sign (OpenSSH compatible format)
+    rc = ssh_buffer_add_data(sign_buffer, MAGIC_PREAMBLE, MAGIC_PREAMBLE_LEN);  // Add preamble
+    rc |= ssh_buffer_add_data(sign_buffer, sig_namespace, strlen(sig_namespace) + 1);    // Namespace with null terminator
+    rc |= ssh_buffer_add_data(sign_buffer, "", 1);                               // Reserved field (empty)
+    rc |= ssh_buffer_add_data(sign_buffer, OPENSSH_SIGN_HASH_ALGO, strlen(OPENSSH_SIGN_HASH_ALGO) + 1);      // Hash algorithm
+    rc |= ssh_buffer_add_data(sign_buffer, ssh_string_data(input), ssh_string_len(input));  // Message to sign
+
+    if (rc != SSH_OK) {
+        SSH_BUFFER_FREE(sign_buffer);
+        return SSH_ERROR;
+    }
+
+    // Perform signing
+    hash_type = key_type_to_hash(privkey->type);
+    sign = pki_do_sign(privkey,
+                       ssh_buffer_get(sign_buffer),
+                       ssh_buffer_get_len(sign_buffer),
+                       hash_type);
+    if (sign == NULL) {
+        SSH_BUFFER_FREE(sign_buffer);
+        return SSH_ERROR;
+    }
+
+    if (rc != SSH_OK) {
+        ssh_signature_free(sign);
+        SSH_BUFFER_FREE(sign_buffer);
+        return SSH_ERROR;
+    }
+
+    b64_str = bin_to_base64(ssh_buffer_get(sign_buffer),
+                            ssh_buffer_get_len(sign_buffer));
+    if (b64_str == NULL) {
+        ssh_signature_free(sign);
+        SSH_BUFFER_FREE(sign_buffer);
+        return SSH_ERROR;
+    }
+
     *output = ssh_string_from_char((char *)b64_str);
     free(b64_str);
     ssh_signature_free(sign);
-    SSH_STRING_FREE(sign_blob);
-    if (output == NULL) {
+    SSH_BUFFER_FREE(sign_buffer);
+
+    if (*output == NULL) {
         return SSH_ERROR;
     }
 
@@ -2770,80 +2798,126 @@ ssh_pki_sign_string(ssh_key privkey, ssh_string input, ssh_string *output)
 /**
  * @brief Verify a signed string.
  *
- * @param[in]     pubkey   The public key used to verify the string.
+ * @param[in]        pubkey   The public key used to verify the string.
  *
- * @param[in]      input   The input string to verify.
+ * @param[in]         input   The input string to verify.
  *
- * @param[in] signed_str   The signed string to match.
+ * @param[in] sig_namespace   A C string to indicate context of signature.
+ *
+ * @param[in]    signed_str   The signed string to match.
  *
  * @return  SSH_ERROR in case of error, SSH_OK otherwise.
  */
 int
-ssh_pki_verify_string(ssh_key pubkey, ssh_string input, ssh_string signed_str)
+ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespace, ssh_string signed_str)
 {
     int rc;
     ssh_signature sign = NULL;
-    ssh_buffer buffer = NULL;
+    ssh_buffer buffer = NULL, toverify = NULL;
     ssh_string sign_blob = NULL;
     char *b64_str = NULL;
-    if (pubkey == NULL || signed_str == NULL) {
+    char *namespace = NULL, *hashalg = NULL;
+    unsigned char *signature;
+    size_t signature_len;
+
+    if (pubkey == NULL || sig_namespace == NULL || signed_str == NULL) {
         return SSH_ERROR;
     }
 
+    // Decode signed_str from base64 to binary data
     b64_str = ssh_string_to_char(signed_str);
     if (b64_str == NULL) {
         return SSH_ERROR;
     }
 
     buffer = base64_to_bin(b64_str);
+    free(b64_str);
     if (buffer == NULL) {
-        free(b64_str);
         return SSH_ERROR;
     }
-    free(b64_str);
 
-    sign_blob = ssh_string_new(ssh_buffer_get_len(buffer));
-    memcpy(ssh_string_data(sign_blob),
-           ssh_buffer_get(buffer),
-           ssh_buffer_get_len(buffer));
-    if (sign_blob == NULL) {
+    // Extract components from the decoded buffer
+    if (ssh_buffer_get_len(buffer) < MAGIC_PREAMBLE_LEN) {
         SSH_BUFFER_FREE(buffer);
         return SSH_ERROR;
     }
-    SSH_BUFFER_FREE(buffer);
+
+    // Validate MAGIC_PREAMBLE
+    if (memcmp(ssh_buffer_get(buffer), MAGIC_PREAMBLE, MAGIC_PREAMBLE_LEN) != 0) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    ssh_buffer_get_data(buffer, NULL, MAGIC_PREAMBLE_LEN);  // Advance past preamble
+
+    // Extract namespace
+    namespace = (char *)ssh_buffer_get(buffer);
+    if (strcmp(namespace, sig_namespace) != 0) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    // Skip reserved field
+    ssh_buffer_get_data(buffer, NULL, 1);
+
+    // Extract and verify hash algorithm
+    hashalg = (char *)ssh_buffer_get(buffer);
+    if (strcmp(hashalg, OPENSSH_SIGN_HASH_ALGO) != 0) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    // Extract signature
+    signature = ssh_buffer_get(buffer);
+    signature_len = ssh_buffer_get_len(buffer);
+
+    // Initialize toverify buffer with the reconstructed data
+    toverify = ssh_buffer_new();
+    if (toverify == NULL) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    rc = ssh_buffer_add_data(toverify, MAGIC_PREAMBLE, MAGIC_PREAMBLE_LEN);
+    rc |= ssh_buffer_add_data(toverify, sig_namespace, strlen(sig_namespace) + 1);
+    rc |= ssh_buffer_add_data(toverify, "", 1);  // Reserved
+    rc |= ssh_buffer_add_data(toverify, OPENSSH_SIGN_HASH_ALGO, strlen(OPENSSH_SIGN_HASH_ALGO) + 1);
+    rc |= ssh_buffer_add_data(toverify, ssh_string_data(input), ssh_string_len(input));
+
+    if (rc != SSH_OK) {
+        SSH_BUFFER_FREE(buffer);
+        SSH_BUFFER_FREE(toverify);
+        return SSH_ERROR;
+    }
+
+    // Import the extracted signature
+    sign_blob = ssh_string_new(signature_len);
+    if (sign_blob == NULL) {
+        SSH_BUFFER_FREE(buffer);
+        SSH_BUFFER_FREE(toverify);
+        return SSH_ERROR;
+    }
+    memcpy(ssh_string_data(sign_blob), signature, signature_len);
 
     rc = ssh_pki_import_signature_blob(sign_blob, pubkey, &sign);
     SSH_STRING_FREE(sign_blob);
     if (rc != SSH_OK) {
+        SSH_BUFFER_FREE(buffer);
+        SSH_BUFFER_FREE(toverify);
         return rc;
     }
-    /* TODO Handle certificates */
-    SSH_LOG(SSH_LOG_FUNCTIONS,
-            "Going to verify a %s type signature",
-            sign->type_c);
 
-    if (pubkey->type != sign->type) {
-        SSH_LOG(SSH_LOG_WARN,
-                "Can not verify %s signature with %s key",
-                sign->type_c,
-                pubkey->type_c);
-        rc = SSH_ERROR;
-        goto end;
-    }
-
-    /* Check if public key and hash type are compatible */
-    rc = pki_key_check_hash_compatible(pubkey, sign->hash_type);
-    if (rc != SSH_OK) {
-        rc = SSH_ERROR;
-        goto end;
-    }
-
+    // Verify the signature
     rc = pki_verify_data_signature(sign,
                                    pubkey,
-                                   ssh_string_data(input),
-                                   ssh_string_len(input));
-end:
+                                   ssh_buffer_get(toverify),
+                                   ssh_buffer_get_len(toverify));
+
+    // Clean up
     ssh_signature_free(sign);
+    SSH_BUFFER_FREE(buffer);
+    SSH_BUFFER_FREE(toverify);
+
     return rc;
 }
 
