@@ -22,6 +22,14 @@ static struct argp_option options[] = {
     .doc   = "Make libssh test more verbose",
     .group = 0
   },
+  {
+    .name  = "exclude",
+    .key   = 'e',
+    .arg   = NULL,
+    .flags = 0,
+    .doc   = "Exclude tests matching this regex",
+    .group = 0
+  },
   {NULL, 0, NULL, 0, NULL, 0}
 };
 
@@ -32,12 +40,15 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
    */
   struct argument_s *arguments = state->input;
 
-  /* arg is currently not used */
   (void) arg;
 
   switch (key) {
     case 'v':
       arguments->verbose++;
+      break;
+    case 'e':
+      arguments->exclude_regex = state->argv[state->next];
+      state->next = state->argc;
       break;
     case ARGP_KEY_ARG:
       /* End processing here. */

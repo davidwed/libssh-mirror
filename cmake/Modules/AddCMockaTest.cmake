@@ -40,6 +40,11 @@
 # ``LINK_OPTIONS``:
 #   Optional, expects one or more options to be passed to the linker
 #
+# ``COMMAND_ARGS``:
+#   Optional cmocka arguments
+#   -v              Make libssh tests more verbose
+#   -e [pattern]    Exclude tests matching this pattern
+#
 #
 # Example:
 #
@@ -50,6 +55,7 @@
 #                   COMPILE_OPTIONS -g -Wall
 #                   LINK_LIBRARIES mylib
 #                   LINK_OPTIONS -Wl,--enable-syscall-fixup
+#                   COMMAND_ARGS -v
 #                  )
 #
 # Where ``my_test`` is the name of the test, ``my_test.c`` and
@@ -79,6 +85,7 @@ function(ADD_CMOCKA_TEST _TARGET_NAME)
         COMPILE_OPTIONS
         LINK_LIBRARIES
         LINK_OPTIONS
+        COMMAND_ARGS
     )
 
     cmake_parse_arguments(_add_cmocka_test
@@ -114,7 +121,7 @@ function(ADD_CMOCKA_TEST _TARGET_NAME)
     endif()
 
     add_test(${_TARGET_NAME}
-        ${TARGET_SYSTEM_EMULATOR} ${_TARGET_NAME}
+        ${TARGET_SYSTEM_EMULATOR} ${_TARGET_NAME} ${_add_cmocka_test_COMMAND_ARGS}
     )
     if (WITH_COVERAGE)
         ENABLE_LANGUAGE(CXX)

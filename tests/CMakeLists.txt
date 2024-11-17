@@ -94,6 +94,9 @@ set(TEST_TARGET_LIBRARIES
     ${TORTURE_LINK_LIBRARIES}
 )
 
+set(TEST_EXCLUDE_PATTERNS "" CACHE STRING
+"semicolon (;) separated patterns to exclude specific tests.  A pattern contains the test group, a :: separator, and a pattern to skip the tests within that group.  This last pattern is passed to cmocka_set_skip_filter and only supports the '*' and '?' wildcards.")
+
 add_subdirectory(unittests)
 
 # OpenSSH Capabilities are required for all unit tests

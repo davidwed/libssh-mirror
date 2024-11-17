@@ -55,6 +55,7 @@
 
 /* Used by main to communicate with parse_opt. */
 struct argument_s {
+  const char *exclude_regex;
   const char *pattern;
   int verbose;
 };
