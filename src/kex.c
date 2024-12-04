@@ -1512,7 +1512,7 @@ int ssh_make_sessionid(ssh_session session)
 #endif /* HAVE_SNTRUP761 */
     }
     if (session->next_crypto->kex_type == SSH_KEX_SNTRUP761X25519_SHA512_OPENSSH_COM) {
-        rc = ssh_buffer_pack(buf, "U", session->next_crypto->shared_secret);
+        rc = ssh_buffer_pack(buf, "U", session->next_crypto->shared_secret, SHA512_DIGEST_LEN);
     } else {
         rc = ssh_buffer_pack(buf, "B", session->next_crypto->shared_secret);
     }
@@ -1709,7 +1709,7 @@ int ssh_generate_session_keys(ssh_session session)
     int rc = -1;
 
     if (session->next_crypto->kex_type == SSH_KEX_SNTRUP761X25519_SHA512_OPENSSH_COM) {
-        k_string = ssh_make_unpadded_bignum_string(crypto->shared_secret);
+        k_string = ssh_make_padded_bignum_string(crypto->shared_secret, SHA512_DIGEST_LEN);
     } else {
         k_string = ssh_make_bignum_string(crypto->shared_secret);
     }

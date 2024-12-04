@@ -27,20 +27,24 @@ static void check_str (int n, ssh_string str)
     }
 }
 
-static void check_unpadded_str (int n, ssh_string str)
+static void check_padded_str (int n, ssh_string str)
 {
+    assert_int_equal(4, ntohl (str->size));
     if (n > 0 && n <= 255) {
-        assert_int_equal(1, ntohl (str->size));
-        assert_int_equal(n, str->data[0]);
+        assert_int_equal(0, str->data[0]);
+        assert_int_equal(0, str->data[1]);
+        assert_int_equal(0, str->data[2]);
+        assert_int_equal(n, str->data[3]);
     } else if (n > 255 && n <= 65535) {
-        assert_int_equal(2, ntohl (str->size));
-        assert_int_equal(n >> 8, str->data[0]);
-        assert_int_equal(n & 0xFF, str->data[1]);
+        assert_int_equal(0, str->data[0]);
+        assert_int_equal(0, str->data[1]);
+        assert_int_equal(n >> 8, str->data[2]);
+        assert_int_equal(n & 0xFF, str->data[3]);
     } else {
-        assert_int_equal(3, ntohl (str->size));
-        assert_int_equal(n >> 16, str->data[0]);
-        assert_int_equal((n >> 8) & 0xFF, str->data[1]);
-        assert_int_equal(n & 0xFF, str->data[2]);
+        assert_int_equal(0, str->data[0]);
+        assert_int_equal(n >> 16, str->data[1]);
+        assert_int_equal((n >> 8) & 0xFF, str->data[2]);
+        assert_int_equal(n & 0xFF, str->data[3]);
     }
 }
 
@@ -91,12 +95,12 @@ static void check_bignum(int n, const char *nstr)
 
     bignum_safe_free(num2);
 
-    /* ssh_make_unpadded_bignum_string */
+    /* ssh_make_padded_bignum_string */
 
-    str = ssh_make_unpadded_bignum_string(num);
+    str = ssh_make_padded_bignum_string(num, 4);
     assert_non_null(str);
 
-    check_unpadded_str (n, str);
+    check_padded_str (n, str);
 
     num2 = ssh_make_string_bn(str);
     ssh_string_free (str);

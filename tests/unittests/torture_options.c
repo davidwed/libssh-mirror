@@ -245,6 +245,7 @@ static void torture_options_get_key_exchange(void **state)
     } else {
         assert_string_equal(value,
                             "curve25519-sha256,curve25519-sha256@libssh.org,"
+                            "sntrup761x25519-sha512@openssh.com,"
                             "ecdh-sha2-nistp256,ecdh-sha2-nistp384,"
                             "ecdh-sha2-nistp521,diffie-hellman-group18-sha512,"
                             "diffie-hellman-group16-sha512,"
