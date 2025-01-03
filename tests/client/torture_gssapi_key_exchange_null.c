@@ -112,7 +112,7 @@ torture_gssapi_key_exchange_null(void **state)
     assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
-    assert_int_equal(rc, 0);
+    assert_ssh_return_code(s->ssh.session, rc);
     torture_teardown_kdc_server(state);
 }
 

@@ -1441,8 +1441,8 @@ ssh_config_parse_line(ssh_session session,
       break;
     case SOC_GSSAPIKEYEXCHANGE: {
         i = ssh_config_get_yesno(&s, -1);
-        if (i > 0 && *parsing) {
-            bool b = true;
+        if (i >= 0 && *parsing) {
+            bool b = (i == 1) ? true : false;
             ssh_options_set(session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &b);
         }
         break;

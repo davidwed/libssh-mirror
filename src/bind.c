@@ -259,8 +259,11 @@ int ssh_bind_listen(ssh_bind sshbind) {
     if (sshbind->rsa == NULL &&
         sshbind->ecdsa == NULL &&
         sshbind->ed25519 == NULL) {
-        /* Can fail */
-        ssh_bind_import_keys(sshbind);
+        /* Can fail when using "null" hostkey algorithm */
+        rc = ssh_bind_import_keys(sshbind);
+        if (rc == SSH_ERROR) {
+            SSH_LOG(SSH_LOG_DEBUG, "No hostkeys found: Using \"null\" hostkey algorithm");
+        }
     }
 
     if (sshbind->bindfd == SSH_INVALID_SOCKET) {
@@ -420,7 +423,7 @@ void ssh_bind_free(ssh_bind sshbind){
 int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
 {
     ssh_poll_handle handle = NULL;
-    int i;
+    int i, rc;
 
     if (sshbind == NULL) {
         return SSH_ERROR;
@@ -528,8 +531,11 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
     if (sshbind->rsa == NULL &&
         sshbind->ecdsa == NULL &&
         sshbind->ed25519 == NULL) {
-        /* Can fail */
-        ssh_bind_import_keys(sshbind);
+        /* Can fail when using "null" hostkey algorithm */
+        rc = ssh_bind_import_keys(sshbind);
+        if (rc == SSH_ERROR) {
+            SSH_LOG(SSH_LOG_DEBUG, "No hostkeys found: Using \"null\" hostkey algorithm");
+        }
     }
 
 #ifdef HAVE_ECC

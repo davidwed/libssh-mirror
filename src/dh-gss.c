@@ -338,9 +338,6 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
         goto error;
     }
 
-    /* Can give error when using null hostkey */
-    ssh_get_key_params(session, &privkey, &digest);
-
     rc = ssh_dh_compute_shared_secret(crypto->dh_ctx,
                                       DH_SERVER_KEYPAIR, DH_CLIENT_KEYPAIR,
                                       &crypto->shared_secret);
@@ -349,6 +346,11 @@ int ssh_server_gss_dh_process_init(ssh_session session, ssh_buffer packet)
         ssh_set_error(session, SSH_FATAL, "Could not generate shared secret");
         goto error;
     }
+
+    /* Also imports next_crypto->server_pubkey
+     * Can give error when using null hostkey */
+    ssh_get_key_params(session, &privkey, &digest);
+
     rc = ssh_make_sessionid(session);
     if (rc != SSH_OK) {
         ssh_set_error(session, SSH_FATAL, "Could not create a session id");
