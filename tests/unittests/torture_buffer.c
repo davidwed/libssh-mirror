@@ -259,6 +259,38 @@ static void torture_buffer_pack_badformat(void **state){
      * it could crash the process */
 }
 
+static void torture_ssh_buffer_bignum(void **state) {
+    ssh_buffer buffer;
+    bignum num;
+    int rc;
+    size_t len;
+    uint8_t verif[] =
+      "\x00\x00\x00\x04" /* len 4 byte */
+      "\x00\x00\x00\xff" /* padded 255 */
+      "\x00\x00\x00\x02" /* len 2 byte */
+      "\x00\xff";        /* padded 255 */
+
+    (void)state;
+
+    buffer = ssh_buffer_new();
+    assert_non_null(buffer);
+
+    num = bignum_new();
+    assert_non_null(num);
+    assert_int_equal (1, bignum_set_word (num, 255));
+
+    rc=ssh_buffer_pack(buffer, "UB", num, 4, num);
+    assert_int_equal(rc, SSH_OK);
+
+    bignum_safe_free (num);
+
+    len = ssh_buffer_get_len(buffer);
+    assert_int_equal(len, sizeof(verif) - 1);
+    assert_memory_equal(ssh_buffer_get(buffer), verif, sizeof(verif) -1);
+
+    SSH_BUFFER_FREE(buffer);
+}
+
 int torture_run_tests(void) {
     int rc;
     struct CMUnitTest tests[] = {
@@ -269,7 +301,8 @@ int torture_run_tests(void) {
         cmocka_unit_test_setup_teardown(torture_ssh_buffer_add_format, setup, teardown),
         cmocka_unit_test_setup_teardown(torture_ssh_buffer_get_format, setup, teardown),
         cmocka_unit_test_setup_teardown(torture_ssh_buffer_get_format_error, setup, teardown),
-        cmocka_unit_test_setup_teardown(torture_buffer_pack_badformat, setup, teardown)
+        cmocka_unit_test_setup_teardown(torture_buffer_pack_badformat, setup, teardown),
+        cmocka_unit_test(torture_ssh_buffer_bignum)
     };
 
     ssh_init();
