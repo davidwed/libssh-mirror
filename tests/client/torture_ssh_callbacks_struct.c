@@ -18,11 +18,6 @@ struct callback_state {
     struct torture_state *ts;
 };
 
-static void teardown(void **state)
-{
-    free(*state);
-}
-
 static int auth_callback(const char *prompt,
                          char *buf,
                          size_t len,
@@ -87,7 +82,6 @@ static int session_teardown(void **state)
     struct callback_state *s = *state;
     ssh_disconnect(s->ts->ssh.session);
     ssh_free(s->ts->ssh.session);
-    // teardown(state);
     return 0;
 }
 
