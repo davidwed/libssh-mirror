@@ -286,6 +286,11 @@ torture_gssapi_server_key_exchange(void **state)
     int rc;
     bool t = true;
 
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
+
     assert_non_null(tss);
 
     s = tss->state;
@@ -321,6 +326,11 @@ torture_gssapi_server_key_exchange_no_tgt(void **state)
     ssh_session session;
     int rc;
     bool t = true;
+
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
 
     assert_non_null(tss);
 
@@ -361,6 +371,11 @@ torture_gssapi_server_key_exchange_gss_group14_sha256(void **state)
     ssh_session session;
     int rc;
     bool t = true;
+
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
 
     assert_non_null(tss);
 
@@ -403,6 +418,11 @@ torture_gssapi_server_key_exchange_gss_group16_sha512(void **state)
     int rc;
     bool t = true;
 
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
+
     assert_non_null(tss);
 
     s = tss->state;
@@ -444,6 +464,11 @@ torture_gssapi_server_key_exchange_auth(void **state)
     int rc;
     bool t = true;
 
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
+
     assert_non_null(tss);
 
     s = tss->state;
@@ -482,6 +507,11 @@ torture_gssapi_server_key_exchange_no_auth(void **state)
     ssh_session session = NULL;
     int rc;
     bool f = false;
+
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
 
     assert_non_null(tss);
 

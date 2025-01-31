@@ -83,6 +83,11 @@ torture_gssapi_key_exchange(void **state)
     int rc;
     bool t = true;
 
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
+
     /* Valid */
     torture_setup_kdc_server(
         state,
@@ -108,6 +113,11 @@ torture_gssapi_key_exchange_no_tgt(void **state)
     ssh_session session = s->ssh.session;
     int rc;
     bool t = true;
+
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
 
     /* Don't run kinit */
     torture_setup_kdc_server(
@@ -139,6 +149,11 @@ torture_gssapi_key_exchange_gss_group14_sha256(void **state)
     ssh_session session = s->ssh.session;
     int rc;
     bool t = true;
+
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
 
     /* Valid */
     torture_setup_kdc_server(
@@ -172,6 +187,11 @@ torture_gssapi_key_exchange_gss_group16_sha512(void **state)
     int rc;
     bool t = true;
 
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
+
     /* Valid */
     torture_setup_kdc_server(
         state,
@@ -204,6 +224,11 @@ torture_gssapi_key_exchange_auth(void **state)
     int rc;
     bool t = true;
 
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
+
     /* Valid */
     torture_setup_kdc_server(
         state,
@@ -233,6 +258,11 @@ torture_gssapi_key_exchange_no_auth(void **state)
     ssh_session session = s->ssh.session;
     int rc;
     bool f = false;
+
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
 
     /* Valid */
     torture_setup_kdc_server(

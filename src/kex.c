@@ -779,7 +779,7 @@ int ssh_set_client_kex(ssh_session session)
         return SSH_ERROR;
     }
 #ifdef WITH_GSSAPI
-    if (session->opts.gssapi_key_exchange) {
+    if (session->opts.gssapi_key_exchange && !ssh_fips_mode()) {
         char *gssapi_algs = NULL;
 
         ok = ssh_gssapi_init(session);

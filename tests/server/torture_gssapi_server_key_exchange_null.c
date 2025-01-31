@@ -276,6 +276,11 @@ torture_gssapi_server_key_exchange_null(void **state)
     int rc;
     bool t = true;
 
+    /* Skip test if in FIPS mode */
+    if (ssh_fips_mode()) {
+        skip();
+    }
+
     assert_non_null(tss);
 
     s = tss->state;
