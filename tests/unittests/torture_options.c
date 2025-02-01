@@ -1449,7 +1449,8 @@ static void torture_options_getopt(void **state)
     int previous_level, new_level;
     const char *argv[] = {EXECUTABLE_NAME, "-l", "username", "-p", "222",
                     "-vv", "-v", "-r", "-c", "aes128-ctr",
-                    "-i", "id_rsa", "-C", "-2", "-1", NULL};
+                    "-i", "id_rsa", "-C", "-2", "-1",
+                    "-o", "LogLevel=DEBUG", NULL};
     int argc = sizeof(argv)/sizeof(char *) - 1;
     previous_level = ssh_get_log_level();
 
@@ -1478,6 +1479,7 @@ static void torture_options_getopt(void **state)
     assert_string_equal(session->opts.wanted_methods[SSH_CRYPT_S_C],
                         "aes128-ctr");
     assert_string_equal(session->opts.identity_non_exp->root->data, "id_rsa");
+    assert_int_equal(session->common.log_verbosity, SSH_LOG_DEBUG);
 #ifdef WITH_ZLIB
     assert_string_equal(session->opts.wanted_methods[SSH_COMP_C_S],
                         "zlib@openssh.com,none");
@@ -1593,6 +1595,16 @@ static void torture_options_getopt(void **state)
     assert_ssh_return_code(session, rc);
     assert_int_equal(argc, 1);
     assert_string_equal(argv[0], EXECUTABLE_NAME);
+
+    /* Unknown opcode should not fail but rather skip the option */
+    argv[1] = "-o";
+    argv[2] = "UnknownOption=yes";
+    argv[3] = NULL;
+    argc = 3;
+    rc = ssh_options_getopt(session, &argc, (char **)argv);
+    assert_int_equal(argc, 1);
+    assert_string_equal(argv[0], EXECUTABLE_NAME);
+    assert_ssh_return_code(session, rc);
 
 #endif /* _NSC_VER */
 }

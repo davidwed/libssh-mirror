@@ -101,6 +101,18 @@ LIBSSH_API int ssh_bind_options_parse_config(ssh_bind sshbind,
     const char *filename);
 
 /**
+ * @brief Parse configuration string and set the options to the given
+ * bind session
+ *
+ * @params[in] bind      The ssh bind session
+ * @params[in] input     Null terminated string containing the configuration
+ *
+ * @returns    SSH_OK on successful parsing the configuration string,
+ *             SSH_ERROR on error
+ */
+LIBSSH_API int ssh_bind_config_parse_string(ssh_bind bind, const char *input);
+
+/**
  * @brief Start listening to the socket.
  *
  * @param  ssh_bind_o     The ssh server bind to use.

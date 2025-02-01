@@ -94,6 +94,7 @@ static void usage(void)
             "Options :\n"
             "  -l user : log in as user\n"
             "  -p port : connect to port\n"
+            "  -o option : set client configuration option [-o OptionName=Value]"
             "  -r : use RSA to verify host public key\n"
             "  -F file : parse configuration file instead of default one\n"
 #ifdef WITH_PCAP
