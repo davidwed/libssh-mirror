@@ -483,6 +483,7 @@ int ssh_bind_accept_fd(ssh_bind sshbind, ssh_session session, socket_t fd)
     session->opts.gssapi_key_exchange = sshbind->gssapi_key_exchange;
 
     if (sshbind->gssapi_key_exchange_algs != NULL) {
+        SAFE_FREE(session->opts.gssapi_key_exchange_algs);
         session->opts.gssapi_key_exchange_algs = strdup(sshbind->gssapi_key_exchange_algs);
         if (session->opts.gssapi_key_exchange_algs == NULL) {
             ssh_set_error_oom(sshbind);
