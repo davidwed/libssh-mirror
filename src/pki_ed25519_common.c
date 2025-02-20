@@ -31,7 +31,8 @@ int pki_privkey_build_ed25519(ssh_key key,
                               ssh_string pubkey,
                               ssh_string privkey)
 {
-    if (ssh_string_len(pubkey) != ED25519_KEY_LEN ||
+    size_t pubkey_size = ssh_string_len(pubkey);
+    if (pubkey_size < ED25519_KEY_LEN ||
         ssh_string_len(privkey) != (2 * ED25519_KEY_LEN))
     {
         SSH_LOG(SSH_LOG_TRACE, "Invalid ed25519 key len");
@@ -51,7 +52,7 @@ int pki_privkey_build_ed25519(ssh_key key,
         goto error;
     }
 
-    key->ed25519_pubkey = malloc(ED25519_KEY_LEN);
+    key->ed25519_pubkey = malloc(pubkey_size);
     if (key->ed25519_pubkey == NULL) {
         goto error;
     }
@@ -64,7 +65,7 @@ int pki_privkey_build_ed25519(ssh_key key,
            2 * ED25519_KEY_LEN);
 #endif
     memcpy(key->ed25519_pubkey, ssh_string_data(pubkey),
-           ED25519_KEY_LEN);
+           pubkey_size);
 
     return SSH_OK;
 
