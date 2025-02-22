@@ -878,6 +878,9 @@ torture_cert_auth_only_authorized_keys_principals_option(void **state)
     rc = ssh_userauth_publickey(session, NULL, privkey);
     assert_int_equal(rc, SSH_AUTH_DENIED);
 
+    SSH_KEY_FREE(cert);
+    SSH_KEY_FREE(privkey);
+
     /* Restart and test a matching principal this time */
     ssh_disconnect(session);
     ssh_free(session);
@@ -920,6 +923,19 @@ torture_cert_auth_only_authorized_keys_principals_option(void **state)
     assert_int_equal(rc, SSH_OK);
 
     rc = ssh_connect(session);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_import_privkey_file(tss->client.test_key,
+                                     NULL,
+                                     NULL,
+                                     NULL,
+                                     &privkey);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_import_cert_file(tss->client.test_cert_key, &cert);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_copy_cert_to_privkey(cert, privkey);
     assert_int_equal(rc, SSH_OK);
 
     rc = ssh_userauth_publickey(session, NULL, privkey);
@@ -1016,6 +1032,9 @@ torture_cert_auth_only_authorized_keys_match_user(void **state)
     rc = ssh_userauth_publickey(session, NULL, privkey);
     assert_int_equal(rc, SSH_AUTH_DENIED);
 
+    SSH_KEY_FREE(cert);
+    SSH_KEY_FREE(privkey);
+
     /* Restart and test a matching user this time */
     ssh_disconnect(session);
     ssh_free(session);
@@ -1047,6 +1066,19 @@ torture_cert_auth_only_authorized_keys_match_user(void **state)
     assert_int_equal(rc, SSH_OK);
 
     rc = ssh_connect(session);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_import_privkey_file(tss->client.test_key,
+                                     NULL,
+                                     NULL,
+                                     NULL,
+                                     &privkey);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_import_cert_file(tss->client.test_cert_key, &cert);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_copy_cert_to_privkey(cert, privkey);
     assert_int_equal(rc, SSH_OK);
 
     rc = ssh_userauth_publickey(session, NULL, privkey);
@@ -1137,7 +1169,7 @@ torture_cert_auth_only_authorized_keys_expiry_time(void **state)
     rc = ssh_pki_copy_cert_to_privkey(cert, privkey);
     assert_int_equal(rc, SSH_OK);
 
-    /* It must fail because the certificate expired in 2020, January 1st */
+    /* It must fail because the certificate expired in 2020, January 10th */
     rc = ssh_userauth_publickey(session, NULL, privkey);
     assert_int_equal(rc, SSH_AUTH_DENIED);
 
@@ -1583,6 +1615,9 @@ torture_cert_auth_trusted_user_ca(void **state)
     rc = ssh_userauth_publickey(session, NULL, privkey);
     assert_int_equal(rc, SSH_AUTH_DENIED);
 
+    SSH_KEY_FREE(cert);
+    SSH_KEY_FREE(privkey);
+
     /* Restart and test a matching key in TrustedUserCAKeys file */
     ssh_disconnect(session);
     ssh_free(session);
@@ -1621,6 +1656,19 @@ torture_cert_auth_trusted_user_ca(void **state)
     assert_int_equal(rc, SSH_OK);
 
     rc = ssh_connect(session);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_import_privkey_file(tss->client.test_key,
+                                     NULL,
+                                     NULL,
+                                     NULL,
+                                     &privkey);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_import_cert_file(tss->client.test_cert_key, &cert);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_copy_cert_to_privkey(cert, privkey);
     assert_int_equal(rc, SSH_OK);
 
     rc = ssh_userauth_publickey(session, NULL, privkey);
@@ -1722,6 +1770,9 @@ torture_cert_auth_trusted_user_ca_and_authorized_principals_file(void **state)
     rc = ssh_userauth_publickey(session, NULL, privkey);
     assert_int_equal(rc, SSH_AUTH_DENIED);
 
+    SSH_KEY_FREE(cert);
+    SSH_KEY_FREE(privkey);
+
     /* Restart and test a matching principal in AuthorizedPrincipals file */
     ssh_disconnect(session);
     ssh_free(session);
@@ -1761,6 +1812,19 @@ torture_cert_auth_trusted_user_ca_and_authorized_principals_file(void **state)
     assert_int_equal(rc, SSH_OK);
 
     rc = ssh_connect(session);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_import_privkey_file(tss->client.test_key,
+                                     NULL,
+                                     NULL,
+                                     NULL,
+                                     &privkey);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_import_cert_file(tss->client.test_cert_key, &cert);
+    assert_int_equal(rc, SSH_OK);
+
+    rc = ssh_pki_copy_cert_to_privkey(cert, privkey);
     assert_int_equal(rc, SSH_OK);
 
     rc = ssh_userauth_publickey(session, NULL, privkey);

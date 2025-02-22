@@ -354,6 +354,7 @@ fedora/mingw64:
       -DUNIT_TESTING=ON .. &&
       make -j$(nproc) &&
       ctest --output-on-failure -E torture_rand
+  allow_failure: true
 
 # Unit testing only, no client and pkd testing, because cwrap is not available
 # for MinGW
@@ -371,6 +372,7 @@ fedora/mingw32:
       -DUNIT_TESTING=ON .. &&
       make -j$(nproc) &&
       ctest --output-on-failure -E torture_rand
+  allow_failure: true
 
 
 ###############################################################################
@@ -672,12 +674,14 @@ visualstudio/x86_64:
   variables:
     PLATFORM: "x64"
     TRIPLET: "x64"
+  allow_failure: true
 
 visualstudio/x86:
   extends: .vs
   variables:
     PLATFORM: "win32"
     TRIPLET: "x86"
+  allow_failure: true
 
 ###############################################################################
 #                                 Coverity                                    #

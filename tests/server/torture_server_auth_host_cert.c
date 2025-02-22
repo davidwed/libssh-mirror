@@ -225,6 +225,7 @@ torture_server_host_cert_auth(void **state, bool libssh_server)
         assert_int_equal(found, SSH_KNOWN_HOSTS_OK);
 
         ssh_disconnect(session);
+        SAFE_FREE(known_hosts_file);
     }
     SAFE_FREE(known_hosts_file);
 }
@@ -264,6 +265,7 @@ torture_server_host_cert_auth_revoked(void **state, bool libssh_server)
         assert_int_equal(found, SSH_KNOWN_HOSTS_REVOKED);
 
         ssh_disconnect(session);
+        SAFE_FREE(known_hosts_file);
     }
     SAFE_FREE(known_hosts_file);
 }
@@ -303,6 +305,7 @@ torture_server_host_cert_auth_expired(void **state, bool libssh_server)
         assert_int_equal(found, SSH_KNOWN_HOSTS_ERROR);
 
         ssh_disconnect(session);
+        SAFE_FREE(known_hosts_file);
     }
     SAFE_FREE(known_hosts_file);
 }
