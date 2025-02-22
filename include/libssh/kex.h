@@ -24,6 +24,7 @@
 #include "libssh/priv.h"
 #include "libssh/callbacks.h"
 #include "libssh/curve25519.h"
+#include "libssh/sntrup761.h"
 
 #ifdef HAVE_BLOWFISH
 # define BLOWFISH ",blowfish-cbc"
@@ -73,6 +74,12 @@
 #else
 #define CURVE25519 ""
 #endif /* HAVE_CURVE25519 */
+
+#ifdef HAVE_SNTRUP761
+#define SNTRUP761X25519 "sntrup761x25519-sha512@openssh.com,"
+#else
+#define SNTRUP761X25519 ""
+#endif /* HAVE_SNTRUP761 */
 
 #ifdef HAVE_ECC
 #define ECDH "ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,"
@@ -143,6 +150,7 @@
 
 #define DEFAULT_KEY_EXCHANGE \
     CURVE25519 \
+    SNTRUP761X25519 \
     ECDH \
     "diffie-hellman-group18-sha512,diffie-hellman-group16-sha512," \
     GEX_SHA256 \
