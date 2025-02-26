@@ -756,9 +756,10 @@ static void torture_setup_create_sshd_config(void **state, bool pam)
              "%s" /* The space for test-specific options */
              "\n"
              /* add all supported algorithms */
-             "HostKeyAlgorithms " OPENSSH_KEYS "\n"
-#if OPENSSH_VERSION_MAJOR == 8 && OPENSSH_VERSION_MINOR >= 2
-             "CASignatureAlgorithms " OPENSSH_KEYS "\n"
+             "HostKeyAlgorithms " OPENSSH_HOST_KEY_ALGOS "\n"
+#if (OPENSSH_VERSION_MAJOR == 8 && OPENSSH_VERSION_MINOR >= 2) || \
+    OPENSSH_VERSION_MAJOR >= 9
+             "CASignatureAlgorithms " OPENSSH_SIGS "\n"
 #endif
 #if (OPENSSH_VERSION_MAJOR == 9 && OPENSSH_VERSION_MINOR >= 8) || OPENSSH_VERSION_MAJOR > 9
              "PerSourcePenaltyExemptList 127.0.0.21\n"
@@ -1719,6 +1720,7 @@ char *torture_create_temp_file(const char *template)
     char *path = NULL;
     char *prefix_end = NULL;
     char *slash = NULL;
+    char *last_slash = NULL;
 
     if (template == NULL) {
         goto end;
@@ -1735,18 +1737,25 @@ char *torture_create_temp_file(const char *template)
         *slash = '\\';
     }
 
-    prefix_end = strstr(prefix, "XXXXXX");
-    if (prefix_end != NULL) {
-        *prefix_end = '\0';
-    }
+    last_slash = strrchr(prefix, '\\');
+    if (last_slash) {
+        *last_slash = '\0';
+        snprintf(tmp_dir_path, sizeof(tmp_dir_path), "%s", prefix);
 
-    rc = GetTempPathA(PATH_MAX, tmp_dir_path);
-    if ((rc > PATH_MAX) || (rc == 0)) {
-        goto free_prefix;
+        prefix_end = last_slash + 1;
+        prefix_end = strstr(prefix_end, "XXXXXX");
+        if (prefix_end) {
+            *prefix_end = '\0';
+        }
+    } else {
+        if (GetTempPathA(PATH_MAX, tmp_dir_path) == 0) {
+            goto free_prefix;
+        }
+        prefix_end = prefix;
     }
 
     /* Remark: this function creates the file */
-    rc = GetTempFileNameA(tmp_dir_path, TEXT(prefix), 0, tmp_file_name);
+    rc = GetTempFileNameA(tmp_dir_path, prefix_end, 0, tmp_file_name);
     if (rc == 0) {
         goto free_prefix;
     }

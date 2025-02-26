@@ -603,6 +603,19 @@ void *ssh_buffer_get(struct ssh_buffer_struct *buffer){
 }
 
 /**
+ * @brief Get a pointer to the head of a buffer.
+ *
+ * @param[in]  buffer   The buffer to get the head pointer.
+ *
+ * @return              A pointer to the start of buffer data.
+ */
+void *
+ssh_buffer_get_data_all(struct ssh_buffer_struct *buffer)
+{
+    return buffer->data;
+}
+
+/**
  * @brief Get the length of the buffer from the current position.
  *
  * @param[in]  buffer   The buffer to get the length from.
@@ -614,6 +627,20 @@ void *ssh_buffer_get(struct ssh_buffer_struct *buffer){
 uint32_t ssh_buffer_get_len(struct ssh_buffer_struct *buffer){
   buffer_verify(buffer);
   return buffer->used - buffer->pos;
+}
+
+/**
+ * @brief Get the current position of the buffer.
+ *
+ * @param[in]  buffer   The buffer to get the position from.
+ *
+ * @return              The current position of the buffer data.
+ */
+uint32_t
+ssh_buffer_get_current_pos(struct ssh_buffer_struct *buffer)
+{
+    buffer_verify(buffer);
+    return buffer->pos;
 }
 
 /**

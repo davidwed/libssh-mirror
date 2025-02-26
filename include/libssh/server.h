@@ -28,6 +28,7 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include <stdbool.h>
 #include "libssh/libssh.h"
 #define SERVERBANNER CLIENTBANNER
 
@@ -59,6 +60,13 @@ enum ssh_bind_options_e {
     SSH_BIND_OPTIONS_MODULI,
     SSH_BIND_OPTIONS_RSA_MIN_SIZE,
     SSH_BIND_OPTIONS_IMPORT_KEY_STR,
+    SSH_BIND_OPTIONS_USER_CA,
+    SSH_BIND_OPTIONS_HOST_CERTIFICATE,
+    SSH_BIND_OPTIONS_AUTHORIZED_KEYS,
+    SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS,
+    SSH_BIND_OPTIONS_REVOKED_KEYS,
+    SSH_BIND_OPTIONS_USE_DNS,
+    SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
 };
 
 typedef struct ssh_bind_struct* ssh_bind;
@@ -398,6 +406,9 @@ LIBSSH_API int ssh_channel_request_send_exit_signal(ssh_channel channel,
                                                 const char *lang);
 
 LIBSSH_API int ssh_send_keepalive(ssh_session session);
+LIBSSH_API int ssh_auth_user_key(ssh_session session,
+                                 ssh_key user_key,
+                                 const char *user);
 
 /* deprecated functions */
 SSH_DEPRECATED LIBSSH_API int ssh_accept(ssh_session session);

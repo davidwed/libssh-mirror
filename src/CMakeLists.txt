@@ -123,6 +123,9 @@ set(libssh_SRCS
   config_parser.c
   token.c
   pki_ed25519_common.c
+  pki_cert.c
+  auth_options.c
+  auth_file.c
 )
 
 if (DEFAULT_C_NO_DEPRECATION_FLAGS)

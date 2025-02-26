@@ -101,8 +101,14 @@ int verify_knownhost(ssh_session session)
                 return -1;
             }
         }
-
         break;
+    case SSH_KNOWN_HOSTS_REVOKED:
+        fprintf(stderr,"The host key \n");
+        ssh_print_hash(SSH_PUBLICKEY_HASH_SHA256, hash, hlen);
+        fprintf(stderr, " for this server is revoked!\n"
+                        "For security reason, connection will be stopped\n");
+        ssh_clean_pubkey_hash(&hash);
+        return -1;
     case SSH_KNOWN_HOSTS_ERROR:
         ssh_clean_pubkey_hash(&hash);
         fprintf(stderr,"%s",ssh_get_error(session));

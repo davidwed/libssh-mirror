@@ -143,45 +143,46 @@ parse_opt(int key, char *arg, struct argp_state *state)
     ssh_bind sshbind = state->input;
 
     switch (key) {
-    case 'p':
-        ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT_STR, arg);
-        break;
-    case 'k':
-        ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, arg);
-        break;
-    case 'r':
-        ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, arg);
-        break;
-    case 'e':
-        ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, arg);
-        break;
-    case 'a':
-        strncpy(authorizedkeys, arg, DEF_STR_SIZE - 1);
-        break;
-    case 'u':
-        strncpy(username, arg, sizeof(username) - 1);
-        break;
-    case 'P':
-        strncpy(password, arg, sizeof(password) - 1);
-        break;
-    case 'v':
-        ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_LOG_VERBOSITY_STR, "3");
-        break;
-    case ARGP_KEY_ARG:
-        if (state->arg_num >= 1) {
-            /* Too many arguments. */
-            argp_usage(state);
-        }
-        ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDADDR, arg);
-        break;
-    case ARGP_KEY_END:
-        if (state->arg_num < 1) {
-            /* Not enough arguments. */
-            argp_usage(state);
-        }
-        break;
-    default:
-        return ARGP_ERR_UNKNOWN;
+        case 'p':
+            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT_STR, arg);
+            break;
+        case 'k':
+            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, arg);
+            break;
+        case 'r':
+            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, arg);
+            break;
+        case 'e':
+            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, arg);
+            break;
+        case 'a':
+            strncpy(authorizedkeys, arg, DEF_STR_SIZE-1);
+            break;
+        case 'u':
+            strncpy(username, arg, sizeof(username) - 1);
+            break;
+        case 'P':
+            strncpy(password, arg, sizeof(password) - 1);
+            break;
+        case 'v':
+            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_LOG_VERBOSITY_STR,
+                                 "3");
+            break;
+        case ARGP_KEY_ARG:
+            if (state->arg_num >= 1) {
+                /* Too many arguments. */
+                argp_usage (state);
+            }
+            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDADDR, arg);
+            break;
+        case ARGP_KEY_END:
+            if (state->arg_num < 1) {
+                /* Not enough arguments. */
+                argp_usage (state);
+            }
+            break;
+        default:
+            return ARGP_ERR_UNKNOWN;
     }
     return 0;
 }

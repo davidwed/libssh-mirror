@@ -55,7 +55,7 @@ static int setup_dsa_key(void **state)
     torture_write_file(LIBSSH_DSA_TESTKEY ".pub",
                        torture_get_testkey_pub(SSH_KEYTYPE_DSS));
     torture_write_file(LIBSSH_DSA_TESTKEY "-cert.pub",
-                       torture_get_testkey_pub(SSH_KEYTYPE_DSS_CERT01));
+                       torture_get_testkey_user_cert(SSH_KEYTYPE_DSS_CERT01));
 
     return 0;
 }
@@ -91,7 +91,7 @@ static int setup_openssh_dsa_key(void **state)
     torture_write_file(LIBSSH_DSA_TESTKEY ".pub",
                        torture_get_testkey_pub(SSH_KEYTYPE_DSS));
     torture_write_file(LIBSSH_DSA_TESTKEY "-cert.pub",
-                       torture_get_testkey_pub(SSH_KEYTYPE_DSS_CERT01));
+                       torture_get_testkey_user_cert(SSH_KEYTYPE_DSS_CERT01));
 
     return 0;
 }

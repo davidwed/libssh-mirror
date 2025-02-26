@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #ifndef _WIN32
 #include <pwd.h>
 #else
@@ -38,6 +39,8 @@
 #include "libssh/misc.h"
 #include "libssh/options.h"
 #include "libssh/config_parser.h"
+#include "libssh/token.h"
+#include "libssh/kex.h"
 #ifdef WITH_SERVER
 #include "libssh/server.h"
 #include "libssh/bind.h"
@@ -300,6 +303,95 @@ int ssh_options_set_algo(ssh_session session,
     *place = p;
 
     return 0;
+}
+
+/**
+ * @brief Sets the allowed CA signature algorithms for the session/sshbind
+ * based on a specified list. If the list starts with '+', the algorithms
+ * are appended to the default signature algorithms list. If it starts with '-',
+ * they are removed.
+ *
+ * @param[in] error    The place where to store a possible error. This can be
+ *                     a `ssh_session` or a `ssh_bind`.
+ *
+ * @param[in] list     The list of CA signature algorithms to append or remove.
+ *
+ * @param[out] place   The target list where to store the new CA allowed
+ *                     algorithms.
+ *
+ * @returns 0 on success.
+ * @returns -1 on failure with an appropriate error message set in the session.
+ */
+static int
+ssh_options_set_algo_ca_only(void *error, const char *list, char **place)
+{
+    char *p = NULL, *tmp = NULL;
+    const char *defaults = NULL;
+    int rc = 0;
+
+    if (list == NULL || list[0] == '\0' || list[1] == '\0') {
+        p = NULL;
+        goto out;
+    }
+
+    if (ssh_fips_mode()) {
+        defaults = FIPS_ALLOWED_HOSTKEY_SIGNATURE_ALGOS;
+    } else {
+        defaults = DEFAULT_HOSTKEY_SIGNATURE_ALGOS;
+    }
+
+    switch (list[0]) {
+    case '+':
+        /* First validate the algorithms to append */
+        tmp = ssh_find_all_matching(HOSTKEY_SIGNATURE_ALGOS, list + 1);
+        if (tmp == NULL) {
+            p = NULL;
+            goto out;
+        }
+        p = ssh_append_without_duplicates(defaults, tmp);
+        SAFE_FREE(tmp);
+        break;
+    case '-':
+        p = ssh_remove_all_matching(defaults, list + 1);
+        break;
+    default:
+        /* If the first character is a symbol then it's an invalid symbol */
+        if (!isalnum(list[0])) {
+            ssh_set_error(error,
+                          SSH_REQUEST_DENIED,
+                          "Character '%c' is not recognized by "
+                          "CASignatureAlgorithms option",
+                          list[0]);
+            rc = -1;
+            p = NULL;
+            break;
+        }
+
+        /*
+         * If the sign is absent, the list is filtered to include only the
+         * supported signature algorithms.
+         */
+        if (ssh_fips_mode()) {
+            p = ssh_find_all_matching(FIPS_ALLOWED_HOSTKEY_SIGNATURE_ALGOS, list);
+        } else {
+            p = ssh_find_all_matching(HOSTKEY_SIGNATURE_ALGOS, list);
+        }
+        break;
+    }
+
+out:
+    if (p == NULL) {
+        ssh_set_error(error,
+                      SSH_REQUEST_DENIED,
+                      "No allowed algorithm for CASignatureAlgorithms (%s)",
+                      list);
+        rc = -1;
+    } else {
+        SAFE_FREE(*place);
+        *place = p;
+    }
+
+    return rc;
 }
 
 /**
@@ -627,6 +719,24 @@ int ssh_options_set_algo(ssh_session session,
  *                Set to "none" to disable connection sharing.
  *                (const char *)
  *
+ *              - SSH_OPTIONS_REVOKED_HOSTKEYS
+ *                Set the path to the file containing the revoked host public
+ *                keys. Keys listed in this file will be refused for host
+ *                authentication.
+ *                (const char *)
+ *
+ *              - SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS
+ *                Set which algorithms are allowed for signing of certificates
+ *                by certificate authorities (CAs). \n
+ *                (const char *, comma-separated list). The list can be
+ *                prepended by +,- which will append/remove the listed
+ *                algorithms to/from the default list. Giving an empty list
+ *                after + and - will cause error.\n
+ *                The default list is:\n
+ *                ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,
+ *                ecdsa-sha2-nistp521,sk-ssh-ed25519\@openssh.com,
+ *                sk-ecdsa-sha2-nistp256\@openssh.com, rsa-sha2-512,rsa-sha2-256
+ *
  *
  * @param  value The value to set. This is a generic pointer and the
  *               datatype which is used should be set according to the
@@ -652,8 +762,8 @@ int ssh_options_set_algo(ssh_session session,
 int ssh_options_set(ssh_session session, enum ssh_options_e type,
                     const void *value)
 {
-    const char *v;
-    char *p, *q;
+    const char *v = NULL;
+    char *p = NULL, *q = NULL;
     long int i;
     unsigned int u;
     int rc;
@@ -876,6 +986,19 @@ int ssh_options_set(ssh_session session, enum ssh_options_e type,
                     return -1;
                 }
                 session->opts.exp_flags &= ~SSH_OPT_EXP_FLAG_GLOBAL_KNOWNHOSTS;
+            }
+            break;
+        case SSH_OPTIONS_REVOKED_HOSTKEYS:
+            v = value;
+            SAFE_FREE(session->opts.revoked_host_keys);
+            if (v == NULL || v[0] == '\0') {
+                ssh_set_error_invalid(session);
+                return -1;
+            }
+            session->opts.revoked_host_keys = strdup(v);
+            if (session->opts.revoked_host_keys == NULL) {
+                ssh_set_error_oom(session);
+                return -1;
             }
             break;
         case SSH_OPTIONS_TIMEOUT:
@@ -1288,11 +1411,12 @@ int ssh_options_set(ssh_session session, enum ssh_options_e type,
 
                 /* (*x == 0) is allowed as it is used to revert to default */
 
-                if (*x > 0 && *x < 768) {
+                if (*x > 0 && *x < RSA_MIN_SIZE) {
                     ssh_set_error(session, SSH_REQUEST_DENIED,
                                   "The provided value (%d) for minimal RSA key "
-                                  "size is too small. Use at least 768 bits.",
-                                  *x);
+                                  "size is too small. Use at least %d bits.",
+                                  *x,
+                                  RSA_MIN_SIZE);
                     return -1;
                 }
                 session->opts.rsa_min_size = *x;
@@ -1351,6 +1475,21 @@ int ssh_options_set(ssh_session session, enum ssh_options_e type,
                         return -1;
                     }
                     session->opts.exp_flags &= ~SSH_OPT_EXP_FLAG_CONTROL_PATH;
+                }
+            }
+            break;
+        case SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS:
+            v = value;
+            if (v == NULL || v[0] == '\0') {
+                ssh_set_error_invalid(session);
+                return -1;
+            } else {
+                rc = ssh_options_set_algo_ca_only(
+                    session,
+                    v,
+                    &session->opts.ca_signature_algorithms);
+                if (rc < 0) {
+                    return -1;
                 }
             }
             break;
@@ -1508,6 +1647,11 @@ int ssh_options_get_port(ssh_session session, unsigned int* port_target) {
  *                Get the compression to use for server to client communication
  *                If the option has not been set, returns the defaults.
  *
+ *               - SSH_OPTIONS_REVOKED_HOSTKEYS:
+ *                Get the path to the revoked host public keys file to use for
+ *                verifying the validity of the host public key during
+ *                host authentication.
+ *
  * @param  value The value to get into. As a char**, space will be
  *               allocated by the function for the value, it is
  *               your responsibility to free the memory using
@@ -1600,6 +1744,10 @@ int ssh_options_get(ssh_session session, enum ssh_options_e type, char** value)
 
         case SSH_OPTIONS_COMPRESSION_S_C:
             src = ssh_options_get_algo(session, SSH_COMP_S_C);
+            break;
+
+        case SSH_OPTIONS_REVOKED_HOSTKEYS:
+            src = session->opts.revoked_host_keys;
             break;
 
         default:
@@ -2186,6 +2334,57 @@ static int ssh_bind_set_algo(ssh_bind sshbind,
  *                        Default is 1024 bits or 2048 bits in FIPS mode.
  *                        (int)
  *
+ *                      - SSH_BIND_OPTIONS_USER_CA_FILE
+ *                        Set the path to the TrustedUserCAKeys file. This
+ *                        file contains a list (one per line) of public keys
+ *                        of certificate authorities that are trusted to sign
+ *                        user certificates for authentication.
+ *                        (const char *)
+ *
+ *                      - SSH_BIND_OPTIONS_HOST_CERTIFICATE
+ *                        Set the path to an ssh host certificate regardless
+ *                        of the type. The certificate MUST match a host private
+ *                        key already loaded by HostKey. Only one key from per
+ *                        key type (RSA_CERT01, ED25519_CERT01 and ECDSA_CERT01)
+ *                        is allowed in an ssh_bind at a time.
+ *                        (const char *)
+ *
+ *                      - SSH_BIND_OPTIONS_AUTHORIZED_KEYS_FILE
+ *                        Set the path to the AuthorizedKeysFile. This file
+ *                        contains a list (one per line) of public keys used
+ *                        for user authentication.
+ *                        (const char *)
+ *
+ *                      - SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS_FILE
+ *                        Set the path to the AuthorizedPrincipalsFile. This
+ *                        file contains a list of principal names that are
+ *                        accepted for certificate authentication.
+ *                        (const char *)
+ *
+ *                      - SSH_BIND_OPTIONS_REVOKED_KEYS
+ *                        Set the path to the RevokedKeys file. This
+ *                        file contains a list of revoked public keys that are
+ *                        refused for user authentication.
+ *                        (const char *)
+ *
+ *                      - SSH_BIND_OPTIONS_USE_DNS
+ *                        Specifies whether the server should resolve the
+ *                        remote peer's hostname. By default, this option
+ *                        is set to true in the sshbind.
+ *                        (bool)
+ *
+ *                      - SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS
+ *                        Set which algorithms are allowed for signing of
+ *                        certificates by certificate authorities (CAs). \n
+ *                        (const char *, comma-separated list). The list can be
+ *                        prepended by +,- which will append/remove the listed
+ *                        algorithms to/from the default list. Giving an empty
+ *                        list after + and - will cause error.\n
+ *                        The default list is:\n
+ *                        ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,
+ *                        ecdsa-sha2-nistp521,sk-ssh-ed25519\@openssh.com,
+ *                        sk-ecdsa-sha2-nistp256\@openssh.com,
+ *                        rsa-sha2-512,rsa-sha2-256
  *
  * @param  value        The value to set. This is a generic pointer and the
  *                      datatype which should be used is described at the
@@ -2563,15 +2762,242 @@ ssh_bind_options_set(ssh_bind sshbind,
 
             /* (*x == 0) is allowed as it is used to revert to default */
 
-            if (*x > 0 && *x < 768) {
+            if (*x > 0 && *x < RSA_MIN_SIZE) {
                 ssh_set_error(sshbind,
                               SSH_REQUEST_DENIED,
                               "The provided value (%d) for minimal RSA key "
-                              "size is too small. Use at least 768 bits.",
-                              *x);
+                              "size is too small. Use at least %d bits.",
+                              *x,
+                              RSA_MIN_SIZE);
                 return -1;
             }
             sshbind->rsa_min_size = *x;
+        }
+        break;
+    case SSH_BIND_OPTIONS_USER_CA:
+        v = value;
+        SAFE_FREE(sshbind->trusted_user_ca_keys_file);
+        if (v == NULL) {
+            break;
+        } else if (v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            sshbind->trusted_user_ca_keys_file = ssh_path_expand_tilde(v);
+            if (sshbind->trusted_user_ca_keys_file == NULL) {
+                ssh_set_error_oom(sshbind);
+                return -1;
+            }
+        }
+        break;
+    case SSH_BIND_OPTIONS_HOST_CERTIFICATE:
+        if (value == NULL) {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            int key_type, cmp;
+            ssh_key cert_key = NULL, *key_p2p = NULL, *cert_p2p = NULL;
+            ssh_buffer *cert_buffer = NULL;
+            char **cert_file_path_p2p = NULL;
+            const char *key_type_name = NULL;
+
+            rc = ssh_pki_import_cert_file(value, &cert_key);
+            if (rc != SSH_OK) {
+                return -1;
+            }
+
+            /* Check if the loaded certificate is a host certificate */
+            if (cert_key->cert_data->type != SSH_CERT_TYPE_HOST) {
+                SSH_KEY_FREE(cert_key);
+                SSH_LOG(SSH_FATAL,
+                        "The certificate is not an Host Certificate");
+                return -1;
+            }
+
+            allowed = ssh_bind_key_size_allowed(sshbind, cert_key);
+            if (!allowed) {
+                ssh_set_error(sshbind,
+                              SSH_FATAL,
+                              "The host certificate key size %d is too small.",
+                              ssh_key_size(cert_key));
+                SSH_KEY_FREE(cert_key);
+                return -1;
+            }
+
+            key_type = ssh_key_type(cert_key);
+            switch (key_type) {
+            case SSH_KEYTYPE_ECDSA_P256_CERT01:
+            case SSH_KEYTYPE_ECDSA_P384_CERT01:
+            case SSH_KEYTYPE_ECDSA_P521_CERT01:
+
+#ifndef HAVE_ECC
+                ssh_set_error(sshbind,
+                              SSH_FATAL,
+                              "ECDSA certificate key used and libssh compiled "
+                              "without ECDSA support");
+                SSH_KEY_FREE(cert_key);
+                return -1;
+#endif
+                key_type_name = "ECDSA";
+                key_p2p = &sshbind->ecdsa;
+                cert_p2p = &sshbind->ecdsa_cert;
+                cert_buffer = &sshbind->ecdsa->cert;
+                cert_file_path_p2p = &sshbind->ecdsa_cert_file;
+                break;
+            case SSH_KEYTYPE_RSA_CERT01:
+                key_type_name = "RSA";
+                key_p2p = &sshbind->rsa;
+                cert_p2p = &sshbind->rsa_cert;
+                cert_buffer = &sshbind->rsa->cert;
+                cert_file_path_p2p = &sshbind->rsa_cert_file;
+                break;
+            case SSH_KEYTYPE_ED25519_CERT01:
+                key_type_name = "ED25519";
+                key_p2p = &sshbind->ed25519;
+                cert_p2p = &sshbind->ed25519_cert;
+                cert_buffer = &sshbind->ed25519->cert;
+                cert_file_path_p2p = &sshbind->ed25519_cert_file;
+                break;
+            default:
+                SSH_KEY_FREE(cert_key);
+                ssh_set_error(sshbind,
+                              SSH_FATAL,
+                              "Unsupported certificate type %d",
+                              key_type);
+                return -1;
+            }
+
+            if (*key_p2p == NULL) {
+                SSH_KEY_FREE(cert_key);
+                ssh_set_error(sshbind,
+                              SSH_FATAL,
+                              "No Host %s Key loaded. HostCertificate "
+                              "option requires a private host key already "
+                              "specified to verify the match",
+                              key_type_name);
+                return -1;
+            }
+
+            if (*cert_buffer != NULL) {
+                SSH_KEY_FREE(cert_key);
+                ssh_set_error(sshbind,
+                              SSH_FATAL,
+                              "%s host key has already a certificate",
+                              key_type_name);
+                return -1;
+            }
+
+            /*
+             * Check if the certified public key is equal to the host public key
+             */
+            cmp = ssh_key_cmp(cert_key,
+                              *key_p2p,
+                              SSH_KEY_CMP_PUBLIC);
+            if (cmp != 0) {
+                SSH_KEY_FREE(cert_key);
+                ssh_set_error(sshbind,
+                              SSH_FATAL,
+                              "The public key certified by the "
+                              "selected certificate does not match "
+                              "the host public key");
+                return -1;
+            }
+
+            /* Copy certificate to the private key */
+            rc = ssh_pki_copy_cert_to_privkey(cert_key, *key_p2p);
+            if (rc != SSH_OK) {
+                SSH_KEY_FREE(cert_key);
+                ssh_set_error(sshbind,
+                              SSH_FATAL,
+                              "Failed to copy cert to private key");
+                return -1;
+            }
+
+            /* Store host certificate */
+            *cert_p2p = cert_key;
+
+            /*
+             * Set the location of the key on disk even though we don't
+             * need it in case some other function wants it
+             */
+            rc = ssh_bind_set_key(sshbind, cert_file_path_p2p, value);
+            if (rc < 0) {
+                SSH_KEY_FREE(cert_key);
+                return -1;
+            }
+        }
+        break;
+    case SSH_BIND_OPTIONS_AUTHORIZED_KEYS:
+        v = value;
+        SAFE_FREE(sshbind->authorized_keys_file);
+        if (v == NULL) {
+            break;
+        } else if (v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            sshbind->authorized_keys_file = ssh_path_expand_tilde(v);
+            if (sshbind->authorized_keys_file == NULL) {
+                ssh_set_error_oom(sshbind);
+                return -1;
+            }
+        }
+        break;
+    case SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS:
+        v = value;
+        SAFE_FREE(sshbind->authorized_principals_file);
+        if (v == NULL) {
+            break;
+        } else if (v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            sshbind->authorized_principals_file = ssh_path_expand_tilde(v);
+            if (sshbind->authorized_principals_file == NULL) {
+                ssh_set_error_oom(sshbind);
+                return -1;
+            }
+        }
+        break;
+    case SSH_BIND_OPTIONS_REVOKED_KEYS:
+        v = value;
+        SAFE_FREE(sshbind->revoked_keys_file);
+        if (v == NULL) {
+            break;
+        } else if (v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            sshbind->revoked_keys_file = strdup(v);
+            if (sshbind->revoked_keys_file == NULL) {
+                ssh_set_error_oom(sshbind);
+                return -1;
+            }
+        }
+        break;
+    case SSH_BIND_OPTIONS_USE_DNS:
+        if (value == NULL) {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            bool *x = (bool *)value;
+            sshbind->usedns = *x;
+        }
+        break;
+    case SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS:
+        v = value;
+        if (v == NULL || v[0] == '\0') {
+            ssh_set_error_invalid(sshbind);
+            return -1;
+        } else {
+            rc = ssh_options_set_algo_ca_only(
+                sshbind,
+                v,
+                &sshbind->ca_signature_algorithms);
+            if (rc < 0) {
+                ssh_set_error_oom(sshbind);
+                return -1;
+            }
         }
         break;
     default:

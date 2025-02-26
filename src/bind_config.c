@@ -105,6 +105,36 @@ ssh_bind_config_keyword_table[] = {
         .allowed_in_match = true
     },
     {
+        .name   = "trustedusercakeys",
+        .opcode = BIND_CFG_TRUSTED_USER_CA_KEYS,
+        .allowed_in_match = false
+    },
+    {
+        .name   = "hostcertificate",
+        .opcode = BIND_CFG_HOST_CERTIFICATE,
+        .allowed_in_match = false
+    },
+    {
+        .name   = "authorizedkeysfile",
+        .opcode = BIND_CFG_AUTHORIZED_KEYS,
+        .allowed_in_match = false
+    },
+    {
+        .name   = "authorizedprincipalsfile",
+        .opcode = BIND_CFG_AUTHORIZED_PRINCIPALS,
+        .allowed_in_match = false
+    },
+    {
+        .name   = "revokedkeys",
+        .opcode = BIND_CFG_REVOKED_KEYS,
+        .allowed_in_match = false
+    },
+    {
+        .name   = "usedns",
+        .opcode = BIND_CFG_USE_DNS,
+        .allowed_in_match = false
+    },
+    {
         .opcode = BIND_CFG_UNKNOWN,
     }
 };
@@ -293,6 +323,7 @@ ssh_bind_config_parse_line(ssh_bind bind,
     const char *p = NULL;
     char *s = NULL, *x = NULL;
     char *keyword = NULL;
+    int r;
     size_t len;
 
     int rc = 0;
@@ -366,6 +397,20 @@ ssh_bind_config_parse_line(ssh_bind bind,
                 SSH_LOG(SSH_LOG_TRACE,
                         "line %d: Failed to set Hostkey value '%s'",
                         count, p);
+            }
+        }
+        break;
+    case BIND_CFG_HOST_CERTIFICATE:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(bind,
+                                      SSH_BIND_OPTIONS_HOST_CERTIFICATE,
+                                      p);
+            if (rc != 0) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "line %d: Failed to set HostCertificate value '%s'",
+                        count,
+                        p);
             }
         }
         break;
@@ -468,6 +513,61 @@ ssh_bind_config_parse_line(ssh_bind bind,
                 SSH_LOG(SSH_LOG_TRACE,
                         "line %d: Failed to set KexAlgorithms value '%s'",
                         count, p);
+            }
+        }
+        break;
+    case BIND_CFG_TRUSTED_USER_CA_KEYS:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(bind, SSH_BIND_OPTIONS_USER_CA, p);
+            if (rc != 0) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "line %d: Failed to set TrustedUserCaKeys value '%s'",
+                        count,
+                        p);
+            }
+        }
+        break;
+    case BIND_CFG_AUTHORIZED_KEYS:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(
+                bind,
+                SSH_BIND_OPTIONS_AUTHORIZED_KEYS,
+                p);
+            if (rc != 0) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "line %d: Failed to set AuthorizedKeysFile value '%s'",
+                        count,
+                        p);
+            }
+        }
+        break;
+    case BIND_CFG_AUTHORIZED_PRINCIPALS:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(
+                bind,
+                SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS,
+                p);
+            if (rc != 0) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "line %d: Failed to set AuthorizedPrincipalsFile "
+                        "value '%s'",
+                        count,
+                        p);
+            }
+        }
+        break;
+    case BIND_CFG_REVOKED_KEYS:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(bind, SSH_BIND_OPTIONS_REVOKED_KEYS, p);
+            if (rc != 0) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "line %d: Failed to set RevokedKeys value '%s'",
+                        count,
+                        p);
             }
         }
         break;
@@ -591,6 +691,33 @@ ssh_bind_config_parse_line(ssh_bind bind,
                 SSH_LOG(SSH_LOG_TRACE,
                         "line %d: Failed to set HostkeyAlgorithms value '%s'",
                         count, p);
+            }
+        }
+        break;
+    case BIND_CFG_USE_DNS:
+        r = ssh_config_get_yesno(&s, -1);
+        if (r != -1 && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(bind, SSH_BIND_OPTIONS_USE_DNS, &r);
+            if (rc == 0) {
+                break;
+            }
+        }
+        /* fail */
+        rc = -1;
+        SSH_LOG(SSH_LOG_TRACE, "line %d: Failed to set UseDNS option", count);
+        break;
+    case BIND_CFG_CA_SIGNATURE_ALGORITHMS:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && (*parser_flags & PARSING)) {
+            rc = ssh_bind_options_set(bind,
+                                      SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                                      p);
+            if (rc != 0) {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "line %d: Failed to set CASignatureAlgorithms "
+                        "value '%s'",
+                        count,
+                        p);
             }
         }
         break;

@@ -1244,6 +1244,314 @@ static void torture_ssh_is_ipaddr(void **state) {
     assert_int_equal(rc, 0);
 }
 
+static void
+torture_ssh_remove_square_brackets(void **state)
+{
+    char test1[] = "[localhost]";
+    char test2[] = "localhost";
+    char test3[] = "[127.0.0.1]";
+    char test4[] = "[::1]";
+    char test5[] = "[]";
+    char test6[] = "[word";
+    char test7[] = "word]";
+    char test8[] = "]";
+    char test9[] = "[[double]]";
+    char test10[] = "[ab[c]de]";
+
+    (void)state;
+
+    ssh_remove_square_brackets(test1);
+    assert_string_equal(test1, "localhost");
+
+    ssh_remove_square_brackets(test2);
+    assert_string_equal(test2, "localhost");
+
+    ssh_remove_square_brackets(test3);
+    assert_string_equal(test3, "127.0.0.1");
+
+    ssh_remove_square_brackets(test4);
+    assert_string_equal(test4, "::1");
+
+    ssh_remove_square_brackets(test5);
+    assert_string_equal(test5, "");
+
+    ssh_remove_square_brackets(test6);
+    assert_string_equal(test6, "[word");
+
+    ssh_remove_square_brackets(test7);
+    assert_string_equal(test7, "word]");
+
+    ssh_remove_square_brackets(test8);
+    assert_string_equal(test8, "]");
+
+    ssh_remove_square_brackets(test9);
+    assert_string_equal(test9, "[double]");
+
+    ssh_remove_square_brackets(test10);
+    assert_string_equal(test10, "ab[c]de");
+}
+
+static void
+torture_ssh_dequote(void **state)
+{
+    char *result = NULL;
+    (void)state;
+
+    result = ssh_dequote("\"hello\"");
+    assert_non_null(result);
+    assert_string_equal(result, "hello");
+    SAFE_FREE(result);
+
+    result = ssh_dequote("no_quotes");
+    assert_non_null(result);
+    assert_string_equal(result, "no_quotes");
+    SAFE_FREE(result);
+
+    result = ssh_dequote("\"nested\"quotes\"");
+    assert_non_null(result);
+    assert_string_equal(result, "nested\"quotes");
+    SAFE_FREE(result);
+
+    result = ssh_dequote("\"missing_closing_quote");
+    assert_null(result);
+
+    result = ssh_dequote("missing_opening_quote\"");
+    assert_null(result);
+
+    result = ssh_dequote("\"\"");
+    assert_null(result);
+
+    result = ssh_dequote(NULL);
+    assert_null(result);
+
+    result = ssh_dequote("");
+    assert_null(result);
+}
+
+/**
+ * @brief helper function for retrieving the time, according to local timezone,
+ * expressed in seconds since Epoch time. This function is intended only for
+ * testing purposes and requires a valid `tm struct` as argument.
+ *
+ * @note tm_year and tm_mon are adjusted according to `tm` specifications.
+ */
+static uint64_t
+get_local_timestamp_from_tm(struct tm *tm)
+{
+    time_t timer;
+
+    /* Year since 1900 */
+    tm->tm_year -= 1900;
+    /* Months are 0-based in struct tm */
+    tm->tm_mon -= 1;
+
+    timer = mktime(tm);
+    if (timer == (time_t)-1) {
+        fail();
+    }
+
+    return (uint64_t)timer;
+}
+
+static void
+torture_ssh_convert_datetime_format_to_timestamp(void **state)
+{
+    uint64_t timestamp = 0, expected;
+    int rc;
+    struct tm tm;
+    (void)state;
+
+    /* Test YYYYMMDD format - local timezone */
+    rc = ssh_convert_datetime_format_to_timestamp("20240101", &timestamp);
+    assert_int_equal(rc, 0);
+
+    ZERO_STRUCT(tm);
+    tm.tm_year = 2024;
+    tm.tm_mon = 1;
+    tm.tm_mday = 1;
+    expected = get_local_timestamp_from_tm(&tm);
+    assert_int_equal(timestamp, expected);
+
+    /* Test YYYYMMDDHHMM format - local timezone */
+    rc = ssh_convert_datetime_format_to_timestamp("202401010830", &timestamp);
+    assert_int_equal(rc, 0);
+    ZERO_STRUCT(tm);
+    tm.tm_year = 2024;
+    tm.tm_mon = 1;
+    tm.tm_mday = 1;
+    tm.tm_hour = 8;
+    tm.tm_min = 30;
+    expected = get_local_timestamp_from_tm(&tm);
+    assert_int_equal(timestamp, expected);
+
+    /* Test YYYYMMDDHHMMSS format - local timezone */
+    rc = ssh_convert_datetime_format_to_timestamp("20240101083045", &timestamp);
+    assert_int_equal(rc, 0);
+    ZERO_STRUCT(tm);
+    tm.tm_year = 2024;
+    tm.tm_mon = 1;
+    tm.tm_mday = 1;
+    tm.tm_hour = 8;
+    tm.tm_min = 30;
+    tm.tm_sec = 45;
+    expected = get_local_timestamp_from_tm(&tm);
+    assert_int_equal(timestamp, expected);
+
+    /* Test YYYYMMDD with 'Z' suffix - UTC timezone */
+    rc = ssh_convert_datetime_format_to_timestamp("20240101Z", &timestamp);
+    assert_int_equal(rc, 0);
+    assert_int_equal(timestamp, 1704067200ULL);
+
+    /* Test YYYYMMDDHHMM with 'Z' suffix - UTC timezone */
+    rc = ssh_convert_datetime_format_to_timestamp("202401010830Z", &timestamp);
+    assert_int_equal(rc, 0);
+    assert_int_equal(timestamp, 1704097800ULL);
+
+    /* Test YYYYMMDDHHMMSS with 'Z' suffix - UTC timezone */
+    rc = ssh_convert_datetime_format_to_timestamp("20240101083045Z",
+                                                  &timestamp);
+    assert_int_equal(rc, 0);
+    assert_int_equal(timestamp, 1704097845ULL);
+
+    /* Test missing components (missing day and missing seconds) */
+    rc = ssh_convert_datetime_format_to_timestamp("202401", &timestamp);
+    assert_int_equal(rc, -1);
+    rc = ssh_convert_datetime_format_to_timestamp("2024010108", &timestamp);
+    assert_int_equal(rc, -1);
+
+    /* Test invalid format */
+    rc = ssh_convert_datetime_format_to_timestamp("2024-01-01", &timestamp);
+    assert_int_equal(rc, -1);
+    rc = ssh_convert_datetime_format_to_timestamp("01/01/2024", &timestamp);
+    assert_int_equal(rc, -1);
+    rc = ssh_convert_datetime_format_to_timestamp("20240101083045ZJUNK",
+                                                  &timestamp);
+    assert_int_equal(rc, -1);
+
+    /* Test NULL datetime */
+    rc = ssh_convert_datetime_format_to_timestamp(NULL, &timestamp);
+    assert_int_equal(rc, -1);
+
+    /* Test NULL timestamp */
+    rc = ssh_convert_datetime_format_to_timestamp("20240101083045", NULL);
+    assert_int_equal(rc, -1);
+
+    /* Test invalid days for specific months */
+    /* Feb, 30th */
+    rc = ssh_convert_datetime_format_to_timestamp("20240230", &timestamp);
+    assert_int_equal(rc, -1);
+
+    /* April, 31st */
+    rc = ssh_convert_datetime_format_to_timestamp("20240431", &timestamp);
+    assert_int_equal(rc, -1);
+
+    /* 2025 Feb, 29th */
+    rc = ssh_convert_datetime_format_to_timestamp("20250229", &timestamp);
+    assert_int_equal(rc, -1);
+
+    /* Test invalid month */
+    rc = ssh_convert_datetime_format_to_timestamp("20241301", &timestamp);
+    assert_int_equal(rc, -1);
+
+    /* Test invalid days */
+    rc = ssh_convert_datetime_format_to_timestamp("20240100", &timestamp);
+    assert_int_equal(rc, -1);
+
+    rc = ssh_convert_datetime_format_to_timestamp("20240135", &timestamp);
+    assert_int_equal(rc, -1);
+}
+
+static void
+torture_portable_timegm(void **state)
+{
+    time_t timestamp;
+    struct tm tm;
+    (void)state;
+
+    /* Test 1970-01-01 00:00:00 UTC */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 70;
+    tm.tm_mon = 0;
+    tm.tm_mday = 1;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 0);
+
+    /* Test 2024-01-01 00:00:00 UTC */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 0;
+    tm.tm_mday = 1;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 1704067200ULL);
+
+    /* Test 2024-01-01 08:30:45 UTC */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 0;
+    tm.tm_mday = 1;
+    tm.tm_hour = 8;
+    tm.tm_min = 30;
+    tm.tm_sec = 45;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 1704097845ULL);
+
+    /* Test 1995-10-15 00:00:00 UTC */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 95;
+    tm.tm_mon = 9;
+    tm.tm_mday = 15;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 813715200ULL);
+
+    /* Test invalid date (Feb 30, 2024) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 1;
+    tm.tm_mday = 30;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, (time_t)-1);
+    assert_int_equal(errno, EINVAL);
+
+    /* Test invalid date (April 31, 2024) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 3;
+    tm.tm_mday = 31;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, (time_t)-1);
+    assert_int_equal(errno, EINVAL);
+
+    /* Test leap year (Feb 29, 2024) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 124;
+    tm.tm_mon = 1;
+    tm.tm_mday = 29;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 1709164800ULL);
+
+    /* Test invalid date in a non-leap year (Feb 29, 2023) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 123;
+    tm.tm_mon = 1;
+    tm.tm_mday = 29;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, (time_t)-1);
+    assert_int_equal(errno, EINVAL);
+
+    /* Test valid date in a non-leap year (Feb 28, 2023) */
+    ZERO_STRUCT(tm);
+    tm.tm_year = 123;
+    tm.tm_mon = 1;
+    tm.tm_mday = 28;
+    timestamp = portable_timegm(&tm);
+    assert_int_equal(timestamp, 1677542400ULL);
+
+    /* Test NULL input */
+    timestamp = portable_timegm(NULL);
+    assert_int_equal(timestamp, (time_t)-1);
+    assert_int_equal(errno, EINVAL);
+}
+
 int torture_run_tests(void) {
     int rc;
     struct CMUnitTest tests[] = {
@@ -1280,6 +1588,10 @@ int torture_run_tests(void) {
         cmocka_unit_test(torture_ssh_check_hostname_syntax),
         cmocka_unit_test(torture_ssh_check_username_syntax),
         cmocka_unit_test(torture_ssh_is_ipaddr),
+        cmocka_unit_test(torture_ssh_remove_square_brackets),
+        cmocka_unit_test(torture_ssh_dequote),
+        cmocka_unit_test(torture_ssh_convert_datetime_format_to_timestamp),
+        cmocka_unit_test(torture_portable_timegm),
     };
 
     ssh_init();

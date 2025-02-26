@@ -20,6 +20,9 @@ set(LIBSSH_UNIT_TESTS
     torture_push_pop_dir
     torture_session_keys
     torture_tokens
+    torture_certificates_parsing
+    torture_auth_options
+    torture_auth_file
 )
 
 set(LIBSSH_THREAD_UNIT_TESTS
@@ -46,6 +49,7 @@ if (UNIX AND NOT WIN32)
         torture_pki_rsa
         torture_pki_dsa
         torture_pki_ed25519
+        torture_pki_revoked
         # requires /dev/null
         torture_channel
     )

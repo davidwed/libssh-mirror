@@ -54,6 +54,37 @@
  * @{
  */
 
+
+
+
+/**
+ * @struct priv_knownhosts_entry
+ *
+ * @brief Internal structure used to extend the public `ssh_knownhosts_entry`
+ * with additional data.
+ *
+ * This structure is used internally in the library to store extra information
+ * needed  for operations related to known hosts, such as handling markers.
+ * It wraps around the public `ssh_knownhosts_entry` structure, allowing
+ * internal processing without modifying the public API and thus preserving ABI
+ * compatibility.
+ *
+ * @var priv_knownhosts_entry::entry
+ *      A pointer to the public `ssh_knownhosts_entry` structure, which holds
+ *      the core known host data such as hostname, public key, and comment.
+ *
+ * @var priv_knownhosts_entry::marker
+ *      An integer field used to store internal markers for known host entries.
+ *
+ * @see `priv_knownhosts_entry_new()`
+ * @see `priv_knownhosts_entry_free()`
+ * @see `copy_ssh_knownhosts_entry_from_priv_entry()`
+ */
+struct priv_knownhosts_entry {
+    struct ssh_knownhosts_entry *entry;
+    int marker;
+};
+
 static int hash_hostname(const char *name,
                          unsigned char *salt,
                          unsigned int salt_size,
@@ -165,6 +196,114 @@ void ssh_knownhosts_entry_free(struct ssh_knownhosts_entry *entry)
     SAFE_FREE(entry);
 }
 
+/**
+ * @brief Free an allocated priv_knownhosts_entry.
+ *
+ * @param[in]  priv_entry     The entry to free.
+ */
+static void
+priv_knownhosts_entry_free(struct priv_knownhosts_entry *priv_entry)
+{
+    if (priv_entry == NULL) {
+        return;
+    }
+
+    SSH_KNOWNHOSTS_ENTRY_FREE(priv_entry->entry);
+    ZERO_STRUCTP(priv_entry);
+    SAFE_FREE(priv_entry);
+}
+
+/**
+ * @brief Allocates and initializes a new priv_knownhosts_entry structure.
+ *
+ * @returns A pointer to the newly allocated `priv_knownhosts_entry` structure.
+ * @returns NULL on errors.
+ */
+static struct priv_knownhosts_entry *
+priv_knownhosts_entry_new(void)
+{
+    struct priv_knownhosts_entry *x = NULL;
+
+    x = calloc(1, sizeof(struct priv_knownhosts_entry));
+    if (x == NULL) {
+        return NULL;
+    }
+
+    x->entry = calloc(1, sizeof(struct ssh_knownhosts_entry));
+    if (x->entry == NULL) {
+        SAFE_FREE(x);
+        return NULL;
+    }
+
+    return x;
+}
+
+/**
+ * @brief Copies an ssh_knownhosts_entry structure from a priv_knownhosts_entry
+ * structure.
+ *
+ * This function creates a deep copy of the `ssh_knownhosts_entry` structure
+ * contained in the `src` priv_knownhosts_entry. It duplicates the `hostname`,
+ * `unparsed`, and `publickey` fields. If the `comment` field is present,
+ * it is also duplicated.
+ *
+ * @param[in] src  A pointer to the source priv_knownhosts_entry structure.
+ *
+ * @returns A pointer to the newly allocated and duplicated ssh_knownhosts_entry
+ * structure.
+ * @returns NULL on errors.
+ */
+static struct ssh_knownhosts_entry *
+copy_ssh_knownhosts_entry_from_priv_entry(struct priv_knownhosts_entry *src)
+{
+    struct ssh_knownhosts_entry *ret = NULL;
+
+    if (src == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "NULL argument");
+        return NULL;
+    }
+
+    ret = calloc(1, sizeof(struct ssh_knownhosts_entry));
+    if (ret == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Memory allocation failure");
+        return NULL;
+    }
+
+    /* hostname, unparsed and publickey can't be NULL */
+    ret->hostname = strdup(src->entry->hostname);
+    if (ret->hostname == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while duplicating hostname");
+        goto fail;
+    }
+
+    ret->unparsed = strdup(src->entry->unparsed);
+    if (ret->unparsed == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while duplicating unparsed");
+        goto fail;
+    }
+
+    ret->publickey = ssh_key_dup(src->entry->publickey);
+    if (ret->publickey == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while duplicating publickey");
+        goto fail;
+    }
+
+    /* Copy the comment only if exists */
+    if (src->entry->comment != NULL) {
+        ret->comment = strdup(src->entry->comment);
+        if (ret->comment == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while duplicating comment");
+            goto fail;
+        }
+    }
+
+    return ret;
+
+fail:
+    SSH_KNOWNHOSTS_ENTRY_FREE(ret);
+    return NULL;
+}
+
 static int known_hosts_read_line(FILE *fp,
                                  char *buf,
                                  size_t buf_size,
@@ -193,9 +332,225 @@ static int known_hosts_read_line(FILE *fp,
     return -1;
 }
 
+/**
+ * @brief Get the enum type of a marker given a C string.
+ *
+ * @param[in]  marker    The string containing the marker name.
+ *
+ * @returns the enum type of the marker on success.
+ * @returns -1 if the marker argument is NULL.
+ */
 static int
-ssh_known_hosts_entries_compare(struct ssh_knownhosts_entry *k1,
-                                struct ssh_knownhosts_entry *k2)
+ssh_known_hosts_marker_from_name(const char *marker)
+{
+    if (marker == NULL) {
+        return -1;
+    }
+
+    if (strcmp(marker, "@cert-authority") == 0) {
+        return MARK_CA;
+    } else if (strcmp(marker, "@revoked") == 0) {
+        return MARK_REVOKED;
+    } else {
+        return MARK_UNKNOWN;
+    }
+}
+
+/**
+ * @brief Parse a line from a known_hosts entry into a priv_knownhosts_entry
+ * structure.
+ *
+ * This parses a known_hosts entry into a structure with the key in a libssh
+ * consumeable form. You can use the PKI key function to further work with it.
+ *
+ * @param[in]  hostname     The hostname to match the line to
+ *
+ * @param[in]  line         The line to compare and parse if we have a hostname
+ *                          match.
+ *
+ * @param[in]  priv_entry   A pointer to store the allocated known_hosts
+ *                          entry structure. The user needs to free the memory
+ *                          using `priv_knownhosts_entry()`
+ *
+ * @return SSH_OK on success, SSH_AGAIN if the hostname does not match the line,
+ * SSH_ERROR otherwise.
+ */
+static int
+known_hosts_parse_line(const char *hostname,
+                       const char *line,
+                       struct priv_knownhosts_entry **priv_entry)
+{
+    struct priv_knownhosts_entry *e = NULL;
+    char *keyword = NULL;
+    char *p = NULL;
+    char *save_tok = NULL, *save_tok2 = NULL;
+    char *host_list = NULL;
+    enum ssh_keytypes_e key_type;
+    int match = 0;
+    int rc = SSH_OK;
+
+    keyword = strdup(line);
+    if (keyword == NULL) {
+        return SSH_ERROR;
+    }
+
+    /* Check for marker */
+    p = strtok_r(keyword, " ", &save_tok);
+    if (p == NULL ) {
+        SAFE_FREE(keyword);
+        return SSH_ERROR;
+    }
+
+    e = priv_knownhosts_entry_new();
+    if (e == NULL) {
+        SSH_LOG(SSH_LOG_WARN, "Error while initializing priv_knownhosts_entry");
+        SAFE_FREE(keyword);
+        return SSH_ERROR;
+    }
+
+    if (p[0] == '@') {
+        rc = ssh_known_hosts_marker_from_name(p);
+        /* rc should never be -1 because p can't be NULL at this point */
+        if (rc == MARK_UNKNOWN) {
+            SSH_LOG(SSH_LOG_WARN, "Unknown marker: %s", p);
+            rc = SSH_ERROR;
+            goto out;
+        }
+        e->marker = rc;
+
+        /* Move the pointer and get the next tok */
+        p = strtok_r(NULL, " ", &save_tok);
+        if (p == NULL) {
+            rc = SSH_ERROR;
+            goto out;
+        }
+    }
+
+    host_list = strdup(p);
+    if (host_list == NULL) {
+        SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
+        rc = SSH_ERROR;
+        goto out;
+    }
+
+    if (hostname != NULL) {
+        char *host_port = NULL;
+        char *q = NULL;
+
+        /* Hashed */
+        if (p[0] == '|') {
+            match = match_hashed_hostname(hostname, p);
+        }
+
+        for (q = strtok_r(p, ",", &save_tok2);
+             q != NULL;
+             q = strtok_r(NULL, ",", &save_tok2)) {
+            int cmp;
+
+            if (q[0] == '[' && hostname[0] != '[') {
+                /* Corner case: We have standard port so we do not have
+                 * hostname in square braces. But the pattern is enclosed
+                 * in braces with, possibly standard or wildcard, port.
+                 * We need to test against [host]:port pair here.
+                 */
+                if (host_port == NULL) {
+                    host_port = ssh_hostport(hostname, 22);
+                    if (host_port == NULL) {
+                        SAFE_FREE(host_list);
+                        rc = SSH_ERROR;
+                        goto out;
+                    }
+                }
+
+                cmp = match_hostname(host_port, q, strlen(q));
+            } else {
+                cmp = match_hostname(hostname, q, strlen(q));
+            }
+            if (cmp == 1) {
+                match = 1;
+                break;
+            }
+        }
+        SAFE_FREE(host_port);
+
+        if (match == 0) {
+            SAFE_FREE(host_list);
+            rc = SSH_AGAIN;
+            goto out;
+        }
+
+        e->entry->hostname = strdup(hostname);
+        if (e->entry->hostname == NULL) {
+            SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
+            SAFE_FREE(host_list);
+            rc = SSH_ERROR;
+            goto out;
+        }
+    }
+
+    e->entry->unparsed = host_list;
+
+    /* pubkey type */
+    p = strtok_r(NULL, " ", &save_tok);
+    if (p == NULL) {
+        rc = SSH_ERROR;
+        goto out;
+    }
+
+    key_type = ssh_key_type_from_name(p);
+    if (key_type == SSH_KEYTYPE_UNKNOWN) {
+        SSH_LOG(SSH_LOG_TRACE, "key type '%s' unknown!", p);
+        rc = SSH_ERROR;
+        goto out;
+    }
+
+    /* public key */
+    p = strtok_r(NULL, " ", &save_tok);
+    if (p == NULL) {
+        rc = SSH_ERROR;
+        goto out;
+    }
+
+    rc = ssh_pki_import_pubkey_base64(p,
+                                      key_type,
+                                      &e->entry->publickey);
+    if (rc != SSH_OK) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Failed to parse %s key for entry: %s!",
+                ssh_key_type_to_char(key_type),
+                e->entry->unparsed);
+        rc = SSH_ERROR;
+        goto out;
+    }
+
+    /* comment */
+    p = strtok_r(NULL, " ", &save_tok);
+    if (p != NULL) {
+        p = strstr(line, p);
+        if (p != NULL) {
+            e->entry->comment = strdup(p);
+            if (e->entry->comment == NULL) {
+                SSH_LOG(SSH_LOG_WARN, "Memory allocation failure");
+                rc = SSH_ERROR;
+                goto out;
+            }
+        }
+    }
+
+    *priv_entry = e;
+
+    SAFE_FREE(keyword);
+    return SSH_OK;
+out:
+    SAFE_FREE(keyword);
+    priv_knownhosts_entry_free(e);
+    e = NULL;
+    return rc;
+}
+
+static int
+ssh_known_hosts_entries_compare(struct priv_knownhosts_entry *k1,
+                                struct priv_knownhosts_entry *k2)
 {
     int cmp;
 
@@ -203,12 +558,19 @@ ssh_known_hosts_entries_compare(struct ssh_knownhosts_entry *k1,
         return 1;
     }
 
-    cmp = strcmp(k1->hostname, k2->hostname);
+    cmp = strcmp(k1->entry->hostname, k2->entry->hostname);
     if (cmp != 0) {
         return cmp;
     }
 
-    cmp = ssh_key_cmp(k1->publickey, k2->publickey, SSH_KEY_CMP_PUBLIC);
+    cmp = ssh_key_cmp(k1->entry->publickey,
+                      k2->entry->publickey,
+                      SSH_KEY_CMP_PUBLIC);
+    if (cmp != 0) {
+        return cmp;
+    }
+
+    cmp = k1->marker != k2->marker;
     if (cmp != 0) {
         return cmp;
     }
@@ -252,7 +614,7 @@ static int ssh_known_hosts_read_entries(const char *match,
     for (rc = known_hosts_read_line(fp, line, sizeof(line), &len, &lineno);
          rc == 0;
          rc = known_hosts_read_line(fp, line, sizeof(line), &len, &lineno)) {
-        struct ssh_knownhosts_entry *entry = NULL;
+        struct priv_knownhosts_entry *priv_entry = NULL;
         struct ssh_iterator *it = NULL;
         char *p = NULL;
 
@@ -269,15 +631,7 @@ static int ssh_known_hosts_read_entries(const char *match,
             continue;
         }
 
-        /* Skip lines starting with markers (@cert-authority, @revoked):
-         * we do not completely support them anyway */
-        if (p[0] == '@') {
-            continue;
-        }
-
-        rc = ssh_known_hosts_parse_line(match,
-                                        line,
-                                        &entry);
+        rc = known_hosts_parse_line(match, line, &priv_entry);
         if (rc == SSH_AGAIN) {
             continue;
         } else if (rc != SSH_OK) {
@@ -288,18 +642,18 @@ static int ssh_known_hosts_read_entries(const char *match,
         for (it = ssh_list_get_iterator(*entries);
              it != NULL;
              it = it->next) {
-            struct ssh_knownhosts_entry *entry2;
+            struct priv_knownhosts_entry *priv_entry2;
             int cmp;
-            entry2 = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
-            cmp = ssh_known_hosts_entries_compare(entry, entry2);
+            priv_entry2 = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+            cmp = ssh_known_hosts_entries_compare(priv_entry, priv_entry2);
             if (cmp == 0) {
-                ssh_knownhosts_entry_free(entry);
-                entry = NULL;
+                priv_knownhosts_entry_free(priv_entry);
+                priv_entry = NULL;
                 break;
             }
         }
-        if (entry != NULL) {
-            ssh_list_append(*entries, entry);
+        if (priv_entry != NULL) {
+            ssh_list_append(*entries, priv_entry);
         }
     }
 
@@ -423,12 +777,12 @@ struct ssh_list *ssh_known_hosts_get_algorithms(ssh_session session)
          it != NULL;
          it = ssh_list_get_iterator(entry_list)) {
         struct ssh_iterator *it2 = NULL;
-        struct ssh_knownhosts_entry *entry = NULL;
+        struct priv_knownhosts_entry *priv_entry = NULL;
         const char *algo = NULL;
         bool present = false;
 
-        entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
-        algo = entry->publickey->type_c;
+        priv_entry = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+        algo = priv_entry->entry->publickey->type_c;
 
         /* Check for duplicates */
         for (it2 = ssh_list_get_iterator(list);
@@ -450,7 +804,7 @@ struct ssh_list *ssh_known_hosts_get_algorithms(ssh_session session)
             }
         }
 
-        ssh_knownhosts_entry_free(entry);
+        priv_knownhosts_entry_free(priv_entry);
         ssh_list_remove(entry_list, it);
     }
     ssh_list_free(entry_list);
@@ -582,13 +936,35 @@ char *ssh_known_hosts_get_algorithms_names(ssh_session session)
          it != NULL;
          it = ssh_list_get_iterator(entry_list))
     {
+        struct priv_knownhosts_entry *priv_entry = NULL;
         struct ssh_knownhosts_entry *entry = NULL;
         const char *algo = NULL;
 
-        entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
+        priv_entry = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+
+        /*
+         * Skip keys algorithm with CA marker since any CA key type can sign
+         * certificates. There are no preferred algorithms for certificates
+         * when encountering a CA signing key in the known_hosts file.
+         */
+        if (priv_entry->marker == MARK_CA) {
+            SSH_LOG(SSH_LOG_TRACE, "CA key found. Skipping key algorithm "
+                                   "for host key algorithms negotiation");
+            priv_knownhosts_entry_free(priv_entry);
+            ssh_list_remove(entry_list, it);
+            continue;
+        } else if (priv_entry->marker == MARK_REVOKED) {
+            SSH_LOG(SSH_LOG_TRACE, "Revoked key found. Skipping key algorithm "
+                                   "for host key algorithms negotiation");
+            priv_knownhosts_entry_free(priv_entry);
+            ssh_list_remove(entry_list, it);
+            continue;
+        }
+
+        entry = priv_entry->entry;
         algo = ssh_known_host_sigs_from_hostkey_type(entry->publickey->type);
         if (algo == NULL) {
-            ssh_knownhosts_entry_free(entry);
+            priv_knownhosts_entry_free(priv_entry);
             ssh_list_remove(entry_list, it);
             continue;
         }
@@ -604,7 +980,7 @@ char *ssh_known_hosts_get_algorithms_names(ssh_session session)
                 sizeof(methods_buffer) - strlen(methods_buffer) - 1);
         needcomma = true;
 
-        ssh_knownhosts_entry_free(entry);
+        priv_knownhosts_entry_free(priv_entry);
         ssh_list_remove(entry_list, it);
     }
 
@@ -630,7 +1006,8 @@ char *ssh_known_hosts_get_algorithms_names(ssh_session session)
  *                          entry structure. The user needs to free the memory
  *                          using SSH_KNOWNHOSTS_ENTRY_FREE().
  *
- * @return SSH_OK on success, SSH_ERROR otherwise.
+ * @return SSH_OK on success, SSH_AGAIN if the hostname does not match the line,
+ * SSH_ERROR otherwise.
  */
 int ssh_known_hosts_parse_line(const char *hostname,
                                const char *line,
@@ -788,7 +1165,7 @@ int ssh_known_hosts_parse_line(const char *hostname,
     return SSH_OK;
 out:
     SAFE_FREE(known_host);
-    ssh_knownhosts_entry_free(e);
+    SSH_KNOWNHOSTS_ENTRY_FREE(e);
     return rc;
 }
 
@@ -892,10 +1269,10 @@ enum ssh_known_hosts_e ssh_session_has_known_hosts_entry(ssh_session session)
     for (it = ssh_list_get_iterator(entry_list);
          it != NULL;
          it = ssh_list_get_iterator(entry_list)) {
-        struct ssh_knownhosts_entry *entry = NULL;
+        struct priv_knownhosts_entry *priv_entry = NULL;
 
-        entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
-        ssh_knownhosts_entry_free(entry);
+        priv_entry = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+        priv_knownhosts_entry_free(priv_entry);
         ssh_list_remove(entry_list, it);
     }
     ssh_list_free(entry_list);
@@ -1070,6 +1447,58 @@ int ssh_session_update_known_hosts(ssh_session session)
     return SSH_OK;
 }
 
+/**
+ * @brief Checks the server's public key against known hosts entries.
+ *
+ * This function reads entries from the known hosts file and compares the
+ * server's public key against them. If the server's key is a certificate,
+ * the function searches for a `\@cert-authority` marked key and compares it
+ * against the certificate's signature key.
+ * The function does not return immediately when the first match is found.
+ * Instead, it continues to read all entries to check for any `@revoked`
+ * markers, which could invalidate both `@cert-authority` marked keys and plain
+ * keys.
+ * If a valid match is found, the corresponding entry is copied to `*pentry`,
+ * but the function only returns after processing all entries to ensure no
+ * revoking entries are missed later in the file. If such a revoking entry is
+ * found, the function returns `SSH_KNOWN_HOSTS_REVOKED` and any previously set
+ * `*pentry` is freed.
+ *
+ * @param[in] hosts_entry  A string containing the hostname entry being checked.
+ *
+ * @param[in] filename     The known_hosts file path to read entries from.
+ *
+ * @param[in] server_key   The SSH key of the server being checked.
+ *
+ * @param[out] pentry      A pointer to a `struct ssh_knownhosts_entry` that
+ *                         will hold the first matching entry found in the file.
+ *                         If `pentry` is set to `NULL`, the matching
+ *                         `ssh_knownhosts_entry` is not returned, but the
+ *                         function still performs the key comparison and
+ *                         revocation checks.
+ *
+ * @returns SSH_KNOWN_HOSTS_OK:        The server is known and has not changed.\n
+ *          SSH_KNOWN_HOSTS_CHANGED:   The server key has changed. Either you
+ *                                     are under attack or the administrator
+ *                                     changed the key. You HAVE to warn the
+ *                                     user about a possible attack.\n
+ *          SSH_KNOWN_HOSTS_OTHER:     The server gave use a key of a type while
+ *                                     we had an other type recorded. It is a
+ *                                     possible attack.\n
+ *          SSH_KNOWN_HOSTS_UNKNOWN:   The server is unknown. User should
+ *                                     confirm the public key hash is correct.\n
+ *          SSH_KNOWN_HOSTS_NOT_FOUND: The known host file does not exist. The
+ *                                     host is thus unknown. File will be
+ *                                     created if host key is accepted.\n
+ *          SSH_KNOWN_HOSTS_REVOKED:   The server key is revoked and not valid
+ *                                     anymore. A revoked key may indicate that
+ *                                     a stolen key is being used to impersonate
+ *                                     the host. Always WARN the user about a
+ *                                     possible attack.\n
+ *          SSH_KNOWN_HOSTS_ERROR:     There had been an error checking the host.
+ *
+ * @see ssh_knownhosts_entry_free()
+ */
 static enum ssh_known_hosts_e
 ssh_known_hosts_check_server_key(const char *hosts_entry,
                                  const char *filename,
@@ -1079,7 +1508,8 @@ ssh_known_hosts_check_server_key(const char *hosts_entry,
     struct ssh_list *entry_list = NULL;
     struct ssh_iterator *it = NULL;
     enum ssh_known_hosts_e found = SSH_KNOWN_HOSTS_UNKNOWN;
-    int rc;
+    int rc, expected_marker;
+    bool check_revoked;
 
     rc = ssh_known_hosts_read_entries(hosts_entry,
                                       filename,
@@ -1095,39 +1525,90 @@ ssh_known_hosts_check_server_key(const char *hosts_entry,
         return SSH_KNOWN_HOSTS_UNKNOWN;
     }
 
+    /*
+     * If the server key is a certificate then the following loop should
+     * check only @cert-authority marked keys.
+     */
+    expected_marker = is_cert_type(server_key->type) ? MARK_CA : MARK_NONE;
+
     for (;it != NULL; it = it->next) {
+        struct priv_knownhosts_entry *priv_entry = NULL;
         struct ssh_knownhosts_entry *entry = NULL;
         int cmp;
 
-        entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
+        priv_entry = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+        entry = priv_entry->entry;
+        check_revoked = (priv_entry->marker == MARK_REVOKED);
 
-        cmp = ssh_key_cmp(server_key, entry->publickey, SSH_KEY_CMP_PUBLIC);
-        if (cmp == 0) {
-            found = SSH_KNOWN_HOSTS_OK;
-            if (pentry != NULL) {
-                *pentry = entry;
-                ssh_list_remove(entry_list, it);
-            }
-            break;
+        /*
+         * Skip the entry if the marker is not required, except for the @revoked
+         * marker. When @revoked is encountered, proceed with the comparison
+         * to verify that the server key is not revoked.
+         */
+        if (!check_revoked && priv_entry->marker != expected_marker) {
+            continue;
         }
 
-        if (ssh_key_type(server_key) == ssh_key_type(entry->publickey)) {
+        if (is_cert_type(server_key->type)) {
+            /* with certificates check the signature key */
+            cmp = ssh_key_cmp(server_key->cert_data->signature_key,
+                              entry->publickey,
+                              SSH_KEY_CMP_PUBLIC);
+        } else {
+            /* plain keys */
+            cmp = ssh_key_cmp(server_key, entry->publickey, SSH_KEY_CMP_PUBLIC);
+        }
+
+        /*
+         * Don't break even if a match is found in order to check the remaining
+         * entries that could revoke a valid key.
+         * Without breaking here we don't need to traverse again the entries
+         * list searching for revoking matches.
+         */
+        if (cmp == 0) {
+            found = check_revoked ?
+                                  SSH_KNOWN_HOSTS_REVOKED : SSH_KNOWN_HOSTS_OK;
+            /* Store only the first match found */
+            if (pentry != NULL && *pentry == NULL) {
+                *pentry = copy_ssh_knownhosts_entry_from_priv_entry(priv_entry);
+                if (*pentry == NULL) {
+                    found = SSH_KNOWN_HOSTS_UNKNOWN;
+                    goto out;
+                }
+            }
+
+            /*
+             * Only if the key is revoked we break. If the key is revoked
+             * then *pentry should be freed and set to the initial value (NULL)
+             * overriding previous assigned entry since it is not valid anymore.
+             */
+            if (found == SSH_KNOWN_HOSTS_REVOKED) {
+                if (pentry != NULL && *pentry != NULL) {
+                    SSH_KNOWNHOSTS_ENTRY_FREE(*pentry);
+                }
+                break;
+            }
+        }
+
+        if (ssh_key_type(server_key) == ssh_key_type(entry->publickey)
+            && found != SSH_KNOWN_HOSTS_OK) {
             found = SSH_KNOWN_HOSTS_CHANGED;
             continue;
         }
 
-        if (found != SSH_KNOWN_HOSTS_CHANGED) {
+        if (found != SSH_KNOWN_HOSTS_CHANGED && found != SSH_KNOWN_HOSTS_OK) {
             found = SSH_KNOWN_HOSTS_OTHER;
         }
     }
 
+out:
     for (it = ssh_list_get_iterator(entry_list);
          it != NULL;
          it = ssh_list_get_iterator(entry_list)) {
-        struct ssh_knownhosts_entry *entry = NULL;
+        struct priv_knownhosts_entry *priv_entry = NULL;
 
-        entry = ssh_iterator_value(struct ssh_knownhosts_entry *, it);
-        ssh_knownhosts_entry_free(entry);
+        priv_entry = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+        priv_knownhosts_entry_free(priv_entry);
         ssh_list_remove(entry_list, it);
     }
     ssh_list_free(entry_list);
@@ -1155,6 +1636,11 @@ ssh_known_hosts_check_server_key(const char *hosts_entry,
  *          SSH_KNOWN_HOSTS_NOT_FOUND: The known host file does not exist. The
  *                                     host is thus unknown. File will be
  *                                     created if host key is accepted.\n
+ *          SSH_KNOWN_HOSTS_REVOKED:   The server key is revoked and not valid
+ *                                     anymore. A revoked key may indicate that
+ *                                     a stolen key is being used to impersonate
+ *                                     the host. Always WARN the user about a
+ *                                     possible attack.\n
  *          SSH_KNOWN_HOSTS_ERROR:     There had been an error checking the host.
  *
  * @see ssh_knownhosts_entry_free()
@@ -1224,6 +1710,11 @@ ssh_session_get_known_hosts_entry(ssh_session session,
  *          SSH_KNOWN_HOSTS_NOT_FOUND: The known host file does not exist. The
  *                                     host is thus unknown. File will be
  *                                     created if host key is accepted.\n
+ *          SSH_KNOWN_HOSTS_REVOKED:   The server key is revoked and not valid
+ *                                     anymore. A revoked key may indicate that
+ *                                     a stolen key is being used to impersonate
+ *                                     the host. Always WARN the user about a
+ *                                     possible attack.\n
  *          SSH_KNOWN_HOSTS_ERROR:     There had been an error checking the host.
  *
  * @see ssh_knownhosts_entry_free()
@@ -1265,8 +1756,10 @@ ssh_session_get_known_hosts_entry_file(ssh_session session,
  * @brief Check if the servers public key for the connected session is known.
  *
  * This checks if we already know the public key of the server we want to
- * connect to. This allows to detect if there is a MITM attach going on
- * of if there have been changes on the server we don't know about.
+ * connect to. It checks also if the server public key is not revoked. If it is
+ * a certificate then it checks its validity based on the CA that signed it and
+ * on its specifications. This allows to detect if there is a MITM attack going
+ * on or if there have been changes on the server we don't know about.
  *
  * @param[in]  session  The SSH to validate.
  *
@@ -1283,11 +1776,239 @@ ssh_session_get_known_hosts_entry_file(ssh_session session,
  *          SSH_KNOWN_HOSTS_NOT_FOUND: The known host file does not exist. The
  *                                     host is thus unknown. File will be
  *                                     created if host key is accepted.\n
+ *          SSH_KNOWN_HOSTS_REVOKED:   The server key is revoked and not valid
+ *                                     anymore. A revoked key may indicate that
+ *                                     a stolen key is being used to impersonate
+ *                                     the host. Always WARN the user about a
+ *                                     possible attack.\n
  *          SSH_KNOWN_HOSTS_ERROR:     There had been an error checking the host.
  */
 enum ssh_known_hosts_e ssh_session_is_known_server(ssh_session session)
 {
-    return ssh_session_get_known_hosts_entry(session, NULL);
+    ssh_key server_pubkey = NULL;
+    char *host_port = NULL, *server_fp = NULL, *ca_fp = NULL;
+    int known_host_status, with_cert, rc;
+    unsigned int i;
+
+    server_pubkey = ssh_dh_get_current_server_publickey(session);
+    if (server_pubkey == NULL) {
+        ssh_set_error(session,
+                      SSH_FATAL,
+                      "ssh_session_is_known_host called without a "
+                      "server_key!");
+        known_host_status = SSH_KNOWN_HOSTS_ERROR;
+        goto out;
+    }
+    with_cert = is_cert_type(server_pubkey->type);
+
+    host_port = ssh_session_get_host_port(session);
+    if (host_port == NULL) {
+        known_host_status = SSH_KNOWN_HOSTS_ERROR;
+        goto out;
+    }
+
+    /* Verbose logging of the server public key info */
+    server_fp  = ssh_pki_get_pubkey_fingerprint(server_pubkey,
+                                               SSH_PUBLICKEY_HASH_SHA256);
+    if (server_fp == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while retrieving host key fingerprint");
+        known_host_status = SSH_KNOWN_HOSTS_ERROR;
+        goto out;
+    }
+
+    if (with_cert) {
+        ca_fp =
+            ssh_pki_get_pubkey_fingerprint(server_pubkey->cert_data->signature_key,
+                                           SSH_PUBLICKEY_HASH_SHA256);
+        if (ca_fp == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while retrieving CA key fingerprint");
+            known_host_status = SSH_KNOWN_HOSTS_ERROR;
+            goto out;
+        }
+
+        SSH_LOG(SSH_LOG_DEBUG,
+                "Server host certificate: %s %s, serial %"PRIu64", "
+                "ID \"%s\", CA %s %s",
+                server_pubkey->type_c,
+                server_fp,
+                server_pubkey->cert_data->serial,
+                server_pubkey->cert_data->key_id,
+                server_pubkey->cert_data->signature_key->type_c,
+                ca_fp);
+        for (i = 0; i < server_pubkey->cert_data->n_principals; i++) {
+            SSH_LOG(SSH_LOG_DEBUG,
+                    "Server host certificate principal: %s",
+                    server_pubkey->cert_data->principals[i]);
+        }
+    } else {
+        SSH_LOG(SSH_LOG_DEBUG,
+                "Server host public key: %s %s",
+                server_pubkey->type_c,
+                server_fp);
+    }
+
+    /*
+     * Check if the host key is revoked by RevokedHostKeys file, if defined.
+     * If the key is revoked we immediately refuse it before even checking if
+     * it is known by the known_hosts file.
+     */
+    if (session->opts.revoked_host_keys != NULL) {
+        rc = ssh_pki_key_is_revoked(server_pubkey,
+                                    session->opts.revoked_host_keys);
+        if (rc) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Rejecting host key: %s %s. The key is revoked by file %s",
+                    server_pubkey->type_c,
+                    server_fp,
+                    session->opts.revoked_host_keys);
+            known_host_status = SSH_KNOWN_HOSTS_REVOKED;
+            goto out;
+        } else if (rc == -1) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while checking host key %s %s "
+                    "in revoked keys file %s",
+                    server_pubkey->type_c,
+                    server_fp,
+                    session->opts.revoked_host_keys);
+            known_host_status = SSH_KNOWN_HOSTS_ERROR;
+            goto out;
+        }
+    }
+
+    /* Check if the server public key is known by the known_hosts file */
+    known_host_status = ssh_session_get_known_hosts_entry(session, NULL);
+
+    /*
+     * If the server pubkey is a certificate and its certification authority
+     * known, then it must be validated for the current time and its
+     * specifications.
+     */
+    if (with_cert && known_host_status == SSH_KNOWN_HOSTS_OK) {
+        rc = pki_cert_validate(server_pubkey,
+                               SSH_CERT_TYPE_HOST,
+                               host_port,
+                               session->opts.ca_signature_algorithms);
+        if (rc == SSH_ERROR) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "The host certificate is invalid and has been refused");
+            known_host_status = SSH_KNOWN_HOSTS_ERROR;
+        }
+    }
+
+out:
+    SAFE_FREE(host_port);
+    SAFE_FREE(server_fp);
+    SAFE_FREE(ca_fp);
+    return known_host_status;
+}
+
+/**
+ * @brief Check if the server host name and port for a session match an entry
+ * with a specific marker in the known_hosts file.
+ *
+ * @note You need to set at least the hostname using ssh_options_set().
+ *
+ * @param[in] session The ssh_session containing known hosts information.
+ *
+ * @param[in] marker  The marker type to search for.
+ *
+ * @returns 1 if at least one entry with the specified marker is found.
+ * @returns 0 if no such entry is found.
+ * @returns SSH_ERROR if an error occurs.
+ */
+int
+ssh_session_find_known_hosts_marker(ssh_session session,
+                                    enum ssh_known_hosts_marker_e marker)
+{
+    struct ssh_list *entry_list = NULL;
+    struct ssh_iterator *it = NULL;
+    struct priv_knownhosts_entry *priv_entry = NULL;
+    char *host_port = NULL;
+    size_t count;
+    int rc, rv = 0;
+
+    if (session->opts.knownhosts == NULL ||
+        session->opts.global_knownhosts == NULL) {
+        if (ssh_options_apply(session) < 0) {
+            ssh_set_error(session,
+                          SSH_REQUEST_DENIED,
+                          "Can't find a known_hosts file");
+            return SSH_ERROR;
+        }
+    }
+
+    host_port = ssh_session_get_host_port(session);
+    if (host_port == NULL) {
+        return SSH_ERROR;
+    }
+
+    rc = ssh_known_hosts_read_entries(host_port,
+                                      session->opts.knownhosts,
+                                      &entry_list);
+    if (rc != 0) {
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Error while reading known_hosts entries from %s",
+                      session->opts.knownhosts);
+        SAFE_FREE(host_port);
+        SSH_LIST_FREE(entry_list);
+        return SSH_ERROR;
+    }
+
+    rc = ssh_known_hosts_read_entries(host_port,
+                                      session->opts.global_knownhosts,
+                                      &entry_list);
+    if (rc != 0) {
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Error while reading known_hosts entries from %s",
+                      session->opts.global_knownhosts);
+        SSH_LIST_FREE(entry_list);
+        SAFE_FREE(host_port);
+        return SSH_ERROR;
+    }
+
+    if (entry_list == NULL) {
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "known_hosts entry list for %s is NULL",
+                      host_port);
+        SAFE_FREE(host_port);
+        return SSH_ERROR;
+    }
+
+    count = ssh_list_count(entry_list);
+    if (count == 0) {
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "known_hosts entry list for %s is empty",
+                      host_port);
+        SAFE_FREE(host_port);
+        SSH_LIST_FREE(entry_list);
+        return SSH_ERROR;
+    }
+
+    SAFE_FREE(host_port);
+    for (it = ssh_list_get_iterator(entry_list);
+         it != NULL;
+         it = ssh_list_get_iterator(entry_list))
+    {
+        priv_entry = ssh_iterator_value(struct priv_knownhosts_entry *, it);
+
+        if (priv_entry->marker == (int)marker) {
+            rv = 1;
+            /*
+             * Don't break here even if the marker has been found.
+             * All the remaining list entries need to be freed.
+             */
+        }
+
+        priv_knownhosts_entry_free(priv_entry);
+        ssh_list_remove(entry_list, it);
+    }
+    SSH_LIST_FREE(entry_list);
+
+    return rv;
 }
 
 /** @} */

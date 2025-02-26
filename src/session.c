@@ -25,6 +25,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "libssh/priv.h"
 #include "libssh/libssh.h"
@@ -40,6 +41,7 @@
 #include "libssh/poll.h"
 #include "libssh/pki.h"
 #include "libssh/gssapi.h"
+#include "libssh/kex.h"
 
 #define FIRST_CHANNEL 42 // why not ? it helps to find bugs.
 
@@ -177,6 +179,12 @@ ssh_session ssh_new(void)
     }
     rc = ssh_list_append(session->opts.identity_non_exp, id);
     if (rc == SSH_ERROR) {
+        goto err;
+    }
+
+    session->opts.ca_signature_algorithms =
+        strdup(DEFAULT_HOSTKEY_SIGNATURE_ALGOS);
+    if (session->opts.ca_signature_algorithms == NULL) {
         goto err;
     }
 
@@ -369,6 +377,16 @@ void ssh_free(ssh_session session)
   SAFE_FREE(session->opts.gss_client_identity);
   SAFE_FREE(session->opts.pubkey_accepted_types);
   SAFE_FREE(session->opts.control_path);
+  SAFE_FREE(session->opts.revoked_host_keys);
+  SAFE_FREE(session->opts.ca_signature_algorithms);
+
+  SAFE_FREE(session->server_opts.custombanner);
+  SAFE_FREE(session->server_opts.moduli_file);
+  SAFE_FREE(session->server_opts.trusted_user_ca_keys_file);
+  SAFE_FREE(session->server_opts.authorized_keys_file);
+  SAFE_FREE(session->server_opts.authorized_principals_file);
+  SAFE_FREE(session->server_opts.revoked_keys_file);
+  SAFE_FREE(session->server_opts.ca_signature_algorithms);
 
   for (i = 0; i < SSH_KEX_METHODS; i++) {
       if (session->opts.wanted_methods[i]) {
@@ -376,8 +394,7 @@ void ssh_free(ssh_session session)
       }
   }
 
-  SAFE_FREE(session->server_opts.custombanner);
-  SAFE_FREE(session->server_opts.moduli_file);
+  SSH_AUTH_OPTS_FREE(session->auth_opts);
 
   _ssh_remove_legacy_log_cb();
 
@@ -1348,6 +1365,210 @@ int ssh_get_publickey_hash(const ssh_key key,
 out:
     SSH_STRING_FREE(blob);
     return rc;
+}
+
+/**
+ * @brief Retrieves the remote peer's IP address from the SSH session.
+ *
+ * This function extracts the remote peer's IP address using the socket file
+ * descriptor associated with the provided SSH session. If any error occurs
+ * during this process, an error message is set in the SSH session and the
+ * function returns "unknown".
+ *
+ * @param[in] session  The SSH session handle from which to retrieve the remote
+ *                     peer's IP address. The session must have an active socket
+ *                     connection.
+ *
+ * @returns A dynamically allocated string containing the remote peer's IP
+ *          address on success.
+ * @returns A dynamically allocated string containing "unknown" on failure.
+ *
+ * @note The caller is responsible for freeing the returned string.
+ *
+ * @warning If the function is called on Windows, it ensures that `WSACleanup()`
+ *          is invoked in case of error handling, which is required for proper
+ *          Windows socket management.
+ */
+char *
+ssh_get_remote_peer_ip_address(ssh_session session)
+{
+    socket_t fd;
+    unsigned int len;
+    int rc;
+    char addr[NI_MAXHOST];
+    struct sockaddr_storage remote;
+    /* WSAStartup already called during socket init */
+
+    if (session == NULL) {
+        goto error;
+    }
+
+    if (session->socket == NULL) {
+        goto error;
+    }
+
+    fd = ssh_socket_get_fd(session->socket);
+
+    if (fd < 0) {
+        goto error;
+    }
+
+    len = sizeof(remote);
+    rc = getpeername(fd, (struct sockaddr *)&remote, &len);
+    if (rc < 0) {
+#ifdef _WIN32
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Getting remote peer IP address: errno %d",
+                      WSAGetLastError());
+#else
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Getting remote peer IP address: %s",
+                      strerror(errno));
+#endif
+    }
+
+    rc = getnameinfo((struct sockaddr *)&remote,
+                     len,
+                     addr,
+                     sizeof(addr),
+                     NULL,
+                     0,
+                     NI_NUMERICHOST);
+    if (rc != 0) {
+#ifdef _WIN32
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Translating socket address to ASCII address: errno %d",
+                      WSAGetLastError());
+#else
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Translating socket address to ASCII address: %s",
+                      gai_strerror(rc));
+#endif
+        goto error;
+    }
+
+#ifdef _WIN32
+    WSACleanup();
+#endif
+    return strdup(addr);
+
+error:
+#ifdef _WIN32
+    WSACleanup();
+#endif
+    return strdup("unknown");
+}
+
+/**
+ * @brief Retrieves the remote peer's hostname or IP address from the SSH
+ * session.
+ *
+ * This function attempts to retrieve the remote peer's hostname via
+ * DNS resolution if `dns` is set to `true`. If the DNS resolution fails
+ * or `dns` is set to `false`, the remote peer's IP address is retrieved and
+ * returned. If any error occurs, it falls back to returning the remote peer's
+ * IP address using `ssh_get_remote_peer_ip_address()`.
+ *
+ * @param[in] session  The SSH session handle from which to retrieve the remote
+ *                     peer's hostname. The session must have an active socket
+ *                     connection.
+ *
+ * @param[in] dns      Boolean flag indicating whether to resolve the remote
+ *                     peer's hostname. If `true`, DNS resolution is attempted;
+ *                     otherwise, only the IP address is returned.
+ *
+ * @return A dynamically allocated string containing the remote peer's hostname
+ *         or IP address on success.
+ * @returns A dynamically allocated string containing the IP address or
+ * "unknown" on failure.
+ *
+ * @note The caller is responsible for freeing the returned string.
+ *
+ * @warning If the function is called on Windows, it ensures that `WSACleanup()`
+ * is invoked in case of error handling, which is required for proper Windows
+ * socket management.
+ */
+char *
+ssh_get_remote_peer_hostname(ssh_session session, bool dns)
+{
+    socket_t fd;
+    unsigned int len;
+    int rc;
+    char hostname[NI_MAXHOST];
+    struct sockaddr_storage remote;
+    /* WSAStartup already called during socket init */
+
+    if (!dns) {
+        return ssh_get_remote_peer_ip_address(session);;
+    }
+
+    if (session == NULL) {
+        goto error;
+    }
+
+    if (session->socket == NULL) {
+        goto error;
+    }
+
+    fd = ssh_socket_get_fd(session->socket);
+
+    if (fd < 0) {
+        goto error;
+    }
+
+    len = sizeof(remote);
+    rc = getpeername(fd, (struct sockaddr *)&remote, &len);
+    if (rc < 0) {
+#ifdef _WIN32
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Getting remote peer IP address: errno %d",
+                      WSAGetLastError());
+#else
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Getting remote peer IP address: %s",
+                      strerror(errno));
+#endif
+        goto error;
+    }
+
+    rc = getnameinfo((struct sockaddr *)&remote,
+                     len,
+                     hostname,
+                     sizeof(hostname),
+                     NULL,
+                     0,
+                     NI_NAMEREQD);
+    if (rc != 0) {
+#ifdef _WIN32
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Translating socket address to ASCII hostname: errno %d",
+                      WSAGetLastError());
+#else
+        ssh_set_error(session,
+                      SSH_REQUEST_DENIED,
+                      "Translating socket address to ASCII hostname: %s",
+                      gai_strerror(rc));
+#endif
+        goto error;
+    }
+
+#ifdef _WIN32
+    WSACleanup();
+#endif
+    return strdup(hostname);
+
+error:
+#ifdef _WIN32
+    WSACleanup();
+#endif
+    return ssh_get_remote_peer_ip_address(session);
 }
 
 /** @} */

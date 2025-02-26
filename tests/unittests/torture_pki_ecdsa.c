@@ -68,7 +68,7 @@ static int setup_ecdsa_key(void **state, int ecdsa_bits)
     torture_write_file(LIBSSH_ECDSA_TESTKEY ".pub",
                        torture_get_testkey_pub(test_state->type));
     torture_write_file(LIBSSH_ECDSA_TESTKEY "-cert.pub",
-                       torture_get_testkey_pub(test_state->type+3));
+                       torture_get_testkey_user_cert(test_state->type+3));
     return 0;
 }
 
@@ -119,7 +119,7 @@ static int setup_openssh_ecdsa_key(void **state, int ecdsa_bits)
     torture_write_file(LIBSSH_ECDSA_TESTKEY ".pub",
                        torture_get_testkey_pub(test_state->type));
     torture_write_file(LIBSSH_ECDSA_TESTKEY "-cert.pub",
-                       torture_get_testkey_pub(test_state->type+3));
+                       torture_get_testkey_user_cert(test_state->type+3));
     return 0;
 }
 

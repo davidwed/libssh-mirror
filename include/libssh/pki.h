@@ -51,6 +51,12 @@
 #define SSH_KEY_FLAG_PRIVATE 0x0002
 #define SSH_KEY_FLAG_PKCS11_URI 0x0004
 
+#define RSA_MIN_SIZE 768
+
+/* Certificates */
+#define SSH_CERT_TYPE_USER 1
+#define SSH_CERT_TYPE_HOST 2
+
 struct ssh_key_struct {
     enum ssh_keytypes_e type;
     int flags;
@@ -76,6 +82,7 @@ struct ssh_key_struct {
     ssh_string sk_application;
     ssh_buffer cert;
     enum ssh_keytypes_e cert_type;
+    ssh_cert cert_data;
 };
 
 struct ssh_signature_struct {
@@ -101,6 +108,46 @@ struct ssh_signature_struct {
 
 typedef struct ssh_signature_struct *ssh_signature;
 
+struct ssh_key_cert_opts {
+    char *force_command;
+    char *source_address;
+    bool verify_required;
+};
+typedef struct ssh_key_cert_opts *cert_opt;
+
+enum ssh_key_cert_exts_flags {
+    NO_TOUCH_REQUIRED       = 1 << 0,
+    PERMIT_X11_FORWARDING   = 1 << 1,
+    PERMIT_AGENT_FORWARDING = 1 << 2,
+    PERMIT_PORT_FORWARDING  = 1 << 3,
+    PERMIT_PTY              = 1 << 4,
+    PERMIT_USER_RC          = 1 << 5
+};
+
+struct ssh_key_cert_exts {
+    /*
+     * TODO: Figure out how to deal with custom extensions/options
+     *       (https://github.com/openssh/openssh-portable/blob/2c53d2f32b8e3992
+     *       b61682c909ae5bc5122b6e5d/PROTOCOL.certkeys#L281)
+     */
+    /* Structure for new extensions type */
+    uint32_t ext;
+};
+
+struct ssh_key_cert_struct {
+    ssh_string nonce;
+    unsigned int type;
+    uint64_t serial;
+    char *key_id;
+    unsigned int n_principals;
+    char **principals;
+    uint64_t valid_after, valid_before;
+    cert_opt critical_options;
+    struct ssh_key_cert_exts extensions;
+    ssh_key signature_key;
+    ssh_signature signature;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -113,6 +160,7 @@ ssh_key_get_signature_algorithm(ssh_session session,
                                 enum ssh_keytypes_e type);
 enum ssh_keytypes_e ssh_key_type_from_signature_name(const char *name);
 enum ssh_keytypes_e ssh_key_type_plain(enum ssh_keytypes_e type);
+enum ssh_keytypes_e ssh_key_type_cert(enum ssh_keytypes_e type);
 enum ssh_digest_e ssh_key_type_to_hash(ssh_session session,
                                        enum ssh_keytypes_e type);
 enum ssh_digest_e ssh_key_hash_from_name(const char *name);
@@ -127,9 +175,23 @@ enum ssh_digest_e ssh_key_hash_from_name(const char *name);
     ((kt) >= SSH_KEYTYPE_ECDSA_P256_CERT01 &&\
      (kt) <= SSH_KEYTYPE_ED25519_CERT01))
 
+/* SSH Certificate Functions */
+ssh_cert ssh_cert_new(void);
+int pki_parse_cert_data(ssh_buffer buffer, ssh_cert cert);
+ssh_cert ssh_cert_dup(const ssh_cert src_cert);
+void ssh_cert_free(ssh_cert cert);
+int pki_cert_validate(ssh_key key,
+                      int cert_type,
+                      const char *name,
+                      const char *allowed_ca_sign_algos);
+
+#define SSH_CERT_FREE(x) \
+    do { if ((x) != NULL) { ssh_cert_free(x); x = NULL; } } while(0)
+
 /* SSH Signature Functions */
 ssh_signature ssh_signature_new(void);
 void ssh_signature_free(ssh_signature sign);
+ssh_signature ssh_signature_dup(const ssh_signature src);
 #define SSH_SIGNATURE_FREE(x) \
     do { ssh_signature_free(x); x = NULL; } while(0)
 
@@ -143,6 +205,10 @@ int ssh_pki_signature_verify(ssh_session session,
                              const ssh_key key,
                              const unsigned char *digest,
                              size_t dlen);
+int pki_signature_verify(ssh_signature sig,
+                         const ssh_key key,
+                         const unsigned char *input,
+                         size_t input_len);
 
 /* SSH Public Key Functions */
 int ssh_pki_export_pubkey_blob(const ssh_key key,
@@ -152,6 +218,12 @@ int ssh_pki_import_pubkey_blob(const ssh_string key_blob,
 
 int ssh_pki_import_cert_blob(const ssh_string cert_blob,
                              ssh_key *pkey);
+
+int ssh_pki_match_key_in_file(ssh_key key, const char *filename);
+int ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file);
+
+char *
+ssh_pki_get_pubkey_fingerprint(ssh_key key, enum ssh_publickey_hash_type type);
 
 /* SSH Private Key Functions */
 int ssh_pki_export_privkey_blob(const ssh_key key,
@@ -174,6 +246,7 @@ ssh_private_key ssh_pki_convert_key_to_privatekey(const ssh_key key);
 
 int ssh_key_algorithm_allowed(ssh_session session, const char *type);
 bool ssh_key_size_allowed(ssh_session session, ssh_key key);
+bool ssh_default_key_size_allowed(ssh_key key);
 
 /* Return the key size in bits */
 int ssh_key_size(ssh_key key);

@@ -60,7 +60,7 @@ static int setup_ed25519_key(void **state)
     torture_write_file(LIBSSH_ED25519_TESTKEY ".pub",
                        torture_get_testkey_pub(SSH_KEYTYPE_ED25519));
     torture_write_file(LIBSSH_ED25519_TESTKEY "-cert.pub",
-                       torture_get_testkey_pub(SSH_KEYTYPE_ED25519_CERT01));
+                       torture_get_testkey_user_cert(SSH_KEYTYPE_ED25519_CERT01));
 
     return 0;
 }

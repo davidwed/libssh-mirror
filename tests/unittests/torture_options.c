@@ -412,6 +412,39 @@ static void torture_options_get_hostkey(void **state)
     ssh_string_free_char(value);
 }
 
+static void torture_options_set_revoked_host_keys(void **state)
+{
+    ssh_session session = *state;
+    int rc;
+
+    rc = ssh_options_set(session, SSH_OPTIONS_REVOKED_HOSTKEYS, "/path/to/keys");
+    assert_ssh_return_code(session, rc);
+    assert_string_equal(session->opts.revoked_host_keys, "/path/to/keys");
+
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_REVOKED_HOSTKEYS,
+                         "/new/path/to/keys");
+    assert_ssh_return_code(session, rc);
+    assert_string_equal(session->opts.revoked_host_keys, "/new/path/to/keys");
+}
+
+static void torture_options_get_revoked_host_keys(void **state)
+{
+    ssh_session session = *state;
+    char *value = NULL;
+    int rc;
+
+    rc = ssh_options_set(session, SSH_OPTIONS_REVOKED_HOSTKEYS, "/path/to/keys");
+    assert_ssh_return_code(session, rc);
+    assert_string_equal(session->opts.revoked_host_keys, "/path/to/keys");
+
+    rc = ssh_options_get(session, SSH_OPTIONS_REVOKED_HOSTKEYS, &value);
+    assert_ssh_return_code(session, rc);
+    assert_non_null(value);
+    assert_string_equal(value, "/path/to/keys");
+    SAFE_FREE(value);
+}
+
 static void torture_options_set_pubkey_accepted_types(void **state)
 {
     ssh_session session = *state;
@@ -2032,6 +2065,125 @@ static void torture_options_set_rsa_min_size(void **state)
     assert_ssh_return_code(session, rc);
 }
 
+static void torture_options_ca_signature_algos(void **state)
+{
+    ssh_session session = *state;
+    int rc;
+    const char *default_exp_ca_algos = NULL, *fips_exp_ca_algos = NULL;
+
+    assert_string_equal(session->opts.ca_signature_algorithms,
+                        DEFAULT_HOSTKEY_SIGNATURE_ALGOS);
+
+    /* Test minus sign */
+    default_exp_ca_algos = "ecdsa-sha2-nistp521," \
+                           "ecdsa-sha2-nistp384," \
+                           "ecdsa-sha2-nistp256," \
+                           "sk-ssh-ed25519@openssh.com," \
+                           "sk-ecdsa-sha2-nistp256@openssh.com," \
+                           "rsa-sha2-512";
+
+    fips_exp_ca_algos = "ecdsa-sha2-nistp521," \
+                        "rsa-sha2-512," \
+                        "rsa-sha2-256";
+
+    if (ssh_fips_mode()) {
+        rc = ssh_options_set(session,
+                             SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                             "-ecdsa-sha2-nistp256,ecdsa-sha2-nistp384");
+    } else {
+        rc = ssh_options_set(session,
+                             SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                             "-rsa-sha2-256,ssh-ed25519");
+    }
+    assert_ssh_return_code(session, rc);
+
+    if (ssh_fips_mode()) {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            fips_exp_ca_algos);
+    } else {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            default_exp_ca_algos);
+    }
+
+    /* Test plus sign */
+    default_exp_ca_algos = "ssh-ed25519," \
+                           "ecdsa-sha2-nistp521," \
+                           "ecdsa-sha2-nistp384," \
+                           "ecdsa-sha2-nistp256," \
+                           "sk-ssh-ed25519@openssh.com," \
+                           "sk-ecdsa-sha2-nistp256@openssh.com," \
+                           "rsa-sha2-512," \
+                           "rsa-sha2-256," \
+                           "ssh-rsa" ;
+
+    fips_exp_ca_algos = "ecdsa-sha2-nistp521,"
+                        "ecdsa-sha2-nistp384,"
+                        "ecdsa-sha2-nistp256," \
+                        "rsa-sha2-512," \
+                        "rsa-sha2-256," \
+                        "ssh-rsa";
+
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                         "+ssh-rsa");
+    assert_ssh_return_code(session, rc);
+
+    if (ssh_fips_mode()) {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            fips_exp_ca_algos);
+    } else {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            default_exp_ca_algos);
+    }
+
+    /* Test without sign */
+    default_exp_ca_algos = "ssh-ed25519," \
+                           "ecdsa-sha2-nistp521," \
+                           "rsa-sha2-512";
+
+    fips_exp_ca_algos = "ecdsa-sha2-nistp521,"
+                        "rsa-sha2-512";
+
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                         "ssh-ed25519,ecdsa-sha2-nistp521,rsa-sha2-512");
+    assert_ssh_return_code(session, rc);
+
+    if (ssh_fips_mode()) {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            fips_exp_ca_algos);
+    } else {
+        assert_string_equal(session->opts.ca_signature_algorithms,
+                            default_exp_ca_algos);
+    }
+
+    /* Negative tests */
+
+    /* Missing list after the sign */
+    rc = ssh_options_set(session, SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS, "+");
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+
+    /* Unknown signature algorithm after the sign */
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                         "+unknown");
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+
+    /* NULL list */
+    rc = ssh_options_set(session, SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS, NULL);
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+
+    /* Empty list */
+    rc = ssh_options_set(session, SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS, "");
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+
+    /* Invalid sign */
+    rc = ssh_options_set(session,
+                         SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                         "^rsa-sha2-512");
+    assert_ssh_return_code_equal(session, rc, SSH_ERROR);
+}
+
 #ifdef WITH_SERVER
 const char template[] = "temp_dir_XXXXXX";
 
@@ -2079,7 +2231,8 @@ static int ssh_bind_setup_files(void **state)
                        torture_get_openssh_testkey(SSH_KEYTYPE_ECDSA_P521, 0));
 #endif
     torture_write_file(LIBSSH_CUSTOM_BIND_CONFIG_FILE,
-                       "Port 42\n");
+                       "Port 42\n"
+                       "TrustedUserCAKeys=/path/to/user_ca\n");
     return 0;
 }
 
@@ -2712,6 +2865,8 @@ static void torture_bind_options_parse_config(void **state)
     assert_int_equal(rc, 0);
     assert_int_equal(bind->bindport, 42);
 
+    assert_string_equal(bind->trusted_user_ca_keys_file, "/path/to/user_ca");
+
     SAFE_FREE(cwd);
 }
 
@@ -2742,6 +2897,129 @@ static void torture_bind_options_config_dir(void **state)
     assert_int_equal(rc, 0);
     assert_non_null(bind->config_dir);
     assert_string_equal(bind->config_dir, replacement_dir);
+}
+
+static void
+torture_bind_options_user_ca_file(void **state)
+{
+    struct bind_st *test_state = NULL;
+    ssh_bind bind = NULL;
+    const char *new_dir_file = "/new/path/to/user_ca";
+    const char *replacement_dir_file = "/replacement/path/to/user_ca_new";
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_USER_CA,
+                              new_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->trusted_user_ca_keys_file);
+    assert_string_equal(bind->trusted_user_ca_keys_file, new_dir_file);
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_USER_CA,
+                              replacement_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->trusted_user_ca_keys_file);
+    assert_string_equal(bind->trusted_user_ca_keys_file, replacement_dir_file);
+}
+
+static void
+torture_bind_options_authorized_keys_file(void **state)
+{
+    struct bind_st *test_state = NULL;
+    ssh_bind bind = NULL;
+    const char *new_dir_file = "/new/path/to/authorized_keys";
+    const char *replacement_dir_file =
+        "/replacement/path/to/authorized_keys_new";
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_AUTHORIZED_KEYS,
+                              new_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->authorized_keys_file);
+    assert_string_equal(bind->authorized_keys_file, new_dir_file);
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_AUTHORIZED_KEYS,
+                              replacement_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->authorized_keys_file);
+    assert_string_equal(bind->authorized_keys_file, replacement_dir_file);
+}
+
+static void
+torture_bind_options_authorized_principals_file(void **state)
+{
+    struct bind_st *test_state = NULL;
+    ssh_bind bind = NULL;
+    const char *new_dir_file = "/new/path/to/authorized_principals";
+    const char *replacement_dir_file =
+        "/replacement/path/to/authorized_principals_new";
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS,
+                              new_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->authorized_principals_file);
+    assert_string_equal(bind->authorized_principals_file, new_dir_file);
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_AUTHORIZED_PRINCIPALS,
+                              replacement_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->authorized_principals_file);
+    assert_string_equal(bind->authorized_principals_file, replacement_dir_file);
+}
+
+static void
+torture_bind_options_revoked_keys_file(void **state)
+{
+    struct bind_st *test_state = NULL;
+    ssh_bind bind = NULL;
+    const char *new_dir_file = "/new/path/to/revoked_keys";
+    const char *replacement_dir_file =
+        "/replacement/path/to/revoked_keys_new";
+    int rc;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_REVOKED_KEYS,
+                              new_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->revoked_keys_file);
+    assert_string_equal(bind->revoked_keys_file, new_dir_file);
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_REVOKED_KEYS,
+                              replacement_dir_file);
+    assert_int_equal(rc, 0);
+    assert_non_null(bind->revoked_keys_file);
+    assert_string_equal(bind->revoked_keys_file, replacement_dir_file);
 }
 
 static void torture_bind_options_set_pubkey_accepted_key_types(void **state)
@@ -2872,6 +3150,137 @@ static void torture_bind_options_set_hostkey_algorithms(void **state)
                         "ecdsa-sha2-nistp384");
 }
 
+static void
+torture_bind_options_ca_signature_algos(void **state)
+{
+    struct bind_st *test_state;
+    ssh_bind bind;
+    int rc;
+    const char *default_exp_ca_algos = NULL, *fips_exp_ca_algos = NULL;
+
+    assert_non_null(state);
+    test_state = *((struct bind_st **)state);
+    assert_non_null(test_state);
+    assert_non_null(test_state->bind);
+    bind = test_state->bind;
+
+    assert_string_equal(bind->ca_signature_algorithms,
+                        DEFAULT_HOSTKEY_SIGNATURE_ALGOS);
+
+    /* Test minus sign */
+    default_exp_ca_algos = "ecdsa-sha2-nistp521," \
+                           "ecdsa-sha2-nistp384," \
+                           "ecdsa-sha2-nistp256," \
+                           "sk-ssh-ed25519@openssh.com," \
+                           "sk-ecdsa-sha2-nistp256@openssh.com," \
+                           "rsa-sha2-512";
+
+    fips_exp_ca_algos = "ecdsa-sha2-nistp521," \
+                        "rsa-sha2-512," \
+                        "rsa-sha2-256";
+
+    if (ssh_fips_mode()) {
+        rc = ssh_bind_options_set(bind,
+                                  SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                                  "-ecdsa-sha2-nistp256,ecdsa-sha2-nistp384");
+    } else {
+        rc = ssh_bind_options_set(bind,
+                                  SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                                  "-rsa-sha2-256,ssh-ed25519");
+    }
+    assert_return_code(bind, rc);
+
+    if (ssh_fips_mode()) {
+        assert_string_equal(bind->ca_signature_algorithms,
+                            fips_exp_ca_algos);
+    } else {
+        assert_string_equal(bind->ca_signature_algorithms,
+                            default_exp_ca_algos);
+    }
+
+    /* Test plus sign */
+    default_exp_ca_algos = "ssh-ed25519," \
+                           "ecdsa-sha2-nistp521," \
+                           "ecdsa-sha2-nistp384," \
+                           "ecdsa-sha2-nistp256," \
+                           "sk-ssh-ed25519@openssh.com," \
+                           "sk-ecdsa-sha2-nistp256@openssh.com," \
+                           "rsa-sha2-512," \
+                           "rsa-sha2-256," \
+                           "ssh-rsa" ;
+
+    fips_exp_ca_algos = "ecdsa-sha2-nistp521,"
+                        "ecdsa-sha2-nistp384,"
+                        "ecdsa-sha2-nistp256," \
+                        "rsa-sha2-512," \
+                        "rsa-sha2-256," \
+                        "ssh-rsa";
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                              "+ssh-rsa");
+    assert_return_code(bind, rc);
+
+    if (ssh_fips_mode()) {
+        assert_string_equal(bind->ca_signature_algorithms, fips_exp_ca_algos);
+    } else {
+        assert_string_equal(bind->ca_signature_algorithms,
+                            default_exp_ca_algos);
+    }
+
+    /* Test without sign */
+    default_exp_ca_algos = "ssh-ed25519," \
+                           "ecdsa-sha2-nistp521," \
+                           "rsa-sha2-512";
+
+    fips_exp_ca_algos = "ecdsa-sha2-nistp521,"
+                        "rsa-sha2-512";
+
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                              "ssh-ed25519,ecdsa-sha2-nistp521,rsa-sha2-512");
+    assert_return_code(bind, rc);
+
+    if (ssh_fips_mode()) {
+        assert_string_equal(bind->ca_signature_algorithms, fips_exp_ca_algos);
+    } else {
+        assert_string_equal(bind->ca_signature_algorithms,
+                            default_exp_ca_algos);
+    }
+
+    /* Negative tests */
+
+    /* Missing list after the sign */
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                              "+");
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Unknown signature algorithm after the sign */
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                              "+unknown");
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* NULL list */
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                              NULL);
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Empty list */
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                              "");
+    assert_int_equal(rc, SSH_ERROR);
+
+    /* Invalid sign */
+    rc = ssh_bind_options_set(bind,
+                              SSH_BIND_OPTIONS_CA_SIGNATURE_ALGORITHMS,
+                              "^rsa-sha2-512");
+    assert_int_equal(rc, SSH_ERROR);
+}
+
 #endif /* WITH_SERVER */
 
 int
@@ -2946,6 +3355,14 @@ torture_run_tests(void)
                                         setup,
                                         teardown),
         cmocka_unit_test_setup_teardown(
+            torture_options_set_revoked_host_keys,
+            setup,
+            teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_options_get_revoked_host_keys,
+            setup,
+            teardown),
+        cmocka_unit_test_setup_teardown(
             torture_options_set_pubkey_accepted_types,
             setup,
             teardown),
@@ -2992,6 +3409,9 @@ torture_run_tests(void)
                                         setup,
                                         teardown),
         cmocka_unit_test_setup_teardown(torture_options_set_rsa_min_size,
+                                        setup,
+                                        teardown),
+        cmocka_unit_test_setup_teardown(torture_options_ca_signature_algos,
                                         setup,
                                         teardown),
     };
@@ -3051,12 +3471,31 @@ torture_run_tests(void)
         cmocka_unit_test_setup_teardown(torture_bind_options_config_dir,
                                         sshbind_setup,
                                         sshbind_teardown),
+        cmocka_unit_test_setup_teardown(torture_bind_options_user_ca_file,
+                                        sshbind_setup,
+                                        sshbind_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_bind_options_authorized_keys_file,
+            sshbind_setup,
+            sshbind_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_bind_options_authorized_principals_file,
+            sshbind_setup,
+            sshbind_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_bind_options_revoked_keys_file,
+            sshbind_setup,
+            sshbind_teardown),
         cmocka_unit_test_setup_teardown(
             torture_bind_options_set_pubkey_accepted_key_types,
             sshbind_setup,
             sshbind_teardown),
         cmocka_unit_test_setup_teardown(
             torture_bind_options_set_hostkey_algorithms,
+            sshbind_setup,
+            sshbind_teardown),
+        cmocka_unit_test_setup_teardown(
+            torture_bind_options_ca_signature_algos,
             sshbind_setup,
             sshbind_teardown),
     };

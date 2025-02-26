@@ -60,6 +60,7 @@
 #include "libssh/options.h"
 #include "libssh/curve25519.h"
 #include "libssh/token.h"
+#include "libssh/auth_file.h"
 
 #define set_status(session, status) do {\
         if (session->common.callbacks && session->common.callbacks->connect_status_function) \
@@ -85,15 +86,17 @@ int server_set_kex(ssh_session session)
 {
     struct ssh_kex_struct *server = &session->next_crypto->server_kex;
     int i, j, rc;
-    const char *wanted, *allowed;
-    char *kept;
-    char hostkeys[128] = {0};
-    enum ssh_keytypes_e keytype;
-    size_t len;
+    const char *wanted = NULL, *allowed = NULL, *cert_algos = NULL,
+               *key_algos = NULL;
+    char *kept = NULL;
+    char hostkeys[1024] = {0};
+    size_t len = sizeof(hostkeys), list_len = 0;
     int ok;
 
-    /* Skip if already set, for example for the rekey or when we do the guessing
-     * it could have been already used to make some protocol decisions. */
+    /*
+     * Skip if already set, for example for the rekey or when we do the guessing
+     * it could have been already used to make some protocol decisions.
+     */
     if (server->methods[0] != NULL) {
         return SSH_OK;
     }
@@ -104,31 +107,71 @@ int server_set_kex(ssh_session session)
         return -1;
     }
 
+#define APPEND_TO_LIST(fmt, list, ...) \
+        do { \
+            int ret; \
+            ret = snprintf(list + list_len, \
+                           len - list_len, \
+                           fmt, \
+                           __VA_ARGS__);\
+            if (ret < 0) { \
+                return -1; \
+            } \
+            if ((size_t)ret >= (len - list_len)) { \
+                /* Handle buffer overflow, output was silently truncated */ \
+                return -1; \
+            } \
+            list_len += (size_t)ret; \
+        } while (0)
+
     if (session->srv.ed25519_key != NULL) {
-        snprintf(hostkeys,
-                 sizeof(hostkeys),
-                 "%s",
-                 ssh_key_type_to_char(ssh_key_type(session->srv.ed25519_key)));
+        key_algos = session->srv.ed25519_key->type_c;
+        APPEND_TO_LIST("%s%s", hostkeys, list_len > 0 ? "," : "", key_algos);
+
+        if (session->srv.ed25519_key->cert_type != SSH_KEYTYPE_UNKNOWN) {
+            cert_algos =
+                ssh_key_type_to_char(session->srv.ed25519_key->cert_type);
+            APPEND_TO_LIST("%s%s",
+                           hostkeys,
+                           list_len > 0 ? "," : "",
+                           cert_algos);
+        }
     }
 #ifdef HAVE_ECC
     if (session->srv.ecdsa_key != NULL) {
-        len = strlen(hostkeys);
-        snprintf(hostkeys + len, sizeof(hostkeys) - len,
-                 ",%s", session->srv.ecdsa_key->type_c);
+        key_algos = session->srv.ecdsa_key->type_c;
+        APPEND_TO_LIST("%s%s", hostkeys, list_len > 0 ? "," : "", key_algos);
+
+        if (session->srv.ecdsa_key->cert_type != SSH_KEYTYPE_UNKNOWN) {
+            cert_algos =
+                ssh_key_type_to_char(session->srv.ecdsa_key->cert_type);
+            APPEND_TO_LIST("%s%s",
+                           hostkeys,
+                           list_len > 0 ? "," : "",
+                           cert_algos);
+        }
     }
 #endif
     if (session->srv.rsa_key != NULL) {
         /* We support also the SHA2 variants */
-        len = strlen(hostkeys);
-        snprintf(hostkeys + len, sizeof(hostkeys) - len,
-                 ",rsa-sha2-512,rsa-sha2-256");
+        key_algos = "rsa-sha2-512,rsa-sha2-256";
+        APPEND_TO_LIST("%s%s", hostkeys, list_len > 0 ? "," : "", key_algos);
 
-        len = strlen(hostkeys);
-        keytype = ssh_key_type(session->srv.rsa_key);
+        key_algos = session->srv.rsa_key->type_c;
+        APPEND_TO_LIST("%s%s", hostkeys, list_len > 0 ? "," : "", key_algos);
 
-        snprintf(hostkeys + len, sizeof(hostkeys) - len,
-                 ",%s", ssh_key_type_to_char(keytype));
+        if (session->srv.rsa_key->cert_type != SSH_KEYTYPE_UNKNOWN) {
+            cert_algos = "rsa-sha2-512-cert-v01@openssh.com,"
+                         "rsa-sha2-256-cert-v01@openssh.com,"
+                         "ssh-rsa-cert-v01@openssh.com";
+            APPEND_TO_LIST("%s%s",
+                           hostkeys,
+                           list_len > 0 ? "," : "",
+                           cert_algos);
+        }
     }
+
+#undef APPEND_TO_LIST
 
     if (strlen(hostkeys) == 0) {
         return -1;
@@ -144,10 +187,11 @@ int server_set_kex(ssh_session session)
         }
     }
 
-    /* It is expected for the list of allowed hostkeys to be ordered by
-     * preference */
-    kept = ssh_find_all_matching(hostkeys[0] == ',' ? hostkeys + 1 : hostkeys,
-                                 allowed);
+    /*
+     * It is expected for the list of allowed hostkeys to be ordered by
+     * preference
+     */
+    kept = ssh_find_all_matching(hostkeys,allowed);
     if (kept == NULL) {
         /* Nothing was allowed */
         return -1;
@@ -283,37 +327,42 @@ ssh_get_key_params(ssh_session session,
     int rc;
 
     switch(session->srv.hostkey) {
-      case SSH_KEYTYPE_RSA:
-        *privkey = session->srv.rsa_key;
-        break;
-      case SSH_KEYTYPE_ECDSA_P256:
-      case SSH_KEYTYPE_ECDSA_P384:
-      case SSH_KEYTYPE_ECDSA_P521:
-        *privkey = session->srv.ecdsa_key;
-        break;
-      case SSH_KEYTYPE_ED25519:
-        *privkey = session->srv.ed25519_key;
-        break;
-      case SSH_KEYTYPE_RSA1:
-      case SSH_KEYTYPE_UNKNOWN:
-      default:
+        case SSH_KEYTYPE_RSA:
+        case SSH_KEYTYPE_RSA_CERT01:
+            *privkey = session->srv.rsa_key;
+            break;
+        case SSH_KEYTYPE_ECDSA_P256:
+        case SSH_KEYTYPE_ECDSA_P384:
+        case SSH_KEYTYPE_ECDSA_P521:
+        case SSH_KEYTYPE_ECDSA_P256_CERT01:
+        case SSH_KEYTYPE_ECDSA_P384_CERT01:
+        case SSH_KEYTYPE_ECDSA_P521_CERT01:
+            *privkey = session->srv.ecdsa_key;
+            break;
+        case SSH_KEYTYPE_ED25519:
+        case SSH_KEYTYPE_ED25519_CERT01:
+            *privkey = session->srv.ed25519_key;
+            break;
+        case SSH_KEYTYPE_RSA1:
+        case SSH_KEYTYPE_UNKNOWN:
+        default:
         *privkey = NULL;
     }
 
     *digest = session->srv.hostkey_digest;
     rc = ssh_pki_export_privkey_to_pubkey(*privkey, &pubkey);
     if (rc < 0) {
-      ssh_set_error(session, SSH_FATAL,
-          "Could not get the public key from the private key");
-
-      return -1;
+        ssh_set_error(session,
+                      SSH_FATAL,
+                      "Could not get the public key from the private key");
+        return -1;
     }
 
     rc = ssh_pki_export_pubkey_blob(pubkey, &pubkey_blob);
     ssh_key_free(pubkey);
     if (rc < 0) {
-      ssh_set_error_oom(session);
-      return -1;
+        ssh_set_error_oom(session);
+        return -1;
     }
 
     rc = ssh_dh_import_next_pubkey_blob(session, pubkey_blob);
@@ -1291,6 +1340,320 @@ int ssh_send_keepalive(ssh_session session)
     (void)ssh_global_request(session, "keepalive@openssh.com", NULL, 1);
 
     return SSH_OK;
+}
+
+/**
+ * @brief Checks if a user certificate is signed by a trusted certificate
+ * authority (CA).
+ *
+ * This function verifies if a provided user certificate is signed by a trusted
+ * CA by checking the certificate's CA key against a specified list of trusted
+ * CA keys. If a match is found, the certificate is considered valid.
+ *
+ * @param[in] user_key  The ssh_key representing the user certificate to be
+ *                      checked.
+ *
+ * @param[in] trusted_user_ca_file The file containing trusted user CA public
+ *                                 keys.
+ *
+ * @returns 1 if a matching CA key is found.
+ * @returns 0 if a matching CA key is not found.
+ * @returns -1 on errors.
+ */
+static int
+user_cert_check_trusted_ca(ssh_key user_key, const char *trusted_user_ca_file)
+{
+    int found;
+    char *ca_fp = NULL;
+    const char *ca_type = NULL;
+
+    if (!is_cert_type(user_key->type)) {
+        SSH_LOG(SSH_LOG_TRACE, "Not a certificate");
+        return -1;
+    }
+
+    ca_fp = ssh_pki_get_pubkey_fingerprint(user_key->cert_data->signature_key,
+                                           SSH_PUBLICKEY_HASH_SHA256);
+    if (ca_fp == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while retrieving CA key fingerprint");
+        return -1;
+    }
+
+    ca_type = user_key->cert_data->signature_key->type_c;
+    found = ssh_pki_match_key_in_file(user_key, trusted_user_ca_file);
+
+    SSH_LOG(SSH_LOG_TRACE,
+            "Certificate CA key %s %s%s found in file %s",
+            ca_type,
+            ca_fp,
+            found ? "" : " not",
+            trusted_user_ca_file);
+
+    SAFE_FREE(ca_fp);
+    return found;
+}
+
+/**
+ * @brief Authenticates a user by verifying the validity of the received SSH key
+ * or certificate.
+ *
+ * This function performs authentication of a user key or certificate in an
+ * SSH session. It checks if the user key is revoked, matches entries in the
+ * authorized keys file, or is signed by a trusted CA. If the user key is a
+ * certificate, it further validates it against a principals file, if any.
+ *
+ * @note The function already verbose logs authentication steps and the outcome
+ * of the checks.
+ *
+ * @param[in] session  The ssh_session in which the authentication is taking
+ *                     place.
+ *
+ * @param[in] user_key The SSH key or certificate to be authenticated.
+ *
+ * @param[in] user     The username of the user that is trying to authenticate.
+ *                     Used for validating certificate principals if applicable
+ *
+ * @returns SSH_OK if the user key is successfully authenticated.
+ * @returns SSH_ERROR on failure (e.g, key is revoked, not authorized,
+ *          or an error occurred during the process).
+ */
+int
+ssh_auth_user_key(ssh_session session, ssh_key user_key, const char *user)
+{
+    char *revoked_keys_file = session->server_opts.revoked_keys_file;
+    char *authorized_keys_file = session->server_opts.authorized_keys_file;
+    char *trusted_user_ca_keys_file =
+        session->server_opts.trusted_user_ca_keys_file;
+    char *auth_principals_file =
+        session->server_opts.authorized_principals_file;
+    char *ca_signature_algorithms =
+        session->server_opts.ca_signature_algorithms;
+    bool usedns = session->server_opts.usedns;
+    char *user_key_fp = NULL, *ca_fp = NULL;
+    char *remote_peer_hostname = NULL, *remote_peer_ip = NULL;
+    struct ssh_auth_options *auth_opts = NULL;
+    int rc, ret = SSH_ERROR, allowed = 0;
+    bool with_cert;
+
+    if (session == NULL || user_key == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Bad arguments");
+        return SSH_ERROR;
+    }
+    with_cert = is_cert_type(user_key->type);
+
+    /* Needed for verbose logging the user public key info */
+    user_key_fp = ssh_pki_get_pubkey_fingerprint(user_key,
+                                                 SSH_PUBLICKEY_HASH_SHA256);
+    if (user_key_fp == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while retrieving user key fingerprint");
+        ret = SSH_ERROR;
+        goto out;
+    }
+
+    if (with_cert) {
+        if (user_key->cert_data->type != SSH_CERT_TYPE_USER) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Invalid certificate: not a user certificate. "
+                    "Rejecting user key: %s %s",
+                    user_key->type_c,
+                    user_key_fp);
+            ret = SSH_ERROR;
+            goto out;
+        }
+
+        ca_fp =
+            ssh_pki_get_pubkey_fingerprint(user_key->cert_data->signature_key,
+                                           SSH_PUBLICKEY_HASH_SHA256);
+        if (ca_fp == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while retrieving CA key fingerprint");
+            ret = SSH_ERROR;
+            goto out;
+        }
+    }
+
+    /*
+     * Check if the user key is revoked by RevokedKeys file, if defined.
+     * If the key is revoked we immediately refuse it before even checking if
+     * it is authorized by AuthorizedKeysFile.
+     */
+    if (revoked_keys_file != NULL) {
+        rc = ssh_pki_key_is_revoked(user_key, revoked_keys_file);
+        if (rc) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Rejecting user key: %s %s. The key is revoked"
+                    " by file %s",
+                    user_key->type_c,
+                    user_key_fp,
+                    revoked_keys_file);
+            ret = SSH_ERROR;
+            goto out;
+        } else if (rc == -1) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while checking user key %s %s "
+                    "in revoked keys file %s",
+                    user_key->type_c,
+                    user_key_fp,
+                    revoked_keys_file);
+            ret = SSH_ERROR;
+            goto out;
+        }
+    }
+
+    /*
+     * If processing a plain key and the authorized_keys file does not exist
+     * then fail immediately.
+     */
+    if (authorized_keys_file == NULL && !with_cert) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "No authorized keys file has been found. "
+                "Rejecting user key: %s %s",
+                user_key->type_c,
+                user_key_fp);
+        ret = SSH_ERROR;
+        goto out;
+    }
+
+    /*
+     * Retrieve remote client IP address and hostname. If dns is not configured
+     * the hostname will fall back to client IP address. On errors both are set
+     * to "unknown".
+     */
+    remote_peer_ip = ssh_get_remote_peer_ip_address(session);
+    remote_peer_hostname = ssh_get_remote_peer_hostname(session, usedns);
+    if (remote_peer_ip == NULL || remote_peer_hostname == NULL) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while retrieving remote client hostname/IP address");
+        ret = SSH_ERROR;
+        goto out;
+    }
+
+    /*
+     * Check if there is a matching key in the AuthorizedKeysFile that can
+     * authorize the user key.
+     */
+    if (authorized_keys_file != NULL) {
+        allowed = ssh_authorized_keys_check_file(user_key,
+                                                 authorized_keys_file,
+                                                 user,
+                                                 &auth_opts,
+                                                 remote_peer_ip,
+                                                 remote_peer_hostname,
+                                                 ca_signature_algorithms);
+
+        /* If allowed the key can be accepted */
+        if (allowed) {
+            /* Here accepted key/certificate info are already logged */
+            ret = SSH_OK;
+            session->auth_opts = auth_opts;
+            goto out;
+        } else if (!with_cert) {
+            /*
+             * If a plain key cannot be verified by authorized key file then
+             * fail.
+             */
+            SSH_LOG(SSH_LOG_TRACE,
+                    "No matching authorized key has been found. "
+                    "Rejecting user key: %s %s",
+                    user_key->type_c,
+                    user_key_fp);
+            ret = SSH_ERROR;
+            goto out;
+        }
+    }
+
+    /*
+     * When processing a certificate, if not allowed by authorized keys file,
+     * don't fail immediately. If the TrustedUserCAKeys file exists then
+     * retry the check.
+     */
+    if (trusted_user_ca_keys_file != NULL) {
+        allowed = user_cert_check_trusted_ca(user_key,
+                                             trusted_user_ca_keys_file);
+    }
+
+    /*
+     * If AuthorizedPrincipalsFile exists, always check it for validating
+     * certificate principals. Certificate auth opts are already merged
+     * into principals file auth opts, if any, when a match is found.
+     */
+    if (allowed) {
+        if (auth_principals_file != NULL) {
+            rc = ssh_authorized_principals_check_file(user_key,
+                                                      auth_principals_file,
+                                                      &auth_opts,
+                                                      remote_peer_ip,
+                                                      remote_peer_hostname,
+                                                      ca_signature_algorithms);
+            if (rc) {
+                /* Already verbose logging */
+                session->auth_opts = auth_opts;
+                ret = SSH_OK;
+                goto out;
+            } else {
+                SSH_LOG(SSH_LOG_TRACE,
+                        "No matching authorized principal has been found. "
+                        "Rejecting user certificate %s %s",
+                        user_key->type_c,
+                        user_key_fp);
+                ret = SSH_ERROR;
+                goto out;
+            }
+        }
+
+        /* Import certificate auth options */
+        auth_opts = ssh_auth_options_from_cert(user_key);
+        if (auth_opts == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while importing certificate authentication "
+                    "options");
+            ret = SSH_ERROR;
+            goto out;
+        }
+
+        /* Authorize auth options now */
+        rc = ssh_authorize_authkey_options(auth_opts,
+                                           remote_peer_ip,
+                                           remote_peer_hostname,
+                                           true);
+        if (rc != SSH_OK) {
+            /* Already verbose logging the reason */
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Certificate refused by authentication options");
+            SSH_AUTH_OPTS_FREE(auth_opts);
+            ret = SSH_ERROR;
+            goto out;
+        }
+
+        rc = pki_cert_validate(user_key,
+                               SSH_CERT_TYPE_USER,
+                               user,
+                               ca_signature_algorithms);
+        if (rc != SSH_OK) {
+            /* Already verbose logging the reason */
+            SSH_AUTH_OPTS_FREE(auth_opts);
+            ret = SSH_ERROR;
+            goto out;
+        }
+
+        SSH_LOG(SSH_LOG_TRACE,
+                "Accepted user certificate: %s %s, serial %"PRIu64", "
+                "ID \"%s\", CA %s %s",
+                user_key->type_c,
+                user_key_fp,
+                user_key->cert_data->serial,
+                user_key->cert_data->key_id,
+                user_key->cert_data->signature_key->type_c,
+                ca_fp);
+        session->auth_opts = auth_opts;
+        ret = SSH_OK;
+    }
+
+out:
+    SAFE_FREE(user_key_fp);
+    SAFE_FREE(ca_fp);
+    SAFE_FREE(remote_peer_hostname);
+    SAFE_FREE(remote_peer_ip);
+    return ret;
 }
 
 /** @} */

@@ -155,9 +155,10 @@ void ssh_key_clean (ssh_key key)
         SAFE_FREE(key->ed25519_privkey);
     }
     SAFE_FREE(key->ed25519_pubkey);
-    if (key->cert != NULL) {
-        SSH_BUFFER_FREE(key->cert);
-    }
+
+    SSH_BUFFER_FREE(key->cert);
+    SSH_CERT_FREE(key->cert_data);
+
     if (key->type == SSH_KEYTYPE_SK_ECDSA ||
         key->type == SSH_KEYTYPE_SK_ED25519 ||
         key->type == SSH_KEYTYPE_SK_ECDSA_CERT01 ||
@@ -308,23 +309,33 @@ enum ssh_digest_e ssh_key_hash_from_name(const char *name)
         return SSH_DIGEST_AUTO;
     }
 
-    if (strcmp(name, "ssh-rsa") == 0) {
+    if (strcmp(name, "ssh-rsa") == 0 ||
+        strcmp(name, "ssh-rsa-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA1;
-    } else if (strcmp(name, "rsa-sha2-256") == 0) {
+    } else if (strcmp(name, "rsa-sha2-256") == 0 ||
+               strcmp(name, "rsa-sha2-256-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA256;
-    } else if (strcmp(name, "rsa-sha2-512") == 0) {
+    } else if (strcmp(name, "rsa-sha2-512") == 0 ||
+               strcmp(name, "rsa-sha2-512-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA512;
-    } else if (strcmp(name, "ecdsa-sha2-nistp256") == 0) {
+    } else if (strcmp(name, "ecdsa-sha2-nistp256") == 0 ||
+               strcmp(name, "ecdsa-sha2-nistp256-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA256;
-    } else if (strcmp(name, "ecdsa-sha2-nistp384") == 0) {
+    } else if (strcmp(name, "ecdsa-sha2-nistp384") == 0 ||
+               strcmp(name, "ecdsa-sha2-nistp384-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA384;
-    } else if (strcmp(name, "ecdsa-sha2-nistp521") == 0) {
+    } else if (strcmp(name, "ecdsa-sha2-nistp521") == 0 ||
+               strcmp(name, "ecdsa-sha2-nistp521-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_SHA512;
-    } else if (strcmp(name, "ssh-ed25519") == 0) {
+    } else if (strcmp(name, "ssh-ed25519") == 0 ||
+               strcmp(name, "ssh-ed25519-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_AUTO;
-    } else if (strcmp(name, "sk-ecdsa-sha2-nistp256@openssh.com") == 0) {
+    } else if (strcmp(name, "sk-ecdsa-sha2-nistp256@openssh.com") == 0 ||
+               strcmp(name, "sk-ecdsa-sha2-nistp256-cert-v01@openssh.com") == 0)
+    {
         return SSH_DIGEST_SHA256;
-    } else if (strcmp(name, "sk-ssh-ed25519@openssh.com") == 0) {
+    } else if (strcmp(name, "sk-ssh-ed25519@openssh.com") == 0 ||
+               strcmp(name, "sk-ssh-ed25519-cert-v01@openssh.com") == 0) {
         return SSH_DIGEST_AUTO;
     }
 
@@ -378,7 +389,7 @@ bool ssh_key_size_allowed_rsa(int min_size, ssh_key key)
 {
     int key_size = ssh_key_size(key);
 
-    if (min_size < 768) {
+    if (min_size < RSA_MIN_SIZE) {
         if (ssh_fips_mode()) {
             min_size = 2048;
         } else {
@@ -408,6 +419,36 @@ bool ssh_key_size_allowed(ssh_session session, ssh_key key)
     default:
         return true;
     }
+}
+
+/**
+ * @brief Check the given key is acceptable in regards to the default
+ * key size policy defined by the library.
+ *
+ * @param[in] key  The SSH key to be checked.
+ *
+ * @returns true if the key size is allowed.
+ * @returns false otherwise.
+ */
+bool
+ssh_default_key_size_allowed(ssh_key key)
+{
+    bool valid;
+
+    switch (key->type) {
+    case SSH_KEYTYPE_RSA:
+        valid = ssh_key_size_allowed_rsa(RSA_MIN_SIZE, key);
+        if (!valid) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "The rsa key size is less than the minimum of %d bits",
+                    RSA_MIN_SIZE);
+        }
+        break;
+    default:
+        return true;
+    }
+
+    return valid;
 }
 
 /**
@@ -531,6 +572,11 @@ enum ssh_keytypes_e ssh_key_type_from_signature_name(const char *name) {
         return SSH_KEYTYPE_RSA;
     }
 
+    if (strcmp(name, "rsa-sha2-256-cert-v01@openssh.com") == 0
+        || strcmp(name, "rsa-sha2-512-cert-v01@openssh.com") == 0) {
+        return SSH_KEYTYPE_RSA_CERT01;
+    }
+
     /* Otherwise the key type matches the signature type */
     return ssh_key_type_from_name(name);
 }
@@ -615,6 +661,35 @@ enum ssh_keytypes_e ssh_key_type_plain(enum ssh_keytypes_e type)
 }
 
 /**
+ * @brief Get the certificate key type corresponding to a plain public key type.
+ *
+ * @param[in] type   The public or certificate key type.
+ *
+ * @return           The matching certificate key type.
+ */
+enum ssh_keytypes_e ssh_key_type_cert(enum ssh_keytypes_e type)
+{
+    switch (type) {
+    case SSH_KEYTYPE_RSA:
+        return SSH_KEYTYPE_RSA_CERT01;
+    case SSH_KEYTYPE_ECDSA_P256:
+        return SSH_KEYTYPE_ECDSA_P256_CERT01;
+    case SSH_KEYTYPE_ECDSA_P384:
+        return SSH_KEYTYPE_ECDSA_P384_CERT01;
+    case SSH_KEYTYPE_ECDSA_P521:
+        return SSH_KEYTYPE_ECDSA_P521_CERT01;
+    case SSH_KEYTYPE_ED25519:
+        return SSH_KEYTYPE_ED25519_CERT01;
+    case SSH_KEYTYPE_SK_ECDSA:
+        return SSH_KEYTYPE_SK_ECDSA_CERT01;
+    case SSH_KEYTYPE_SK_ED25519:
+        return SSH_KEYTYPE_SK_ED25519_CERT01;
+    default:
+        return type;
+    }
+}
+
+/**
  * @brief Check if the key has/is a public key.
  *
  * @param[in] k         The key to check.
@@ -676,8 +751,8 @@ int ssh_key_cmp(const ssh_key k1,
         }
     }
 
-    if (k1->type == SSH_KEYTYPE_SK_ECDSA ||
-        k1->type == SSH_KEYTYPE_SK_ED25519) {
+    if (ssh_key_type_plain(k1->type) == SSH_KEYTYPE_SK_ECDSA ||
+        ssh_key_type_plain(k1->type) == SSH_KEYTYPE_SK_ED25519) {
         if (strncmp(ssh_string_get_char(k1->sk_application),
                 ssh_string_get_char(k2->sk_application),
                 ssh_string_len(k2->sk_application)) != 0) {
@@ -701,8 +776,8 @@ int ssh_key_cmp(const ssh_key k1,
                       ssh_buffer_get_len(k1->cert));
     }
 
-    if (k1->type == SSH_KEYTYPE_ED25519 ||
-        k1->type == SSH_KEYTYPE_SK_ED25519) {
+    if (ssh_key_type_plain(k1->type) == SSH_KEYTYPE_ED25519 ||
+        ssh_key_type_plain(k1->type) == SSH_KEYTYPE_SK_ED25519) {
         return pki_ed25519_key_cmp(k1, k2, what);
     }
 
@@ -720,6 +795,192 @@ ssh_signature ssh_signature_new(void)
     ZERO_STRUCTP(sig);
 
     return sig;
+}
+
+#if defined(HAVE_LIBGCRYPT)
+/**
+ * @brief Duplicates a given gcry_sexp_t (libgcrypt S-expression) object.
+ *
+ * This helper function duplicates a given signature stored as a gcry_sexp_t
+ * by converting the S-expression to a canonical format and re-creating it
+ * in the destination.
+ *
+ * @param[in] src  The source gcry_sexp_t object to be duplicated.
+ *
+ * @returns A newly duplicated gcry_sexp_t object on success.
+ * @returns NULL in case of error.
+ */
+static gcry_sexp_t
+ssh_gcry_sexp_dup(gcry_sexp_t src)
+{
+    gcry_sexp_t dst = NULL;
+    char *buf = NULL;
+    size_t size;
+    gcry_error_t err;
+
+    if (src == NULL) {
+        return NULL;
+    }
+
+    size = gcry_sexp_sprint(src, GCRYSEXP_FMT_CANON, NULL, 0);
+    buf = gcry_malloc(size);
+    if (buf == NULL) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while allocating space for gcry_sexp_t duplication");
+        return NULL;
+    }
+
+    /*
+     * Using canonical format as it should be reasonably economical
+     * and easy to parse for libgcrypt. For further details, see:
+     * https://datatracker.ietf.org/doc/html/draft-rivest-sexp-05#section-6.1
+     */
+    gcry_sexp_sprint(src, GCRYSEXP_FMT_CANON, buf, size);
+
+    /*
+     * Data in 'buf' is now in canonical format. Since the format is known and
+     * explicitly defined, we can pass '0' for the autodetect parameter.
+     */
+    err = gcry_sexp_new(&dst, buf, size, 0);
+    if (err != 0) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while duplicating gcry_sexp_t %s/%s",
+                gcry_strsource(err),
+                gcry_strerror(err));
+        gcry_free(buf);
+        return NULL;
+    }
+
+    gcry_free(buf);
+    return dst;
+}
+#endif
+
+/**
+ * @brief Duplicate a signature.
+ *
+ * @param[in] src An ssh_signature to duplicate.
+ *
+ * @returns A duplicated ssh_signature signature on success.
+ * @returns NULL on error.
+ */
+ssh_signature
+ssh_signature_dup(const ssh_signature src)
+{
+    ssh_signature new = NULL;
+#if defined(HAVE_LIBMBEDCRYPTO)
+    int rc;
+#endif
+
+    if (src == NULL) {
+        return NULL;
+    }
+
+    new = ssh_signature_new();
+    if (new == NULL) {
+        return NULL;
+    }
+
+    new->type = src->type;
+    new->hash_type = src->hash_type;
+    new->type_c = src->type_c;
+
+#if defined(HAVE_LIBGCRYPT)
+    /* copy rsa_sig */
+    if (src->rsa_sig != NULL) {
+        new->rsa_sig = ssh_gcry_sexp_dup(src->rsa_sig);
+        if (new->rsa_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while duplicating rsa_sig");
+            goto fail;
+        }
+    }
+
+    /* copy ecdsa_sig */
+    if (src->ecdsa_sig != NULL) {
+        new->ecdsa_sig = ssh_gcry_sexp_dup(src->ecdsa_sig);
+        if (new->ecdsa_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while duplicating ecdsa_sig");
+            goto fail;
+        }
+    }
+#elif defined(HAVE_LIBMBEDCRYPTO)
+    if (src->rsa_sig != NULL) {
+        new->rsa_sig = ssh_string_copy(src->rsa_sig);
+        if (new->rsa_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for (libmbed) rsa_sig "
+                    "during signature duplication");
+            goto fail;
+        }
+    }
+
+    if (src->ecdsa_sig.r != NULL) {
+        new->ecdsa_sig.r = bignum_new();
+        if (new->ecdsa_sig.r == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating ecdsa_sig->r "
+                    "during signature duplication");
+            goto fail;
+        }
+
+        rc = mbedtls_mpi_copy(new->ecdsa_sig.r, src->ecdsa_sig.r);
+        if (rc != 0) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while copying (libmbed) ecdsa_sig->r "
+                    "during signature duplication");
+            goto fail;
+        }
+    }
+
+    if (src->ecdsa_sig.s != NULL) {
+        new->ecdsa_sig.s = bignum_new();
+        if (new->ecdsa_sig.s == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating ecdsa_sig->s "
+                    "during signature duplication");
+            goto fail;
+        }
+
+        rc = mbedtls_mpi_copy(new->ecdsa_sig.s, src->ecdsa_sig.s);
+        if (rc != 0) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while copying (libmbed) ecdsa_sig->s "
+                    "during signature duplication");
+            goto fail;
+        }
+    }
+#endif /* HAVE_LIBGCRYPT */
+#ifndef HAVE_LIBCRYPTO
+    if (src->ed25519_sig != NULL) {
+        new->ed25519_sig = calloc(1, sizeof(ed25519_signature));
+        if (new->ed25519_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for ed25519_sig "
+                    "during signature duplication");
+            goto fail;
+        }
+        memcpy(new->ed25519_sig, src->ed25519_sig, ED25519_SIG_LEN);
+    }
+#endif /* HAVE_LIBGCRYPT */
+
+    if (src->raw_sig != NULL) {
+        new->raw_sig = ssh_string_copy(src->raw_sig);
+        if (new->raw_sig == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Error while allocating space for raw_sig"
+                    "during signature duplication");
+            goto fail;
+        }
+    }
+
+    new->sk_flags = src->sk_flags;
+    new->sk_counter = src->sk_counter;
+
+    return new;
+
+fail:
+    SSH_SIGNATURE_FREE(new);
+    return NULL;
 }
 
 void ssh_signature_free(ssh_signature sig)
@@ -1536,8 +1797,8 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
                                   enum ssh_keytypes_e type,
                                   ssh_key *pkey)
 {
-    ssh_buffer cert;
-    ssh_string tmp_s;
+    ssh_buffer cert = NULL;
+    ssh_string tmp_s = NULL, nonce = NULL;
     const char *type_c;
     ssh_key key = NULL;
     int rc;
@@ -1567,14 +1828,15 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
     }
 
     /*
-     * After the key type, comes an ssh_string nonce. Just after this comes the
-     * cert public key, which can be parsed out of the buffer.
+     * After the key type, comes an ssh_string nonce. The nonce will be stored
+     * later when the ssh_key key will be initialized next in the code.
+     * Just after this comes the cert public key, which can be parsed
+     * out of the buffer.
      */
-    tmp_s = ssh_buffer_get_ssh_string(buffer);
-    if (tmp_s == NULL) {
+    nonce = ssh_buffer_get_ssh_string(buffer);
+    if (nonce == NULL) {
         goto fail;
     }
-    SSH_STRING_FREE(tmp_s);
 
     switch (type) {
         case SSH_KEYTYPE_RSA_CERT01:
@@ -1605,6 +1867,20 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
         goto fail;
     }
 
+    /* Initialize the key->cert_data structure */
+    key->cert_data = ssh_cert_new();
+    if (key->cert_data == NULL) {
+        goto fail;
+    }
+
+    rc = pki_parse_cert_data(buffer, key->cert_data);
+    if (rc != SSH_OK) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while parsing certificate fields");
+        goto fail;
+    }
+
+    /* Store the previously parsed nonce into key->cert_data */
+    key->cert_data->nonce = nonce;
     key->type = type;
     key->type_c = type_c;
     key->cert = cert;
@@ -1613,7 +1889,9 @@ static int pki_import_cert_buffer(ssh_buffer buffer,
     return SSH_OK;
 
 fail:
-    ssh_key_free(key);
+    SSH_KEY_FREE(key);
+    SSH_STRING_FREE(tmp_s);
+    SSH_STRING_FREE(nonce);
     SSH_BUFFER_FREE(cert);
     return SSH_ERROR;
 }
@@ -2303,6 +2581,71 @@ int ssh_pki_export_pubkey_file(const ssh_key key,
 }
 
 /**
+ * @brief Copies the certificate data, including the cert buffer, from one
+ * ssh_key to another.
+ *
+ * @param[in] dest_key  The destination ssh_key where the certificate data will
+ *                      be copied to.
+ *
+ * @param[in] src_key   The source ssh_key from which the certificate data will
+ *                      be copied.
+ *
+ * @returns SSH_OK on success.
+ * @returns SSH_ERROR on failure.
+ */
+int
+pki_copy_cert_to_key(ssh_key dest_key, const ssh_key src_key)
+{
+    ssh_buffer cert_buffer = NULL;
+    int rc;
+
+    if (src_key == NULL || src_key->cert == NULL) {
+        goto fail;
+    }
+
+    if (!is_cert_type(src_key->type) &&
+        src_key->cert_type == SSH_KEYTYPE_UNKNOWN) {
+        SSH_LOG(SSH_LOG_TRACE, "Not a certificate. Error while copying "
+                               "certificate data");
+        goto fail;
+    }
+
+    cert_buffer = ssh_buffer_new();
+    if (cert_buffer == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while initializing buffer for certificate"
+                               " copy");
+        goto fail;
+    }
+
+    rc = ssh_buffer_add_buffer(cert_buffer, src_key->cert);
+    if (rc != 0) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while appending data to buffer during"
+                               " certificate copy");
+        goto fail;
+    }
+
+    dest_key->cert = cert_buffer;
+
+    if (is_cert_type(src_key->type)) {
+        dest_key->cert_type = src_key->type;
+    } else {
+        dest_key->cert_type = ssh_key_type_cert(src_key->type);
+    }
+
+    dest_key->cert_data = ssh_cert_dup(src_key->cert_data);
+    if (dest_key->cert_data == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while copying the certificate data");
+        goto fail;
+    }
+
+    return SSH_OK;
+
+fail:
+    SSH_BUFFER_FREE(cert_buffer);
+    return SSH_ERROR;
+}
+
+/**
  * @brief Copy the certificate part of a public key into a private key.
  *
  * @param[in]  certkey  The certificate key.
@@ -2311,42 +2654,35 @@ int ssh_pki_export_pubkey_file(const ssh_key key,
  *
  * @returns SSH_OK on success, SSH_ERROR otherwise.
  **/
-int ssh_pki_copy_cert_to_privkey(const ssh_key certkey, ssh_key privkey) {
-  ssh_buffer cert_buffer;
-  int rc, cmp;
+int
+ssh_pki_copy_cert_to_privkey(const ssh_key certkey, ssh_key privkey)
+{
+    int rc, cmp;
 
-  if (certkey == NULL || privkey == NULL) {
-      return SSH_ERROR;
-  }
+    if (certkey == NULL || privkey == NULL) {
+        return SSH_ERROR;
+    }
 
-  if (privkey->cert != NULL) {
-      return SSH_ERROR;
-  }
+    if (privkey->cert != NULL) {
+        return SSH_ERROR;
+    }
 
-  if (certkey->cert == NULL) {
-      return SSH_ERROR;
-  }
+    if (certkey->cert == NULL) {
+        return SSH_ERROR;
+    }
 
-  /* make sure the public keys match */
-  cmp = ssh_key_cmp(certkey, privkey, SSH_KEY_CMP_PUBLIC);
-  if (cmp != 0) {
-    return SSH_ERROR;
-  }
+    /* make sure the public keys match */
+    cmp = ssh_key_cmp(certkey, privkey, SSH_KEY_CMP_PUBLIC);
+    if (cmp != 0) {
+        return SSH_ERROR;
+    }
 
-  cert_buffer = ssh_buffer_new();
-  if (cert_buffer == NULL) {
-      return SSH_ERROR;
-  }
+    rc = pki_copy_cert_to_key(privkey, certkey);
+    if (rc != SSH_OK) {
+        return SSH_ERROR;
+    }
 
-  rc = ssh_buffer_add_buffer(cert_buffer, certkey->cert);
-  if (rc != 0) {
-      SSH_BUFFER_FREE(cert_buffer);
-      return SSH_ERROR;
-  }
-
-  privkey->cert = cert_buffer;
-  privkey->cert_type = certkey->type;
-  return SSH_OK;
+    return SSH_OK;
 }
 
 int ssh_pki_export_signature_blob(const ssh_signature sig,
@@ -2662,6 +2998,128 @@ int ssh_pki_signature_verify(ssh_session session,
     return pki_verify_data_signature(sig, key, input, input_len);
 }
 
+/**
+ * @brief Verifies the signature of a given input of signed data.
+ *
+ * The behavior is almost equal to ssh_pki_signature_verify() but it does not
+ * require the session as argument.
+ *
+ * @note The key size is validated against the default key size policy of the
+ * library. In presence of the session/bind using ssh_pki_signature_verify will
+ * override this check with the user configured key minimum size.
+ *
+ * @see ssh_pki_signature_verify.
+ *
+ * @param[in] sig The ssh_signature to be verified.
+ *
+ * @param[in] key The public ssh_key needed for verification.
+ *
+ * @param[in] input The input data that was signed.
+ *
+ * @param[in] input_len The length of the input data.
+ *
+ * @returns SSH_OK on success.
+ * @returns SSH_ERROR on failure.
+ */
+int
+pki_signature_verify(ssh_signature sig,
+                     const ssh_key key,
+                     const unsigned char *input,
+                     size_t input_len)
+{
+    int rc;
+    enum ssh_keytypes_e key_type;
+    bool allowed;
+
+    key_type = ssh_key_type_plain(key->type);
+
+    SSH_LOG(SSH_LOG_FUNCTIONS,
+            "Going to verify a %s type signature",
+            sig->type_c);
+
+    if (key_type != sig->type) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Can not verify %s signature with %s key",
+                sig->type_c, key->type_c);
+        return SSH_ERROR;
+    }
+
+    allowed = ssh_default_key_size_allowed(key);
+    if (!allowed) {
+        /* ssh_default_key_size_allowed is already verbose logging errors */
+        return SSH_ERROR;
+    }
+
+    /* Check if public key and hash type are compatible */
+    rc = pki_key_check_hash_compatible(key, sig->hash_type);
+    if (rc != SSH_OK) {
+        return SSH_ERROR;
+    }
+
+    if (key->type == SSH_KEYTYPE_SK_ECDSA ||
+        key->type == SSH_KEYTYPE_SK_ECDSA_CERT01 ||
+        key->type == SSH_KEYTYPE_SK_ED25519 ||
+        key->type == SSH_KEYTYPE_SK_ED25519_CERT01) {
+
+        ssh_buffer sk_buffer = NULL;
+        SHA256CTX ctx = NULL;
+        unsigned char application_hash[SHA256_DIGEST_LEN] = {0};
+        unsigned char input_hash[SHA256_DIGEST_LEN] = {0};
+
+        ctx = sha256_init();
+        if (ctx == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Can not create SHA256CTX for application hash");
+            return SSH_ERROR;
+        }
+        sha256_update(ctx, ssh_string_data(key->sk_application),
+                      ssh_string_len(key->sk_application));
+        sha256_final(application_hash, ctx);
+
+        ctx = sha256_init();
+        if (ctx == NULL) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Can not create SHA256CTX for input hash");
+            return SSH_ERROR;
+        }
+        sha256_update(ctx, input, input_len);
+        sha256_final(input_hash, ctx);
+
+        sk_buffer = ssh_buffer_new();
+        if (sk_buffer == NULL) {
+            return SSH_ERROR;
+        }
+
+        rc = ssh_buffer_pack(sk_buffer,
+                             "PbdP",
+                             SHA256_DIGEST_LEN,
+                             application_hash,
+                             sig->sk_flags,
+                             sig->sk_counter,
+                             SHA256_DIGEST_LEN,
+                             input_hash);
+        if (rc != SSH_OK) {
+            SSH_BUFFER_FREE(sk_buffer);
+            explicit_bzero(input_hash, SHA256_DIGEST_LEN);
+            explicit_bzero(application_hash, SHA256_DIGEST_LEN);
+            return SSH_ERROR;
+        }
+
+        rc = pki_verify_data_signature(sig,
+                                       key,
+                                       ssh_buffer_get(sk_buffer),
+                                       ssh_buffer_get_len(sk_buffer));
+
+        SSH_BUFFER_FREE(sk_buffer);
+        explicit_bzero(input_hash, SHA256_DIGEST_LEN);
+        explicit_bzero(application_hash, SHA256_DIGEST_LEN);
+
+        return rc;
+    }
+
+    return pki_verify_data_signature(sig, key, input, input_len);
+}
+
 ssh_signature pki_do_sign(const ssh_key privkey,
                           const unsigned char *input,
                           size_t input_len,
@@ -2815,6 +3273,201 @@ ssh_string ssh_pki_do_sign_agent(ssh_session session,
     SSH_BUFFER_FREE(sig_buf);
 
     return sig_blob;
+}
+
+/**
+ * @brief Matches an ssh_key against the public keys listed in a given file.
+ *
+ * The file is expected to contain public keys in the standard SSH format.
+ * Comments (lines starting with '#') and empty lines are ignored.
+ *
+ * @param[in] key       The ssh_key to match.
+ *
+ * @param[in] filename  The path to the file that contains public keys.
+ *
+ * @returns 1 on a successful match.
+ * @returns 0 if no match is found.
+ * @returns -1 on failure.
+ */
+int
+ssh_pki_match_key_in_file(ssh_key key, const char *filename)
+{
+    FILE *fp = NULL;
+    char err_msg[SSH_ERRNO_MSG_MAX] = {0}, line[MAX_LINE_SIZE] = {0},
+         *cp = NULL, *p = NULL, *save_tok = NULL;
+    enum ssh_keytypes_e key_type;
+    ssh_key line_key = NULL;
+    int rc = 0, cmp, r, cnt = 0;
+
+    if (key == NULL || filename == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Bad arguments");
+        return -1;
+    }
+
+    fp = fopen(filename, "r");
+    if (fp == NULL) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while opening %s: %s",
+                filename,
+                ssh_strerror(errno, err_msg, SSH_ERRNO_MSG_MAX));
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), fp)) {
+        cnt ++;
+        for (cp = line; *cp != '\0'; cp++) {
+            if (!isspace(*cp)) {
+                break;
+            }
+        }
+
+        switch (*cp) {
+        case '#':
+        case '\0':
+            continue;
+        }
+
+        /* Parse key type */
+        p = strtok_r(cp, " ", &save_tok);
+        if (p == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Error while parsing line %d", cnt);
+            rc = -1;
+            goto out;
+        }
+        key_type = ssh_key_type_from_name(p);
+
+        if (key_type == SSH_KEYTYPE_UNKNOWN) {
+            SSH_LOG(SSH_LOG_TRACE, "Key type '%s' unknown!", p);
+            rc = -1;
+            goto out;
+        }
+
+        /* Parse the actual key. The comment is ignored */
+        p = strtok_r(NULL, " ", &save_tok);
+        if (p == NULL) {
+            SSH_LOG(SSH_LOG_TRACE, "Key is missing at line %d", cnt);
+            rc = -1;
+            goto out;
+        }
+
+        r = ssh_pki_import_pubkey_base64(p, key_type, &line_key);
+        if (r != SSH_OK) {
+            SSH_LOG(SSH_LOG_TRACE,
+                    "Failed to parse %s key",
+                    ssh_key_type_to_char(key_type));
+            rc = -1;
+            goto out;
+        }
+
+        if (is_cert_type(key->type)) {
+            cmp = ssh_key_cmp(key->cert_data->signature_key,
+                              line_key,
+                              SSH_KEY_CMP_PUBLIC);
+        } else {
+            cmp = ssh_key_cmp(key, line_key, SSH_KEY_CMP_PUBLIC);
+        }
+
+        SSH_KEY_FREE(line_key);
+        if (cmp == 0) {
+            rc = 1;
+            goto out;
+        }
+    }
+
+    if (ferror(fp)) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while reading file at line %d", cnt);
+        rc = -1;
+    }
+
+out:
+    fclose(fp);
+    return rc;
+}
+
+/**
+ * @brief Checks if the given ssh_key is revoked. TODO: add KRL functionality
+ *
+ * @param[in] key  The ssh_key to check for revocation.
+ *
+ * @param[in] revoked_keys_file  The path to the file containing revoked keys.
+ *
+ * @returns 1 if the key is revoked.
+ * @returns 0 if the key is not revoked.
+ * @returns -1 on error.
+ */
+int
+ssh_pki_key_is_revoked(ssh_key key, const char *revoked_keys_file)
+{
+    int found = 0;
+
+    if (key == NULL || revoked_keys_file == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Bad arguments");
+        return -1;
+    }
+
+    /* TODO: handle here KRL file format */
+
+    found = ssh_pki_match_key_in_file(key, revoked_keys_file);
+    if (found < 0) {
+        SSH_LOG(SSH_LOG_TRACE,
+                "Error while searching for a match in revoked keys file %s",
+                revoked_keys_file);
+    }
+
+    return found;
+}
+
+/**
+ * @brief Retrieves the fingerprint of a public key as a human-readable string.
+ *
+ * This function computes the fingerprint of a given public key, represented in
+ * a specific hash type, such as MD5, SHA1, or SHA256. The output is a string
+ * containing the fingerprint, formatted according to the specified hash type.
+ * The function uses `ssh_get_publickey_hash()` to compute the hash of the
+ * public key and then converts it to a readable fingerprint string using
+ * `ssh_get_fingerprint_hash()`.
+ *
+ * @warning Using deprecated hash types such as MD5 and SHA1 is not recommended
+*          due to security concerns. Prefer using stronger hash types like
+*          SHA256. OpenSSH uses SHA256 to print public key digests.
+ *
+ * @param[in] key   The public key for which the fingerprint is being requested.
+ *
+ * @param[in] type  The type of hash to use for the fingerprint. Common values
+ *                   include SSH_PUBLICKEY_HASH_SHA256.
+ *
+ * @returns A pointer to an allocated string containing the fingerprint of the
+ *          key.
+ * @returns NULL if an error occurred.
+ *
+ * @note The returned string should be freed by the caller.
+ *
+ * @see ssh_get_publickey_hash()
+ * @see ssh_get_fingerprint_hash()
+ */
+char *
+ssh_pki_get_pubkey_fingerprint(ssh_key key, enum ssh_publickey_hash_type type)
+{
+    int rc;
+    unsigned char *pubkey_hash = NULL;
+    size_t hlen;
+    char *fp = NULL;
+
+    if (key == NULL) {
+        SSH_LOG(SSH_LOG_TRACE, "Key is NULL");
+        return NULL;
+    }
+
+    rc = ssh_get_publickey_hash(key, type, &pubkey_hash, &hlen);
+    if (rc < 0) {
+        SSH_LOG(SSH_LOG_TRACE, "Error while retrieving public key hash");
+        return NULL;
+    }
+
+    fp = ssh_get_fingerprint_hash(type, pubkey_hash, hlen);
+    SAFE_FREE(pubkey_hash);
+
+    return fp;
 }
 
 #ifdef WITH_SERVER

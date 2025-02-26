@@ -1120,6 +1120,7 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
 
     switch(key->type) {
         case SSH_KEYTYPE_RSA:
+        case SSH_KEYTYPE_RSA_CERT01:
             err = gcry_sexp_extract_param(key->rsa,
                                           NULL,
                                           "ned?p?q?u?",
@@ -1147,9 +1148,10 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
             }
             break;
         case SSH_KEYTYPE_ED25519:
+        case SSH_KEYTYPE_ED25519_CERT01:
 		rc = pki_ed25519_key_dup(new, key);
 		if (rc != SSH_OK) {
-                    ssh_key_free(new);
+                    SSH_KEY_FREE(new);
                     return NULL;
 		}
 		break;
@@ -1157,6 +1159,9 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
         case SSH_KEYTYPE_ECDSA_P256:
         case SSH_KEYTYPE_ECDSA_P384:
         case SSH_KEYTYPE_ECDSA_P521:
+        case SSH_KEYTYPE_ECDSA_P256_CERT01:
+        case SSH_KEYTYPE_ECDSA_P384_CERT01:
+        case SSH_KEYTYPE_ECDSA_P521_CERT01:
 #ifdef HAVE_GCRYPT_ECC
             new->ecdsa_nid = key->ecdsa_nid;
 
@@ -1194,13 +1199,19 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
         case SSH_KEYTYPE_RSA1:
         case SSH_KEYTYPE_UNKNOWN:
         default:
-            ssh_key_free(new);
+            SSH_KEY_FREE(new);
             return NULL;
     }
 
     if (err) {
-        ssh_key_free(new);
-        new = NULL;
+        SSH_KEY_FREE(new);
+    }
+
+    if (is_cert_type(key->type) || key->cert_type != SSH_KEYTYPE_UNKNOWN) {
+        rc = pki_copy_cert_to_key(new, key);
+        if (rc != SSH_OK) {
+            SSH_KEY_FREE(new);
+        }
     }
 
     gcry_mpi_release(p);

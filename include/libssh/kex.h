@@ -23,6 +23,181 @@
 
 #include "libssh/priv.h"
 #include "libssh/callbacks.h"
+#include "libssh/curve25519.h"
+#include "libssh/sntrup761.h"
+
+#ifdef HAVE_BLOWFISH
+# define BLOWFISH ",blowfish-cbc"
+#else
+# define BLOWFISH ""
+#endif
+
+#ifdef HAVE_LIBGCRYPT
+# define AES "aes256-gcm@openssh.com,aes128-gcm@openssh.com," \
+             "aes256-ctr,aes192-ctr,aes128-ctr"
+# define AES_CBC ",aes256-cbc,aes192-cbc,aes128-cbc"
+# define DES_SUPPORTED ",3des-cbc"
+
+#elif defined(HAVE_LIBMBEDCRYPTO)
+# ifdef MBEDTLS_GCM_C
+#  define GCM "aes256-gcm@openssh.com,aes128-gcm@openssh.com,"
+# else
+#  define GCM ""
+# endif /* MBEDTLS_GCM_C */
+# define AES GCM "aes256-ctr,aes192-ctr,aes128-ctr"
+# define AES_CBC ",aes256-cbc,aes192-cbc,aes128-cbc"
+# define DES_SUPPORTED ",3des-cbc"
+
+#elif defined(HAVE_LIBCRYPTO)
+# ifdef HAVE_OPENSSL_AES_H
+#  define GCM "aes256-gcm@openssh.com,aes128-gcm@openssh.com,"
+#  define AES GCM "aes256-ctr,aes192-ctr,aes128-ctr"
+#  define AES_CBC ",aes256-cbc,aes192-cbc,aes128-cbc"
+# else /* HAVE_OPENSSL_AES_H */
+#  define AES ""
+#  define AES_CBC ""
+# endif /* HAVE_OPENSSL_AES_H */
+
+# define DES_SUPPORTED ",3des-cbc"
+#endif /* HAVE_LIBCRYPTO */
+
+#ifdef WITH_ZLIB
+#define ZLIB "none,zlib@openssh.com,zlib"
+#define ZLIB_DEFAULT "none,zlib@openssh.com"
+#else
+#define ZLIB "none"
+#define ZLIB_DEFAULT "none"
+#endif /* WITH_ZLIB */
+
+#ifdef HAVE_CURVE25519
+#define CURVE25519 "curve25519-sha256,curve25519-sha256@libssh.org,"
+#else
+#define CURVE25519 ""
+#endif /* HAVE_CURVE25519 */
+
+#ifdef HAVE_SNTRUP761
+#define SNTRUP761X25519 "sntrup761x25519-sha512@openssh.com,"
+#else
+#define SNTRUP761X25519 ""
+#endif /* HAVE_SNTRUP761 */
+
+#ifdef HAVE_ECC
+#define ECDH "ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,"
+#define EC_HOSTKEYS "ecdsa-sha2-nistp521," \
+                    "ecdsa-sha2-nistp384," \
+                    "ecdsa-sha2-nistp256,"
+#define EC_SK_HOSTKEYS "sk-ecdsa-sha2-nistp256@openssh.com,"
+#define EC_FIPS_PUBLIC_KEY_ALGOS "ecdsa-sha2-nistp521-cert-v01@openssh.com," \
+                                 "ecdsa-sha2-nistp384-cert-v01@openssh.com," \
+                                 "ecdsa-sha2-nistp256-cert-v01@openssh.com,"
+#define EC_PUBLIC_KEY_ALGORITHMS EC_FIPS_PUBLIC_KEY_ALGOS \
+                                 "sk-ecdsa-sha2-nistp256-cert-v01@openssh.com,"
+#else
+#define ECDH ""
+#define EC_HOSTKEYS ""
+#define EC_SK_HOSTKEYS ""
+#define EC_FIPS_PUBLIC_KEY_ALGOS ""
+#define EC_PUBLIC_KEY_ALGORITHMS ""
+#endif /* HAVE_ECC */
+
+#ifdef WITH_INSECURE_NONE
+#define NONE ",none"
+#else
+#define NONE
+#endif /* WITH_INSECURE_NONE */
+
+#define HOSTKEY_SIGNATURE_ALGOS "ssh-ed25519," \
+                                EC_HOSTKEYS \
+                                "sk-ssh-ed25519@openssh.com," \
+                                EC_SK_HOSTKEYS \
+                                "rsa-sha2-512," \
+                                "rsa-sha2-256," \
+                                "ssh-rsa"
+#define DEFAULT_HOSTKEY_SIGNATURE_ALGOS "ssh-ed25519," \
+                                        EC_HOSTKEYS \
+                                        "sk-ssh-ed25519@openssh.com," \
+                                        EC_SK_HOSTKEYS \
+                                        "rsa-sha2-512," \
+                                        "rsa-sha2-256"
+#define HOSTKEY_TYPES "ssh-ed25519," \
+                      EC_HOSTKEYS \
+                      "sk-ssh-ed25519@openssh.com," \
+                      EC_SK_HOSTKEYS \
+                      "ssh-rsa"
+
+#define PUBLIC_KEY_ALGORITHMS "ssh-ed25519-cert-v01@openssh.com," \
+                              "sk-ssh-ed25519-cert-v01@openssh.com," \
+                              EC_PUBLIC_KEY_ALGORITHMS \
+                              "rsa-sha2-512-cert-v01@openssh.com," \
+                              "rsa-sha2-256-cert-v01@openssh.com," \
+                              "ssh-rsa-cert-v01@openssh.com," \
+                              HOSTKEY_SIGNATURE_ALGOS
+#define DEFAULT_PUBLIC_KEY_ALGORITHMS "ssh-ed25519-cert-v01@openssh.com," \
+                                      EC_PUBLIC_KEY_ALGORITHMS \
+                                      "rsa-sha2-512-cert-v01@openssh.com," \
+                                      "rsa-sha2-256-cert-v01@openssh.com," \
+                                      DEFAULT_HOSTKEY_SIGNATURE_ALGOS
+
+#ifdef WITH_GEX
+#define GEX_SHA256 "diffie-hellman-group-exchange-sha256,"
+#define GEX_SHA1 "diffie-hellman-group-exchange-sha1,"
+#else
+#define GEX_SHA256
+#define GEX_SHA1
+#endif /* WITH_GEX */
+
+#define CHACHA20 "chacha20-poly1305@openssh.com,"
+
+#define DEFAULT_KEY_EXCHANGE \
+    CURVE25519 \
+    SNTRUP761X25519 \
+    ECDH \
+    "diffie-hellman-group18-sha512,diffie-hellman-group16-sha512," \
+    GEX_SHA256 \
+    "diffie-hellman-group14-sha256" \
+
+#define KEY_EXCHANGE_SUPPORTED \
+    GEX_SHA1 \
+    DEFAULT_KEY_EXCHANGE \
+    ",diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"
+
+/* RFC 8308 */
+#define KEX_EXTENSION_CLIENT "ext-info-c"
+/* Strict kex mitigation against CVE-2023-48795 */
+#define KEX_STRICT_CLIENT "kex-strict-c-v00@openssh.com"
+#define KEX_STRICT_SERVER "kex-strict-s-v00@openssh.com"
+
+/* Allowed algorithms in FIPS mode */
+#define FIPS_ALLOWED_CIPHERS "aes256-gcm@openssh.com,"\
+                             "aes256-ctr,"\
+                             "aes256-cbc,"\
+                             "aes128-gcm@openssh.com,"\
+                             "aes128-ctr,"\
+                             "aes128-cbc"
+
+#define FIPS_ALLOWED_HOSTKEY_SIGNATURE_ALGOS EC_HOSTKEYS \
+                                             "rsa-sha2-512," \
+                                             "rsa-sha2-256"
+
+#define FIPS_ALLOWED_PUBLIC_KEY_ALGORITHMS EC_FIPS_PUBLIC_KEY_ALGOS \
+                                           "rsa-sha2-512-cert-v01@openssh.com," \
+                                           "rsa-sha2-256-cert-v01@openssh.com," \
+                                           FIPS_ALLOWED_HOSTKEY_SIGNATURE_ALGOS
+
+#define FIPS_ALLOWED_KEX "ecdh-sha2-nistp256,"\
+                         "ecdh-sha2-nistp384,"\
+                         "ecdh-sha2-nistp521,"\
+                         "diffie-hellman-group-exchange-sha256,"\
+                         "diffie-hellman-group14-sha256,"\
+                         "diffie-hellman-group16-sha512,"\
+                         "diffie-hellman-group18-sha512"
+
+#define FIPS_ALLOWED_MACS "hmac-sha2-256-etm@openssh.com,"\
+                          "hmac-sha1-etm@openssh.com,"\
+                          "hmac-sha2-512-etm@openssh.com,"\
+                          "hmac-sha2-256,"\
+                          "hmac-sha1,"\
+                          "hmac-sha2-512"
 
 #define SSH_KEX_METHODS 10
 

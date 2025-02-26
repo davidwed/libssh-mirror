@@ -435,7 +435,8 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
 
     switch (key->type) {
     case SSH_KEYTYPE_RSA:
-    case SSH_KEYTYPE_RSA1: {
+    case SSH_KEYTYPE_RSA1:
+    case SSH_KEYTYPE_RSA_CERT01: {
 #if OPENSSL_VERSION_NUMBER < 0x30000000L
         const BIGNUM *n = NULL, *e = NULL, *d = NULL;
         BIGNUM *nn, *ne, *nd;
@@ -581,6 +582,9 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
     case SSH_KEYTYPE_ECDSA_P256:
     case SSH_KEYTYPE_ECDSA_P384:
     case SSH_KEYTYPE_ECDSA_P521:
+    case SSH_KEYTYPE_ECDSA_P256_CERT01:
+    case SSH_KEYTYPE_ECDSA_P384_CERT01:
+    case SSH_KEYTYPE_ECDSA_P521_CERT01:
 #ifdef HAVE_OPENSSL_ECC
         new->ecdsa_nid = key->ecdsa_nid;
 #ifdef WITH_PKCS11_URI
@@ -651,6 +655,7 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
         break;
 #endif /* HAVE_OPENSSL_ECC */
     case SSH_KEYTYPE_ED25519:
+    case SSH_KEYTYPE_ED25519_CERT01:
         rc = pki_ed25519_key_dup(new, key);
         if (rc != SSH_OK) {
             goto fail;
@@ -660,6 +665,13 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
     default:
         ssh_key_free(new);
         return NULL;
+    }
+
+    if (is_cert_type(key->type) || key->cert_type != SSH_KEYTYPE_UNKNOWN) {
+        rc = pki_copy_cert_to_key(new, key);
+        if (rc != SSH_OK) {
+            goto fail;
+        }
     }
 
     return new;

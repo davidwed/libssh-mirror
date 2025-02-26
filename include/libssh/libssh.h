@@ -62,6 +62,7 @@
 
 #ifdef _WIN32
   #include <winsock2.h>
+  #include <ws2tcpip.h>
 #else /* _WIN32 */
  #include <sys/select.h> /* for fd_set * */
  #include <netdb.h>
@@ -100,6 +101,7 @@ typedef struct ssh_buffer_struct* ssh_buffer;
 typedef struct ssh_channel_struct* ssh_channel;
 typedef struct ssh_message_struct* ssh_message;
 typedef struct ssh_pcap_file_struct* ssh_pcap_file;
+typedef struct ssh_key_cert_struct* ssh_cert;
 typedef struct ssh_key_struct* ssh_key;
 typedef struct ssh_scp_struct* ssh_scp;
 typedef struct ssh_session_struct* ssh_session;
@@ -256,6 +258,13 @@ enum ssh_known_hosts_e {
      * It is a possible attack.
      */
     SSH_KNOWN_HOSTS_OTHER,
+
+    /**
+     * The server key is revoked and not valid anymore. A revoked key may
+     * indicate that a stolen key is being used to impersonate the host. Always
+     * WARN the user about a possible attack.
+     */
+    SSH_KNOWN_HOSTS_REVOKED,
 };
 
 #ifndef MD5_DIGEST_LEN
@@ -419,6 +428,8 @@ enum ssh_options_e {
     SSH_OPTIONS_CERTIFICATE,
     SSH_OPTIONS_PROXYJUMP,
     SSH_OPTIONS_PROXYJUMP_CB_LIST_APPEND,
+    SSH_OPTIONS_REVOKED_HOSTKEYS,
+    SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS,
 };
 
 enum {

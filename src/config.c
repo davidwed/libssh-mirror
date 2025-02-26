@@ -121,7 +121,7 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
   { "pubkeyacceptedalgorithms", SOC_PUBKEYACCEPTEDKEYTYPES},
   { "rekeylimit", SOC_REKEYLIMIT},
   { "remotecommand", SOC_UNSUPPORTED},
-  { "revokedhostkeys", SOC_UNSUPPORTED},
+  { "revokedhostkeys", SOC_REVOKEDHOSTKEYS},
   { "serveralivecountmax", SOC_UNSUPPORTED},
   { "serveraliveinterval", SOC_UNSUPPORTED},
   { "streamlocalbindmask", SOC_UNSUPPORTED},
@@ -153,6 +153,7 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
   { "tunneldevice", SOC_NA},
   { "xauthlocation", SOC_NA},
   { "pubkeyacceptedkeytypes", SOC_PUBKEYACCEPTEDKEYTYPES},
+  { "casignaturealgorithms", SOC_CASIGNATUREALGORITHMS},
   { NULL, SOC_UNKNOWN }
 };
 
@@ -1435,6 +1436,18 @@ ssh_config_parse_line(ssh_session session,
         p = ssh_config_get_str_tok(&s, NULL);
         if (p && *parsing) {
             ssh_options_set(session, SSH_OPTIONS_CERTIFICATE, p);
+        }
+        break;
+    case SOC_REVOKEDHOSTKEYS:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && *parsing) {
+            ssh_options_set(session, SSH_OPTIONS_REVOKED_HOSTKEYS, p);
+        }
+        break;
+    case SOC_CASIGNATUREALGORITHMS:
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && *parsing) {
+            ssh_options_set(session, SSH_OPTIONS_CA_SIGNATURE_ALGORITHMS, p);
         }
         break;
     default:
