@@ -102,7 +102,7 @@ torture_gssapi_key_exchange(void **state)
     assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
-    assert_int_equal(rc, 0);
+    assert_ssh_return_code(session, rc);
     torture_teardown_kdc_server(state);
 }
 
@@ -134,7 +134,7 @@ torture_gssapi_key_exchange_no_tgt(void **state)
     assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
-    assert_int_equal(rc, 0);
+    assert_ssh_return_code(session, rc);
 
     assert_int_not_equal(session->current_crypto->kex_type, SSH_GSS_KEX_DH_GROUP14_SHA256);
     assert_int_not_equal(session->current_crypto->kex_type, SSH_GSS_KEX_DH_GROUP16_SHA512);
@@ -172,7 +172,7 @@ torture_gssapi_key_exchange_gss_group14_sha256(void **state)
     assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
-    assert_int_equal(rc, 0);
+    assert_ssh_return_code(session, rc);
 
     assert_int_equal(session->current_crypto->kex_type, SSH_GSS_KEX_DH_GROUP14_SHA256);
 
@@ -209,7 +209,7 @@ torture_gssapi_key_exchange_gss_group16_sha512(void **state)
     assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
-    assert_int_equal(rc, 0);
+    assert_ssh_return_code(session, rc);
 
     assert_true(session->current_crypto->kex_type == SSH_GSS_KEX_DH_GROUP16_SHA512);
 
@@ -243,7 +243,7 @@ torture_gssapi_key_exchange_auth(void **state)
     assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
-    assert_int_equal(rc, 0);
+    assert_ssh_return_code(session, rc);
 
     rc = ssh_userauth_gssapi_keyex(session);
     assert_int_equal(rc, SSH_AUTH_SUCCESS);
@@ -279,7 +279,7 @@ torture_gssapi_key_exchange_no_auth(void **state)
     assert_ssh_return_code(s->ssh.session, rc);
 
     rc = ssh_connect(session);
-    assert_int_equal(rc, 0);
+    assert_ssh_return_code(session, rc);
 
     /* Still try to do "gssapi-keyex" auth */
     rc = ssh_userauth_gssapi_keyex(session);

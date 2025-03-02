@@ -63,26 +63,6 @@ setup_config(void **state)
 
     snprintf(log_file, sizeof(log_file), "%s/sshd/log", s->socket_dir);
 
-    /*snprintf(ed25519_hostkey,*/
-             /*sizeof(ed25519_hostkey),*/
-             /*"%s/sshd/ssh_host_ed25519_key",*/
-             /*s->socket_dir);*/
-    /*torture_write_file(ed25519_hostkey,*/
-                       /*torture_get_openssh_testkey(SSH_KEYTYPE_ED25519, 0));*/
-
-    /*snprintf(rsa_hostkey,*/
-             /*sizeof(rsa_hostkey),*/
-             /*"%s/sshd/ssh_host_rsa_key",*/
-             /*s->socket_dir);*/
-    /*torture_write_file(rsa_hostkey, torture_get_testkey(SSH_KEYTYPE_RSA, 0));*/
-
-    /*snprintf(ecdsa_hostkey,*/
-             /*sizeof(ecdsa_hostkey),*/
-             /*"%s/sshd/ssh_host_ecdsa_key",*/
-             /*s->socket_dir);*/
-    /*torture_write_file(ecdsa_hostkey,*/
-                       /*torture_get_testkey(SSH_KEYTYPE_ECDSA_P521, 0));*/
-
     /* Create default server state */
     ss = (struct server_state_st *)calloc(1, sizeof(struct server_state_st));
     assert_non_null(ss);
@@ -91,18 +71,6 @@ setup_config(void **state)
     assert_non_null(ss->address);
 
     ss->port = 22;
-
-    ss->ecdsa_key = NULL;
-
-    ss->ed25519_key = NULL;
-
-    ss->rsa_key = NULL;
-
-    ss->host_key = NULL;
-
-    /* Use default username and password (set in default_handle_session_cb) */
-    ss->expected_username = NULL;
-    ss->expected_password = NULL;
 
     /* not to mix up the client and server messages */
     ss->verbosity = torture_libssh_verbosity();
