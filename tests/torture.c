@@ -891,16 +891,6 @@ static void torture_setup_create_sshd_config(void **state, bool pam)
                            torture_get_testkey(SSH_KEYTYPE_ECDSA_P521, 0));
         torture_write_file(trusted_ca_pubkey, torture_rsa_certauth_pub);
     }
-    if (s->disable_hostkeys) {
-        char ss[1000] = {0};
-        rc = snprintf(ss, sizeof(ss), "rm %s/sshd/ssh_host_ecdsa_key %s/sshd/ssh_host_ed25519_key %s/sshd/ssh_host_rsa_key", s->socket_dir, s->socket_dir, s->socket_dir);
-        if (rc < 0 || rc >= (int)sizeof(ss)) {
-            fail_msg("snprintf failed");
-        }
-
-        rc = system(ss);
-        assert_int_equal(rc, 0);
-    }
 
     sftp_server = getenv("TORTURE_SFTP_SERVER");
     if (sftp_server == NULL) {
@@ -922,6 +912,17 @@ static void torture_setup_create_sshd_config(void **state, bool pam)
                 fips_config_string,
                 "HostKey", rsa_hostkey,
                 "HostKey", ecdsa_hostkey,
+                trusted_ca_pubkey,
+                sftp_server,
+                usepam,
+                additional_config,
+                s->srv_pidfile);
+    } else if (s->disable_hostkeys) {
+        snprintf(sshd_config, sizeof(sshd_config),
+                config_string,
+                "", "",
+                "", "",
+                "", "",
                 trusted_ca_pubkey,
                 sftp_server,
                 usepam,
