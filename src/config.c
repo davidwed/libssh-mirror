@@ -153,6 +153,8 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
   { "tunneldevice", SOC_NA},
   { "xauthlocation", SOC_NA},
   { "pubkeyacceptedkeytypes", SOC_PUBKEYACCEPTEDKEYTYPES},
+  { "gssapikeyexchange", SOC_GSSAPIKEYEXCHANGE },
+  { "gssapikexalgorithms", SOC_GSSAPIKEXALGORITHMS },
   { NULL, SOC_UNKNOWN }
 };
 
@@ -1432,9 +1434,23 @@ ssh_config_parse_line(ssh_session session,
       }
       break;
     case SOC_CERTIFICATE:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+          ssh_options_set(session, SSH_OPTIONS_CERTIFICATE, p);
+      }
+      break;
+    case SOC_GSSAPIKEYEXCHANGE: {
+        i = ssh_config_get_yesno(&s, -1);
+        if (i >= 0 && *parsing) {
+            bool b = (i == 1) ? true : false;
+            ssh_options_set(session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &b);
+        }
+        break;
+    }
+    case SOC_GSSAPIKEXALGORITHMS:
         p = ssh_config_get_str_tok(&s, NULL);
         if (p && *parsing) {
-            ssh_options_set(session, SSH_OPTIONS_CERTIFICATE, p);
+            ssh_options_set(session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS, p);
         }
         break;
     default:

@@ -51,6 +51,7 @@
 #include "libssh/curve25519.h"
 #include "libssh/ecdh.h"
 #include "libssh/sntrup761.h"
+#include "libssh/dh-gss.h"
 
 static struct ssh_hmac_struct ssh_hmac_tab[] = {
   { "hmac-sha1",                     SSH_HMAC_SHA1,          false },
@@ -569,6 +570,12 @@ int crypt_set_algorithms_server(ssh_session session){
     case SSH_KEX_DH_GROUP18_SHA512:
       ssh_server_dh_init(session);
       break;
+#ifdef WITH_GSSAPI
+    case SSH_GSS_KEX_DH_GROUP14_SHA256:
+    case SSH_GSS_KEX_DH_GROUP16_SHA512:
+      ssh_server_gss_dh_init(session);
+      break;
+#endif /* WITH_GSSAPI */
 #ifdef WITH_GEX
     case SSH_KEX_DH_GEX_SHA1:
     case SSH_KEX_DH_GEX_SHA256:

@@ -21,13 +21,18 @@ clients must be made or how a client should react.
 #include <stdbool.h>
 #include <libssh/libssh.h>
 #include <libssh/kex.h>
+#include <libssh/gssapi.h>
 
 int main(int argc, char **argv)
 {
     const char *banner = NULL;
     ssh_session session = NULL;
     const char *hostkeys = NULL;
+    const char *kex = NULL;
     int rc = 1;
+#ifdef WITH_GSSAPI
+    bool t = true;
+#endif /* WITH_GSSAPI */
 
     bool process_config = false;
 
@@ -66,6 +71,19 @@ int main(int argc, char **argv)
     if (rc < 0) {
         goto out;
     }
+
+    kex = ssh_kex_get_supported_method(SSH_KEX);
+    rc = ssh_options_set(session, SSH_OPTIONS_KEY_EXCHANGE, kex);
+    if (rc < 0) {
+        goto out;
+    }
+
+#ifdef WITH_GSSAPI
+    rc = ssh_options_set(session, SSH_OPTIONS_GSSAPI_KEY_EXCHANGE, &t);
+    if (rc < 0) {
+        goto out;
+    }
+#endif /* WITH_GSSAPI */
 
     rc = ssh_connect(session);
     if (rc != SSH_OK) {

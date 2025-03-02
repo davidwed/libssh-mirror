@@ -150,6 +150,13 @@ ssh_session ssh_new(void)
         goto err;
     }
 
+#ifdef WITH_GSSAPI
+    session->opts.gssapi_key_exchange_algs = strdup(GSSAPI_KEY_EXCHANGE_SUPPORTED);
+    if (session->opts.gssapi_key_exchange_algs == NULL) {
+        goto err;
+    }
+#endif /* WITH_GSSAPI */
+
     id = strdup("%d/id_ed25519");
     if (id == NULL) {
         goto err;
@@ -290,6 +297,7 @@ void ssh_free(ssh_session session)
 
 #ifdef WITH_GSSAPI
     ssh_gssapi_free(session);
+    SAFE_FREE(session->opts.gssapi_key_exchange_algs);
 #endif
 
   /* options */
@@ -435,8 +443,12 @@ const char* ssh_get_kex_algo(ssh_session session) {
             return "diffie-hellman-group14-sha1";
         case SSH_KEX_DH_GROUP14_SHA256:
             return "diffie-hellman-group14-sha256";
+        case SSH_GSS_KEX_DH_GROUP14_SHA256:
+            return "gss-group14-sha256-";
         case SSH_KEX_DH_GROUP16_SHA512:
             return "diffie-hellman-group16-sha512";
+        case SSH_GSS_KEX_DH_GROUP16_SHA512:
+            return "gss-group16-sha512-";
         case SSH_KEX_DH_GROUP18_SHA512:
             return "diffie-hellman-group18-sha512";
         case SSH_KEX_ECDH_SHA2_NISTP256:

@@ -238,6 +238,7 @@ setup_callback_server(void **state)
     ss->server_cb->gssapi_verify_mic_function = verify_mic;
     ss->server_cb->userdata = &sdata;
 
+    setenv("NSS_WRAPPER_HOSTNAME", "server.libssh.site", 1);
     /* Start the server using the default values */
     pid = fork_run_server(ss, free_test_server_state, &tss);
     if (pid < 0) {
@@ -475,5 +476,11 @@ torture_run_tests(void)
                                 teardown_default_server);
     ssh_finalize();
 
-    pthread_exit((void *)&rc);
+    /* pthread_exit() won't return anything so error should be returned prior */
+    if (rc != 0) {
+        return rc;
+    }
+
+    /* Required for freeing memory allocated by GSSAPI */
+    pthread_exit(NULL);
 }

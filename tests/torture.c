@@ -619,6 +619,8 @@ void torture_setup_socket_dir(void **state)
 
     snprintf(s->srv_config, len, "%s/%s", p, TORTURE_SSHD_CONFIG);
 
+    s->disable_hostkeys = false;
+
     setenv("SOCKET_WRAPPER_DIR", p, 1);
     setenv("SOCKET_WRAPPER_DEFAULT_IFACE", "170", 1);
     env = getenv("TORTURE_GENERATE_PCAP");
@@ -932,6 +934,17 @@ static void torture_setup_create_sshd_config(void **state, bool pam)
                 fips_config_string,
                 "HostKey", rsa_hostkey,
                 "HostKey", ecdsa_hostkey,
+                trusted_ca_pubkey,
+                sftp_server,
+                usepam,
+                additional_config,
+                s->srv_pidfile);
+    } else if (s->disable_hostkeys) {
+        snprintf(sshd_config, sizeof(sshd_config),
+                config_string,
+                "", "",
+                "", "",
+                "", "",
                 trusted_ca_pubkey,
                 sftp_server,
                 usepam,

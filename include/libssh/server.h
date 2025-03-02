@@ -59,6 +59,8 @@ enum ssh_bind_options_e {
     SSH_BIND_OPTIONS_MODULI,
     SSH_BIND_OPTIONS_RSA_MIN_SIZE,
     SSH_BIND_OPTIONS_IMPORT_KEY_STR,
+    SSH_BIND_OPTIONS_GSSAPI_KEY_EXCHANGE,
+    SSH_BIND_OPTIONS_GSSAPI_KEY_EXCHANGE_ALGS,
 };
 
 typedef struct ssh_bind_struct* ssh_bind;
@@ -246,6 +248,7 @@ LIBSSH_API void ssh_bind_free(ssh_bind ssh_bind_o);
  *                          SSH_AUTH_METHOD_HOSTBASED
  *                          SSH_AUTH_METHOD_INTERACTIVE
  *                          SSH_AUTH_METHOD_GSSAPI_MIC
+ *                          SSH_AUTH_METHOD_GSSAPI_KEYEX
  */
 LIBSSH_API void ssh_set_auth_methods(ssh_session session, int auth_methods);
 

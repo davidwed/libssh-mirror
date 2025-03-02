@@ -502,6 +502,7 @@ static enum ssh_packet_filter_result_e ssh_packet_incoming_filter(ssh_session se
          *   or session->auth.state == SSH_AUTH_STATE_PUBKEY_AUTH_SENT
          *   or session->auth.state == SSH_AUTH_STATE_PASSWORD_AUTH_SENT
          *   or session->auth.state == SSH_AUTH_STATE_GSSAPI_MIC_SENT
+         *   or session->auth.state == SSH_AUTH_STATE_GSSAPI_KEYEX_MIC_SENT
          *   or session->auth.state == SSH_AUTH_STATE_AUTH_NONE_SENT
          *
          * Transitions:
@@ -531,6 +532,7 @@ static enum ssh_packet_filter_result_e ssh_packet_incoming_filter(ssh_session se
             (session->auth.state != SSH_AUTH_STATE_PUBKEY_AUTH_SENT) &&
             (session->auth.state != SSH_AUTH_STATE_PASSWORD_AUTH_SENT) &&
             (session->auth.state != SSH_AUTH_STATE_GSSAPI_MIC_SENT) &&
+            (session->auth.state != SSH_AUTH_STATE_GSSAPI_KEYEX_MIC_SENT) &&
             (session->auth.state != SSH_AUTH_STATE_AUTH_NONE_SENT))
         {
             rc = SSH_PACKET_DENIED;

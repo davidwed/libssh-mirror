@@ -66,6 +66,8 @@ enum ssh_config_opcode_e {
     SOC_CONTROLMASTER,
     SOC_CONTROLPATH,
     SOC_CERTIFICATE,
+    SOC_GSSAPIKEYEXCHANGE,
+    SOC_GSSAPIKEXALGORITHMS,
 
     SOC_MAX /* Keep this one last in the list */
 };

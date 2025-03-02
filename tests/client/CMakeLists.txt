@@ -42,7 +42,9 @@ endif()
 if (WITH_GSSAPI AND GSSAPI_FOUND AND GSSAPI_TESTING)
     set(LIBSSH_CLIENT_TESTS
         ${LIBSSH_CLIENT_TESTS}
-        torture_gssapi_auth)
+        torture_gssapi_auth
+        torture_gssapi_key_exchange
+        torture_gssapi_key_exchange_null)
 endif()
 
 if (DEFAULT_C_NO_DEPRECATION_FLAGS)

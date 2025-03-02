@@ -115,6 +115,9 @@ static void print_auth_methods(int auth_methods)
     if (auth_methods & SSH_AUTH_METHOD_GSSAPI_MIC) {
         printf("\tSSH_AUTH_METHOD_GSSAPI_MIC\n");
     }
+    if (auth_methods & SSH_AUTH_METHOD_GSSAPI_KEYEX) {
+        printf("\tSSH_AUTH_METHOD_GSSAPI_KEYEX\n");
+    }
 }
 
 static void print_verbosity(int verbosity)
@@ -295,6 +298,7 @@ static int init_server_state(struct server_state_st *state,
     }
 
     state->parse_global_config = arguments->with_global_config;
+    state->gssapi_key_exchange_algs = NULL;
 
     if (arguments->config_file) {
         state->config_file = arguments->config_file;

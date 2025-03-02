@@ -60,6 +60,7 @@
 #include "libssh/options.h"
 #include "libssh/curve25519.h"
 #include "libssh/token.h"
+#include "libssh/gssapi.h"
 
 #define set_status(session, status) do {\
         if (session->common.callbacks && session->common.callbacks->connect_status_function) \
@@ -91,6 +92,9 @@ int server_set_kex(ssh_session session)
     enum ssh_keytypes_e keytype;
     size_t len;
     int ok;
+#ifdef WITH_GSSAPI
+    char *gssapi_algs = NULL;
+#endif /* WITH_GSSAPI */
 
     /* Skip if already set, for example for the rekey or when we do the guessing
      * it could have been already used to make some protocol decisions. */
@@ -130,10 +134,6 @@ int server_set_kex(ssh_session session)
                  ",%s", ssh_key_type_to_char(keytype));
     }
 
-    if (strlen(hostkeys) == 0) {
-        return -1;
-    }
-
     if (session->opts.wanted_methods[SSH_HOSTKEYS]) {
         allowed = session->opts.wanted_methods[SSH_HOSTKEYS];
     } else {
@@ -144,23 +144,50 @@ int server_set_kex(ssh_session session)
         }
     }
 
-    /* It is expected for the list of allowed hostkeys to be ordered by
-     * preference */
-    kept = ssh_find_all_matching(hostkeys[0] == ',' ? hostkeys + 1 : hostkeys,
-                                 allowed);
-    if (kept == NULL) {
-        /* Nothing was allowed */
-        return -1;
-    }
+    if (strlen(hostkeys) != 0) {
+        /* It is expected for the list of allowed hostkeys to be ordered by
+         * preference */
+        kept = ssh_find_all_matching(hostkeys[0] == ',' ? hostkeys + 1 : hostkeys,
+                                     allowed);
+        if (kept == NULL) {
+            /* Nothing was allowed */
+            return -1;
+        }
 
-    rc = ssh_options_set_algo(session,
-                              SSH_HOSTKEYS,
-                              kept,
-                              &session->opts.wanted_methods[SSH_HOSTKEYS]);
-    SAFE_FREE(kept);
-    if (rc < 0) {
-        return -1;
+        rc = ssh_options_set_algo(session,
+                                  SSH_HOSTKEYS,
+                                  kept,
+                                  &session->opts.wanted_methods[SSH_HOSTKEYS]);
+        SAFE_FREE(kept);
+        if (rc < 0) {
+            return -1;
+        }
     }
+#ifdef WITH_GSSAPI
+    if (session->opts.gssapi_key_exchange && !ssh_fips_mode()) {
+        ok = ssh_gssapi_init(session);
+        if (ok != SSH_OK) {
+            ssh_set_error_oom(session);
+            return SSH_ERROR;
+        }
+
+        gssapi_algs = ssh_gssapi_kex_mechs(session, session->opts.gssapi_key_exchange_algs);
+        if (gssapi_algs == NULL) {
+            return SSH_ERROR;
+        }
+        ssh_gssapi_free(session);
+
+        /* Prefix the default algorithms with gsskex algs */
+        session->opts.wanted_methods[SSH_KEX] =
+            ssh_prefix_without_duplicates(ssh_kex_get_default_methods(SSH_KEX), gssapi_algs);
+
+        if (strlen(hostkeys) == 0) {
+            session->opts.wanted_methods[SSH_HOSTKEYS] = strdup("null");
+        }
+
+        SAFE_FREE(gssapi_algs);
+    }
+#endif /* WITH_GSSAPI */
 
     for (i = 0; i < SSH_KEX_METHODS; i++) {
         wanted = session->opts.wanted_methods[i];
@@ -624,6 +651,12 @@ int ssh_auth_reply_default(ssh_session session,int partial) {
 	  strncat(methods_c,"gssapi-with-mic,",
 			  sizeof(methods_c) - strlen(methods_c) - 1);
   }
+    /* Check if GSSAPI Key exchange was performed */
+    if (session->auth.supported_methods & SSH_AUTH_METHOD_GSSAPI_KEYEX) {
+        if (ssh_kex_is_gss(session->current_crypto)) {
+            strncat(methods_c, "gssapi-keyex,", sizeof(methods_c) - strlen(methods_c) - 1);
+        }
+    }
   if (session->auth.supported_methods & SSH_AUTH_METHOD_INTERACTIVE) {
     strncat(methods_c, "keyboard-interactive,",
             sizeof(methods_c) - strlen(methods_c) - 1);
