@@ -207,7 +207,7 @@ int run_server(struct server_state_st *state)
                                   state->gssapi_key_exchange_algs);
         if (rc != 0) {
             fprintf(stderr,
-                    "Error setting GSSAPI key exchange: %s\n",
+                    "Error setting GSSAPI key exchange algorithms: %s\n",
                     ssh_get_error(sshbind));
             goto out;
         }
