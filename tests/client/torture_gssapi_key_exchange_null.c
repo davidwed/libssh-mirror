@@ -120,6 +120,9 @@ torture_gssapi_key_exchange_null(void **state)
 
     rc = ssh_connect(session);
     assert_ssh_return_code(s->ssh.session, rc);
+
+    assert_string_equal(session->current_crypto->kex_methods[SSH_HOSTKEYS], "null");
+
     torture_teardown_kdc_server(state);
 }
 
