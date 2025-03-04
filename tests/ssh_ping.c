@@ -21,7 +21,6 @@ clients must be made or how a client should react.
 #include <stdbool.h>
 #include <libssh/libssh.h>
 #include <libssh/kex.h>
-#include <libssh/gssapi.h>
 
 int main(int argc, char **argv)
 {
