@@ -179,6 +179,9 @@
 /* Define to 1 if you have the `SecureZeroMemory' function. */
 #cmakedefine HAVE_SECURE_ZERO_MEMORY 1
 
+/* Define to 1 if you have the `cmocka_set_skip_filter' function. */
+#cmakedefine HAVE_CMOCKA_SET_SKIP_FILTER 1
+
 /* Define to 1 if you have the `cmocka_set_test_filter' function. */
 #cmakedefine HAVE_CMOCKA_SET_TEST_FILTER 1
 

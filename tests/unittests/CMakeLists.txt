@@ -105,10 +105,19 @@ if (UNIX AND NOT WIN32)
 endif (UNIX AND NOT WIN32)
 
 foreach(_UNIT_TEST ${LIBSSH_UNIT_TESTS})
+    set(_CMOCKA_SKIP_PATTERN "")
+    foreach(_TEST_EXCLUDE_PATTERN ${TEST_EXCLUDE_PATTERNS})
+        string(FIND ${_TEST_EXCLUDE_PATTERN} "${_UNIT_TEST}::" PREFIX_POS)
+        if (PREFIX_POS EQUAL 0)
+            string(REPLACE "${_UNIT_TEST}::" "" _CMOCKA_SKIP_PATTERN ${_TEST_EXCLUDE_PATTERN})
+        endif()
+    endforeach()
+
     add_cmocka_test(${_UNIT_TEST}
                     SOURCES ${_UNIT_TEST}.c
                     COMPILE_OPTIONS ${DEFAULT_C_COMPILE_FLAGS}
                     LINK_LIBRARIES ${TEST_TARGET_LIBRARIES}
+                    COMMAND_ARGS -e "${_CMOCKA_SKIP_PATTERN}"
     )
 
     set_property(TEST ${_UNIT_TEST}

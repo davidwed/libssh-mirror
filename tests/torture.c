@@ -78,6 +78,7 @@ static const char torture_rsa_certauth_pub[]=
         "torture_certauth_key";
 
 static int verbosity = 0;
+static const char *exclude_regex = NULL;
 static const char *pattern = NULL;
 
 #ifndef _WIN32
@@ -1967,15 +1968,21 @@ int main(int argc, char **argv) {
 
     arguments.verbose=0;
     arguments.pattern=NULL;
+    arguments.exclude_regex=NULL;
     torture_cmdline_parse(argc, argv, &arguments);
     verbosity=arguments.verbose;
     pattern=arguments.pattern;
+    exclude_regex=arguments.exclude_regex;
 
     if (verbosity == 0 && env != NULL && env[0] != '\0') {
         if (env[0] > '0' && env[0] < '9') {
             verbosity = atoi(env);
         }
     }
+
+#if defined HAVE_CMOCKA_SET_SKIP_FILTER
+    cmocka_set_skip_filter(exclude_regex);
+#endif
 
 #if defined HAVE_CMOCKA_SET_TEST_FILTER
     cmocka_set_test_filter(pattern);
