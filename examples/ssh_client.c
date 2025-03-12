@@ -339,6 +339,7 @@ static void batch_shell(ssh_session session)
 static int client(ssh_session session)
 {
     int auth = 0;
+    int authenticated = 0;
     char *banner;
     int state;
 
@@ -373,15 +374,22 @@ static int client(ssh_session session)
         return -1;
     }
 
-    ssh_userauth_none(session, NULL);
     banner = ssh_get_issue_banner(session);
     if (banner) {
         printf("%s\n", banner);
         free(banner);
     }
-    auth = authenticate_console(session);
-    if (auth != SSH_AUTH_SUCCESS) {
-        return -1;
+
+    auth = ssh_userauth_none(session, NULL);
+    if(auth == SSH_AUTH_SUCCESS) {
+        authenticated = 1;
+    }
+
+    if(!authenticated) {
+        auth = authenticate_console(session);
+        if (auth != SSH_AUTH_SUCCESS) {
+            return -1;
+        }
     }
     if (cmds[0] == NULL) {
         shell(session);
