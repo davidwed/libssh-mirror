@@ -204,6 +204,11 @@ if (WITH_COVERAGE)
         NAME "coverage_xml"
         EXECUTABLE make test
         DEPENDENCIES ssh tests)
+    # Add HTML coverage report target for GitLab Pages
+    setup_target_for_coverage_gcovr_html(
+        NAME "coverage_html"
+        EXECUTABLE make test
+        DEPENDENCIES ssh tests)
 endif (WITH_COVERAGE)
 
 add_custom_target(dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source DEPENDS ${_SYMBOL_TARGET} VERBATIM)

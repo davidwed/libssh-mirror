@@ -229,6 +229,27 @@ fedora/coverage:
         coverage_format: cobertura
         path: obj/coverage_xml.xml
 
+# Generate HTML coverage reports for GitLab Pages on master branch
+pages:
+  extends: .fedora
+  image: $CI_REGISTRY/$BUILD_IMAGES_PROJECT:$FEDORA_BUILD
+  stage: deploy
+  variables:
+    CMAKE_ADDITIONAL_OPTIONS: "-DCMAKE_BUILD_TYPE=Debug -DWITH_COVERAGE=ON"
+  script:
+    - cmake $CMAKE_OPTIONS $CMAKE_ADDITIONAL_OPTIONS .. &&
+      make -j$(nproc) &&
+      make coverage_html &&
+      mkdir -p public &&
+      cp -r coverage_html/* public/ &&
+      cp ../README.coverage.md public/index.md
+  artifacts:
+    paths:
+      - public
+  only:
+    - master
+  coverage: /^\s*lines:\s*\d+.\d+\%/
+
 fedora/openssl_3.x/x86_64:
   extends: .fedora
 
