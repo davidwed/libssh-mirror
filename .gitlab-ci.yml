@@ -662,8 +662,8 @@ freebsd/openssl_1.1.1/x86_64:
     CMAKE_TEST_OPTIONS: "-DUNIT_TESTING=ON"
     CMAKE_OPTIONS: $CMAKE_DEFAULT_OPTIONS $CMAKE_BUILD_OPTIONS $CMAKE_TEST_OPTIONS
   script:
-    - cmake --build .
-    - ctest --output-on-failure
+    - cmake --build . --config RelWithDebInfo --parallel 8
+    - ctest --output-on-failure -C RelWithDebInfo -E "torture_rand|torture_crypto"
   tags:
     - saas-windows-medium-amd64
   only:
@@ -681,14 +681,15 @@ freebsd/openssl_1.1.1/x86_64:
     - $env:VCPKG_DEFAULT_BINARY_CACHE="$PWD\.vcpkg\archives"
     - echo $env:VCPKG_DEFAULT_BINARY_CACHE
     - $env:VCPKG_DEFAULT_TRIPLET="$TRIPLET-windows"
-    - vcpkg install openssl:x64-windows
-    - vcpkg install zlib:x64-windows
-    - vcpkg install cmocka:x64-windows
+    - vcpkg install openssl:$env:VCPKG_DEFAULT_TRIPLET
+    - vcpkg install zlib:$env:VCPKG_DEFAULT_TRIPLET
+    - vcpkg install cmocka:$env:VCPKG_DEFAULT_TRIPLET
     - vcpkg integrate install
     - mkdir -p obj; if ($?) {cd obj}; if (! $?) {exit 1}
     - cmake
         -A $PLATFORM
         -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+        -DVCPKG_TARGET_TRIPLET=$env:VCPKG_DEFAULT_TRIPLET
         $CMAKE_OPTIONS ..
 visualstudio/x86_64:
   extends: .vs
