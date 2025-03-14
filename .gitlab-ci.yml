@@ -15,6 +15,7 @@ stages:
   - build
   - test
   - analysis
+  - deploy
 
 # This is some black magic to select between branch pipelines and
 # merge request pipelines to avoid running same pipelines in twice
