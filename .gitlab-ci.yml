@@ -236,14 +236,29 @@ pages:
   image: $CI_REGISTRY/$BUILD_IMAGES_PROJECT:$FEDORA_BUILD
   stage: deploy
   variables:
-    CMAKE_ADDITIONAL_OPTIONS: "-DCMAKE_BUILD_TYPE=Debug -DWITH_COVERAGE=ON"
+    CMAKE_ADDITIONAL_OPTIONS: >-
+      -DCMAKE_BUILD_TYPE=Debug
+      -DWITH_COVERAGE=ON
+      -DWITH_SERVER=OFF
+      -DWITH_BENCHMARKS=OFF
+      -DWITH_PCAP=OFF
+      -DWITH_DEBUG_CRYPTO=OFF
+      -DWITH_DEBUG_PACKET=OFF
+      -DWITH_DEBUG_CALLTRACE=OFF
+      -DUNIT_TESTING=ON
+      -DCLIENT_TESTING=OFF
+      -DSERVER_TESTING=OFF
+      -DGSSAPI_TESTING=OFF
+      -DFUZZ_TESTING=OFF
   script:
-    - cmake $CMAKE_OPTIONS $CMAKE_ADDITIONAL_OPTIONS .. &&
-      make -j$(nproc) &&
-      make coverage_html &&
-      mkdir -p public &&
-      cp -r coverage_html/* public/ &&
-      cp ../README.coverage.md public/index.md
+    - cmake $CMAKE_ADDITIONAL_OPTIONS .. > cmake_output.log 2>&1 || { cat cmake_output.log; exit 1; }
+    - make -j$(nproc) > build_output.log 2>&1 || { cat build_output.log; exit 1; }
+    - make coverage_html > coverage_output.log 2>&1 || { cat coverage_output.log; exit 1; }
+    - mkdir -p public
+    - cp -r coverage_html/* public/
+    - cp ../README.coverage.md public/index.md
+    - grep -A5 "Overall coverage rate" coverage_output.log || true
+  
   artifacts:
     paths:
       - public
