@@ -256,7 +256,6 @@ pages:
     - make coverage_html > coverage_output.log 2>&1 || { cat coverage_output.log; exit 1; }
     - mkdir -p public
     - cp -r coverage_html/* public/
-    - cp ../README.coverage.md public/index.md
     - grep -A5 "Overall coverage rate" coverage_output.log || true
   
   artifacts:
