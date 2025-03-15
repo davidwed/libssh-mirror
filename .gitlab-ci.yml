@@ -686,10 +686,19 @@ freebsd/openssl_1.1.1/x86_64:
     - vcpkg install cmocka:$env:VCPKG_DEFAULT_TRIPLET
     - vcpkg integrate install
     - mkdir -p obj; if ($?) {cd obj}; if (! $?) {exit 1}
+    - $env:ZLIB_ROOT="C:/vcpkg/packages/zlib_$env:VCPKG_DEFAULT_TRIPLET"
+    - $env:OPENSSL_ROOT_DIR="C:/vcpkg/packages/openssl_$env:VCPKG_DEFAULT_TRIPLET"
+    - $env:CMOCKA_ROOT="C:/vcpkg/packages/cmocka_$env:VCPKG_DEFAULT_TRIPLET"
     - cmake
         -A $PLATFORM
         -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
         -DVCPKG_TARGET_TRIPLET=$env:VCPKG_DEFAULT_TRIPLET
+        -DZLIB_ROOT="$env:ZLIB_ROOT"
+        -DZLIB_LIBRARY="$env:ZLIB_ROOT/lib/zlib.lib"
+        -DZLIB_INCLUDE_DIR="$env:ZLIB_ROOT/include"
+        -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
+        -DCMAKE_PREFIX_PATH="C:/vcpkg/packages/cmocka_$env:VCPKG_DEFAULT_TRIPLET;C:/vcpkg/packages/zlib_$env:VCPKG_DEFAULT_TRIPLET;C:/vcpkg/packages/openssl_$env:VCPKG_DEFAULT_TRIPLET"
+        -DCMAKE_FIND_DEBUG_MODE=ON
         $CMAKE_OPTIONS ..
 visualstudio/x86_64:
   extends: .vs
