@@ -232,9 +232,8 @@ fedora/coverage:
 
 # Generate HTML coverage reports for GitLab Pages on master branch
 pages:
-  extends: .fedora
-  image: $CI_REGISTRY/$BUILD_IMAGES_PROJECT:$FEDORA_BUILD
   stage: deploy
+  image: $CI_REGISTRY/$BUILD_IMAGES_PROJECT:$FEDORA_BUILD
   variables:
     CMAKE_ADDITIONAL_OPTIONS: >-
       -DCMAKE_BUILD_TYPE=Debug
@@ -265,6 +264,8 @@ pages:
   coverage: /^\s*lines:\s*\d+.\d+\%/
   only:
     - master
+  tags:
+    - saas-linux-small-amd64
 
 fedora/openssl_3.x/x86_64:
   extends: .fedora
