@@ -241,17 +241,28 @@ pages:
       -DWITH_COVERAGE=ON
       -DUNIT_TESTING=ON
   script:
+    - mkdir -p obj && cd obj
     - mkdir -p public
-    - echo "<html><head><title>libssh Code Coverage</title></head><body><h1>libssh Code Coverage Report</h1><p>Building coverage report...</p></body></html>" > public/index.html
-    - cmake $CMAKE_ADDITIONAL_OPTIONS .. || true
-    - make -j$(nproc) || true
-    - if make coverage_html && [ -d "coverage_html" ] && [ "$(ls -A coverage_html)" ]; then
-        cp -r coverage_html/* public/ || true;
+    - echo "<html><head><title>libssh Code Coverage Report</title></head><body><h1>libssh Code Coverage Report</h1><p>Generating coverage report...</p></body></html>" > public/index.html
+    - cmake $CMAKE_ADDITIONAL_OPTIONS .. > cmake_output.log 2>&1 || { cat cmake_output.log; exit 1; }
+    - make -j$(nproc) > build_output.log 2>&1 || { cat build_output.log; exit 1; }
+    - if make coverage_html > coverage_output.log 2>&1; then
+        if [ -d "coverage_html" ] && [ "$(ls -A coverage_html)" ]; then
+          cp -r coverage_html/* public/;
+          grep -A5 "Overall coverage rate" coverage_output.log || true;
+        else
+          echo "<html><head><title>libssh Code Coverage</title></head><body><h1>libssh Code Coverage Report</h1><p>Coverage report was generated successfully, but data could not be copied properly.</p></body></html>" > public/index.html;
+        fi
+      else
+        echo "<html><head><title>libssh Code Coverage</title></head><body><h1>libssh Code Coverage Report</h1><p>Failed to generate coverage report. Please check the build logs for details.</p></body></html>" > public/index.html;
+        cat coverage_output.log;
       fi
     - ls -la public/
   artifacts:
     paths:
-      - public
+      - obj/public
+    expire_in: 30 days
+  coverage: /^\s*lines:\s*\d+.\d+\%/
   only:
     - master
 
