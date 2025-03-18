@@ -325,7 +325,12 @@ ssh_exec_shell(char *cmd)
     rc = access(shell, X_OK);
     if (rc != 0) {
         SSH_LOG(SSH_LOG_WARN, "The shell '%s' is not executable", shell);
-        return -1;
+        shell = (char *)"/bin/sh";
+        rc = access(shell, X_OK);
+        if (rc != 0) {
+            SSH_LOG(SSH_LOG_WARN, "The shell '%s' is not executable either", shell);
+            return -1;
+        }
     }
 
     /* Need this to redirect subprocess stdin/out */

@@ -922,6 +922,13 @@ ssh_execute_command(const char *command, socket_t in, socket_t out)
      * shells like zsh or dash ...
      */
     shell = getenv("SHELL");
+    if (shell != NULL && shell[0] != '\0'){
+        rc = access(shell, X_OK);
+        if (rc != 0) {
+            SSH_LOG(SSH_LOG_WARN, "The shell '%s' is not executable", shell);
+            shell = "/bin/sh";
+        }
+    }
     if (shell == NULL || shell[0] == '\0') {
         /* Fall back to the /bin/sh only if the bash is not available. But there are
          * issues with dash or whatever people tend to link to /bin/sh */
