@@ -456,8 +456,7 @@ const char* ssh_get_kex_algo(ssh_session session) {
         return "diffie-hellman-group-exchange-sha1";
     case SSH_KEX_DH_GEX_SHA256:
         return "diffie-hellman-group-exchange-sha256";
-#endif /* ifdef  */
-
+#endif /* WITH_GEX */
     }
 
     return NULL;
