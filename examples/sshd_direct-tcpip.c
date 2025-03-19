@@ -92,17 +92,20 @@ static void
 cleanup_push(struct cleanup_node_struct** head_ref,
              struct event_fd_data_struct *new_data)
 {
+    struct cleanup_node_struct *new_node = NULL;
+
+    if (*head_ref == NULL) {
+        fprintf(stderr, "cleanup node head must be specified!\n");
+        return;
+    }
+
     // Allocate memory for node
-    struct cleanup_node_struct *new_node = malloc(sizeof *new_node);
+    new_node = malloc(sizeof *new_node);
     if (new_node == NULL) {
         return;
     }
 
-    if (*head_ref != NULL) {
-        new_node->next = *head_ref;
-    } else {
-        new_node->next = NULL;
-    }
+    new_node->next = *head_ref;
 
     // Copy new_data
     new_node->data = new_data;
