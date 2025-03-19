@@ -601,6 +601,11 @@ int ssh_userauth_try_publickey(ssh_session session,
         return SSH_AUTH_ERROR;
     }
 
+    if (! (session->opts.flags & SSH_OPT_FLAG_PUBKEY_AUTH)) {
+        session->auth.supported_methods &= ~SSH_AUTH_METHOD_PUBLICKEY;
+        return SSH_AUTH_DENIED;
+    }
+
     if (pubkey == NULL || !ssh_key_is_public(pubkey)) {
         ssh_set_error(session, SSH_FATAL, "Invalid pubkey");
         return SSH_AUTH_ERROR;
@@ -726,6 +731,11 @@ int ssh_userauth_publickey(ssh_session session,
 
     if (session == NULL) {
         return SSH_AUTH_ERROR;
+    }
+
+    if (! (session->opts.flags & SSH_OPT_FLAG_PUBKEY_AUTH)) {
+        session->auth.supported_methods &= ~SSH_AUTH_METHOD_PUBLICKEY;
+        return SSH_AUTH_DENIED;
     }
 
     if (privkey == NULL || !ssh_key_is_private(privkey)) {
@@ -1003,6 +1013,11 @@ int ssh_userauth_agent(ssh_session session, const char *username)
 
     if (session == NULL) {
         return SSH_AUTH_ERROR;
+    }
+
+    if (! (session->opts.flags & SSH_OPT_FLAG_PUBKEY_AUTH)) {
+        session->auth.supported_methods &= ~SSH_AUTH_METHOD_PUBLICKEY;
+        return SSH_AUTH_DENIED;
     }
 
     if (!ssh_agent_is_running(session)) {
@@ -1704,6 +1719,15 @@ int ssh_userauth_password(ssh_session session,
 {
     int rc;
 
+    if (session == NULL) {
+        return SSH_AUTH_ERROR;
+    }
+
+    if (! (session->opts.flags & SSH_OPT_FLAG_PASSWORD_AUTH)) {
+        session->auth.supported_methods &= ~SSH_AUTH_METHOD_PASSWORD;
+        return SSH_AUTH_DENIED;
+    }
+
     switch (session->pending_call_state) {
         case SSH_PENDING_CALL_NONE:
             break;
@@ -2137,6 +2161,11 @@ int ssh_userauth_kbdint(ssh_session session, const char *user,
         return SSH_AUTH_ERROR;
     }
 
+    if (! (session->opts.flags & SSH_OPT_FLAG_KBDINT_AUTH)) {
+        session->auth.supported_methods &= ~SSH_AUTH_METHOD_INTERACTIVE;
+        return SSH_AUTH_DENIED;
+    }
+
     if ((session->pending_call_state == SSH_PENDING_CALL_NONE && session->kbdint == NULL) ||
             session->pending_call_state == SSH_PENDING_CALL_AUTH_KBDINT_INIT)
         rc = ssh_userauth_kbdint_init(session, user, submethods);
@@ -2387,6 +2416,15 @@ int ssh_userauth_gssapi(ssh_session session)
 {
     int rc = SSH_AUTH_DENIED;
 #ifdef WITH_GSSAPI
+    if (session == NULL) {
+        return SSH_AUTH_ERROR;
+    }
+
+    if (! (session->opts.flags & SSH_OPT_FLAG_GSSAPI_AUTH)) {
+        session->auth.supported_methods &= ~SSH_AUTH_METHOD_GSSAPI_MIC;
+        return SSH_AUTH_DENIED;
+    }
+
     switch(session->pending_call_state) {
     case SSH_PENDING_CALL_NONE:
         break;
