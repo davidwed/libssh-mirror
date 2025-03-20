@@ -251,7 +251,7 @@ ssh_pki_openssh_import(const char *text_key,
 
     cmp = strncmp(ptr, OPENSSH_HEADER_BEGIN, strlen(OPENSSH_HEADER_BEGIN));
     if (cmp != 0) {
-        SSH_LOG(SSH_LOG_TRACE, "Not an OpenSSH private key (no header)");
+        ssh_set_error(&pki_error, SSH_FATAL, "Not an OpenSSH private key (no header)");
         goto out;
     }
     ptr += strlen(OPENSSH_HEADER_BEGIN);
@@ -260,7 +260,7 @@ ssh_pki_openssh_import(const char *text_key,
     }
     end = strstr(ptr, OPENSSH_HEADER_END);
     if (end == NULL) {
-        SSH_LOG(SSH_LOG_TRACE, "Not an OpenSSH private key (no footer)");
+        ssh_set_error(&pki_error, SSH_FATAL, "Not an OpenSSH private key (no footer)");
         goto out;
     }
     base64 = malloc(end - ptr + 1);
@@ -277,7 +277,7 @@ ssh_pki_openssh_import(const char *text_key,
     buffer = base64_to_bin(base64);
     SAFE_FREE(base64);
     if (buffer == NULL) {
-        SSH_LOG(SSH_LOG_TRACE, "Not an OpenSSH private key (base64 error)");
+        ssh_set_error(&pki_error, SSH_FATAL, "Not an OpenSSH private key (base64 error)");
         goto out;
     }
     rc = ssh_buffer_unpack(buffer, "PssSdSS",
@@ -290,12 +290,12 @@ ssh_pki_openssh_import(const char *text_key,
                            &pubkey0,
                            &privkeys);
     if (rc == SSH_ERROR) {
-        SSH_LOG(SSH_LOG_TRACE, "Not an OpenSSH private key (unpack error)");
+        ssh_set_error(&pki_error, SSH_FATAL, "Not an OpenSSH private key (unpack error)");
         goto out;
     }
     cmp = strncmp(magic, OPENSSH_AUTH_MAGIC, strlen(OPENSSH_AUTH_MAGIC));
     if (cmp != 0) {
-        SSH_LOG(SSH_LOG_TRACE, "Not an OpenSSH private key (bad magic)");
+        ssh_set_error(&pki_error, SSH_FATAL, "Not an OpenSSH private key (bad magic)");
         goto out;
     }
     SSH_LOG(SSH_LOG_DEBUG,
@@ -304,7 +304,7 @@ ssh_pki_openssh_import(const char *text_key,
             kdfname,
             nkeys);
     if (nkeys != 1) {
-        SSH_LOG(SSH_LOG_TRACE, "Opening OpenSSH private key: only 1 key supported (%" PRIu32 " available)", nkeys);
+        ssh_set_error(&pki_error, SSH_FATAL, "Opening OpenSSH private key: only 1 key supported (%" PRIu32 " available)", nkeys);
         goto out;
     }
 
@@ -343,7 +343,7 @@ ssh_pki_openssh_import(const char *text_key,
 
     rc = ssh_buffer_unpack(privkey_buffer, "dd", &checkint1, &checkint2);
     if (rc == SSH_ERROR || checkint1 != checkint2) {
-        SSH_LOG(SSH_LOG_TRACE, "OpenSSH private key unpack error (correct password?)");
+        ssh_set_error(&pki_error, SSH_FATAL, "OpenSSH private key unpack error (correct password?)");
         goto out;
     }
     rc = pki_openssh_import_privkey_blob(privkey_buffer, &key);
@@ -358,7 +358,7 @@ ssh_pki_openssh_import(const char *text_key,
         if (padding != i) {
             ssh_key_free(key);
             key = NULL;
-            SSH_LOG(SSH_LOG_TRACE, "Invalid padding");
+            ssh_set_error(&pki_error, SSH_FATAL, "Invalid padding");
             goto out;
         }
     }

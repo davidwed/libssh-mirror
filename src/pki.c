@@ -59,6 +59,13 @@
 
 #define PKCS11_URI "pkcs11:"
 
+LIBSSH_THREAD struct error_struct pki_error;
+
+const char* ssh_pki_get_error(void)
+{
+    return ssh_get_error(&pki_error);
+}
+
 enum ssh_keytypes_e pki_privatekey_type_from_string(const char *privkey)
 {
     char *start = NULL;

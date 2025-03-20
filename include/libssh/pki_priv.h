@@ -51,6 +51,8 @@ enum ssh_key_e {
   SSH_KEY_PRIVATE
 };
 
+extern LIBSSH_THREAD struct error_struct pki_error;
+
 void pki_key_clean(ssh_key key);
 
 int pki_key_ecdsa_nid_from_name(const char *name);
