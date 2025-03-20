@@ -887,6 +887,11 @@ LIBSSH_API void *ssh_buffer_get(ssh_buffer buffer);
 LIBSSH_API uint32_t ssh_buffer_get_len(ssh_buffer buffer);
 LIBSSH_API int ssh_session_set_disconnect_message(ssh_session session, const char *message);
 
+LIBSSH_API int
+ssh_pki_sign_string(ssh_key privkey, ssh_string input, const char* sig_namespace, ssh_string *output);
+LIBSSH_API int
+ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespace, ssh_string signed_str);
+
 #ifndef LIBSSH_LEGACY_0_4
 #include "libssh/legacy.h"
 #endif

@@ -405,6 +405,53 @@ bool ssh_key_size_allowed(ssh_session session, ssh_key key)
     }
 }
 
+
+/**
+ * @brief The SSH protocol defaults to use SHA1 with RSA (RFC 4253), but it
+ * does not match current security best practices so the extensions allow to
+ * use the SHA2 digests with RSA signatures (RFC8332). This helper function is
+ * available for use without session (for example for signing commits) and
+ * might cause interoperability issues when used within session!
+ *
+ * @param[in]  type     The type to convert.
+ *
+ * @return              A hash type to be used.
+ */
+enum ssh_digest_e
+key_type_to_hash(enum ssh_keytypes_e type)
+{
+    switch (type) {
+    case SSH_KEYTYPE_RSA_CERT01:
+    case SSH_KEYTYPE_RSA:
+        return SSH_DIGEST_SHA512;
+    case SSH_KEYTYPE_ECDSA_P256_CERT01:
+    case SSH_KEYTYPE_ECDSA_P256:
+        return SSH_DIGEST_SHA256;
+    case SSH_KEYTYPE_ECDSA_P384_CERT01:
+    case SSH_KEYTYPE_ECDSA_P384:
+        return SSH_DIGEST_SHA384;
+    case SSH_KEYTYPE_ECDSA_P521_CERT01:
+    case SSH_KEYTYPE_ECDSA_P521:
+        return SSH_DIGEST_SHA512;
+    case SSH_KEYTYPE_ED25519_CERT01:
+    case SSH_KEYTYPE_ED25519:
+        return SSH_DIGEST_AUTO;
+    case SSH_KEYTYPE_RSA1:
+    case SSH_KEYTYPE_DSS:        /* deprecated */
+    case SSH_KEYTYPE_DSS_CERT01: /* deprecated */
+    case SSH_KEYTYPE_ECDSA:
+    case SSH_KEYTYPE_UNKNOWN:
+    default:
+        SSH_LOG(SSH_LOG_WARN,
+                "Digest algorithm to be used with key type %u "
+                "is not defined",
+                type);
+    }
+
+    /* We should never reach this */
+    return SSH_DIGEST_AUTO;
+}
+
 /**
  * @brief Convert a key type to a hash type. This is usually unambiguous
  * for all the key types, unless the SHA2 extension (RFC 8332) is
@@ -448,26 +495,8 @@ enum ssh_digest_e ssh_key_type_to_hash(ssh_session session,
         /* Default algorithm for RSA is SHA1 */
         return SSH_DIGEST_SHA1;
 
-    case SSH_KEYTYPE_ECDSA_P256_CERT01:
-    case SSH_KEYTYPE_ECDSA_P256:
-        return SSH_DIGEST_SHA256;
-    case SSH_KEYTYPE_ECDSA_P384_CERT01:
-    case SSH_KEYTYPE_ECDSA_P384:
-        return SSH_DIGEST_SHA384;
-    case SSH_KEYTYPE_ECDSA_P521_CERT01:
-    case SSH_KEYTYPE_ECDSA_P521:
-        return SSH_DIGEST_SHA512;
-    case SSH_KEYTYPE_ED25519_CERT01:
-    case SSH_KEYTYPE_ED25519:
-        return SSH_DIGEST_AUTO;
-    case SSH_KEYTYPE_RSA1:
-    case SSH_KEYTYPE_DSS:   /* deprecated */
-    case SSH_KEYTYPE_DSS_CERT01:    /* deprecated */
-    case SSH_KEYTYPE_ECDSA:
-    case SSH_KEYTYPE_UNKNOWN:
     default:
-        SSH_LOG(SSH_LOG_TRACE, "Digest algorithm to be used with key type %u "
-                "is not defined", type);
+        return key_type_to_hash(type);
     }
 
     /* We should never reach this */
@@ -2682,6 +2711,233 @@ ssh_signature pki_do_sign(const ssh_key privkey,
     }
 
     return pki_sign_data(privkey, hash_type, input, input_len);
+}
+
+/**
+ * @brief Sign a string. This is usually unambiguous for all the key
+ * types, unless the SHA2 extension (RFC 8332) is negotiated during
+ * key exchange.
+ *
+ * @param[in]       privkey   The private key that will sign the string.
+ *
+ * @param[in]         input   The input string to sign.
+ *
+ * @param[in] sig_namespace   A C string to indicate context of signature.
+ *
+ * @param[in]        output   A pointer to the output signature string.
+ *
+ * @return  SSH_ERROR in case of error, SSH_OK otherwise.
+ */
+int
+ssh_pki_sign_string(ssh_key privkey, ssh_string input, const char *sig_namespace, ssh_string *output)
+{
+    int rc;
+    enum ssh_digest_e hash_type;
+    ssh_signature sign = NULL;
+    ssh_buffer sign_buffer = NULL;
+    unsigned char *b64_str = NULL;
+
+    if (privkey == NULL || sig_namespace == NULL) {
+        return SSH_ERROR;
+    }
+
+    *output = NULL;
+
+    // Allocate sign buffer
+    sign_buffer = ssh_buffer_new();
+    if (sign_buffer == NULL) {
+        rc = SSH_ERROR;
+        goto cleanup;
+    }
+
+    // Prepare data to sign (OpenSSH compatible format)
+    rc = ssh_buffer_add_data(sign_buffer, MAGIC_PREAMBLE, MAGIC_PREAMBLE_LEN);
+    if (rc != SSH_OK) goto cleanup;
+
+    rc = ssh_buffer_add_data(sign_buffer, sig_namespace, strlen(sig_namespace) + 1);
+    if (rc != SSH_OK) goto cleanup;
+
+    rc = ssh_buffer_add_data(sign_buffer, "", 1); // Reserved field (empty)
+    if (rc != SSH_OK) goto cleanup;
+
+    rc = ssh_buffer_add_data(sign_buffer, OPENSSH_SIGN_HASH_ALGO, strlen(OPENSSH_SIGN_HASH_ALGO) + 1);
+    if (rc != SSH_OK) goto cleanup;
+
+    rc = ssh_buffer_add_data(sign_buffer, ssh_string_data(input), ssh_string_len(input));
+    if (rc != SSH_OK) goto cleanup;
+
+    // Perform signing
+    hash_type = key_type_to_hash(privkey->type);
+    sign = pki_do_sign(privkey, ssh_buffer_get(sign_buffer), ssh_buffer_get_len(sign_buffer), hash_type);
+    if (sign == NULL) {
+        rc = SSH_ERROR;
+        goto cleanup;
+    }
+
+    // Encode to base64
+    b64_str = bin_to_base64(ssh_buffer_get(sign_buffer), ssh_buffer_get_len(sign_buffer));
+    if (b64_str == NULL) {
+        rc = SSH_ERROR;
+        goto cleanup;
+    }
+
+    *output = ssh_string_from_char((char *)b64_str);
+    if (*output == NULL) {
+        rc = SSH_ERROR;
+        goto cleanup;
+    }
+
+    rc = SSH_OK;
+
+cleanup:
+    free(b64_str);
+    ssh_signature_free(sign);
+    SSH_BUFFER_FREE(sign_buffer);
+
+    return rc;
+}
+
+/**
+ * @brief Verify a signed string.
+ *
+ * @param[in]        pubkey   The public key used to verify the string.
+ *
+ * @param[in]         input   The input string to verify.
+ *
+ * @param[in] sig_namespace   A C string to indicate context of signature.
+ *
+ * @param[in]    signed_str   The signed string to match.
+ *
+ * @return  SSH_ERROR in case of error, SSH_OK otherwise.
+ */
+int
+ssh_pki_verify_string(ssh_key pubkey, ssh_string input, const char *sig_namespace, ssh_string signed_str)
+{
+    int rc;
+    ssh_signature sign = NULL;
+    ssh_buffer buffer = NULL, toverify = NULL;
+    ssh_string sign_blob = NULL;
+    char *b64_str = NULL;
+    unsigned char *signature = NULL;
+    size_t signature_len;
+    size_t namespace_len, hash_algo_len;
+    char *namespace_extracted = NULL;
+    char *hashalg_extracted = NULL;
+
+    if (pubkey == NULL || sig_namespace == NULL || signed_str == NULL) {
+        return SSH_ERROR;
+    }
+
+    b64_str = ssh_string_to_char(signed_str);
+    if (b64_str == NULL) return SSH_ERROR;
+
+    buffer = base64_to_bin(b64_str);
+    free(b64_str);
+    if (buffer == NULL) return SSH_ERROR;
+
+    if (ssh_buffer_get_len(buffer) < MAGIC_PREAMBLE_LEN) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    if (memcmp(ssh_buffer_get(buffer), MAGIC_PREAMBLE, MAGIC_PREAMBLE_LEN) != 0) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+    ssh_buffer_get_data(buffer, NULL, MAGIC_PREAMBLE_LEN);
+
+    namespace_len = strlen(sig_namespace) + 1;
+    if (ssh_buffer_get_len(buffer) < namespace_len) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    namespace_extracted = malloc(namespace_len);
+    if (!namespace_extracted || ssh_buffer_get_data(buffer, namespace_extracted, namespace_len) != SSH_OK) {
+        SSH_BUFFER_FREE(buffer);
+        free(namespace_extracted);
+        return SSH_ERROR;
+    }
+    if (strcmp(namespace_extracted, sig_namespace) != 0) {
+        free(namespace_extracted);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+    free(namespace_extracted);
+
+    ssh_buffer_get_data(buffer, NULL, 1);
+
+    hash_algo_len = strlen(OPENSSH_SIGN_HASH_ALGO) + 1;
+    if (ssh_buffer_get_len(buffer) < hash_algo_len) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    hashalg_extracted = malloc(hash_algo_len);
+    if (!hashalg_extracted || ssh_buffer_get_data(buffer, hashalg_extracted, hash_algo_len) != SSH_OK) {
+        SSH_BUFFER_FREE(buffer);
+        free(hashalg_extracted);
+        return SSH_ERROR;
+    }
+    if (strcmp(hashalg_extracted, OPENSSH_SIGN_HASH_ALGO) != 0) {
+        free(hashalg_extracted);
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+    free(hashalg_extracted);
+
+    signature_len = ssh_buffer_get_len(buffer);
+    if (signature_len == 0) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    signature = ssh_buffer_get(buffer);
+    if (!signature) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    toverify = ssh_buffer_new();
+    if (toverify == NULL) {
+        SSH_BUFFER_FREE(buffer);
+        return SSH_ERROR;
+    }
+
+    rc = ssh_buffer_add_data(toverify, MAGIC_PREAMBLE, MAGIC_PREAMBLE_LEN);
+    if (rc != SSH_OK) goto cleanup;
+
+    rc = ssh_buffer_add_data(toverify, sig_namespace, namespace_len);
+    if (rc != SSH_OK) goto cleanup;
+
+    rc = ssh_buffer_add_data(toverify, "", 1);
+    if (rc != SSH_OK) goto cleanup;
+
+    rc = ssh_buffer_add_data(toverify, OPENSSH_SIGN_HASH_ALGO, hash_algo_len);
+    if (rc != SSH_OK) goto cleanup;
+
+    rc = ssh_buffer_add_data(toverify, ssh_string_data(input), ssh_string_len(input));
+    if (rc != SSH_OK) goto cleanup;
+
+    sign_blob = ssh_string_new(signature_len);
+    if (sign_blob == NULL) goto cleanup;
+
+    memcpy(ssh_string_data(sign_blob), signature, signature_len);
+
+    rc = ssh_pki_import_signature_blob(sign_blob, pubkey, &sign);
+    SSH_STRING_FREE(sign_blob);
+    if (rc != SSH_OK) goto cleanup;
+
+    rc = pki_verify_data_signature(sign,
+                                   pubkey,
+                                   ssh_buffer_get(toverify),
+                                   ssh_buffer_get_len(toverify));
+
+cleanup:
+    ssh_signature_free(sign);
+    SSH_BUFFER_FREE(buffer);
+    SSH_BUFFER_FREE(toverify);
+    return rc;
 }
 
 /*
