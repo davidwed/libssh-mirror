@@ -39,7 +39,6 @@
 
 #include <libssh/callbacks.h>
 #include <libssh/libssh.h>
-#include <libssh/sftp.h>
 
 
 #include "examples_common.h"
@@ -112,8 +111,8 @@ static int opts(int argc, char **argv)
 {
     int i;
 
-    while((i = getopt(argc,argv,"T:P:F:")) != -1) {
-        switch(i){
+    while ((i = getopt(argc,argv,"T:P:F:")) != -1) {
+        switch(i) {
         case 'P':
             pcap_file = optarg;
             break;
@@ -159,16 +158,14 @@ static void cfmakeraw(struct termios *termios_p)
 
 static void do_cleanup(int i)
 {
-  /* unused variable */
-  (void) i;
+    (void)i;
 
-  tcsetattr(0, TCSANOW, &terminal);
+    tcsetattr(0, TCSANOW, &terminal);
 }
 
 static void do_exit(int i)
 {
-    /* unused variable */
-    (void) i;
+    (void)i;
 
     do_cleanup(0);
     exit(0);
@@ -179,7 +176,7 @@ static int signal_delayed = 0;
 #ifdef SIGWINCH
 static void sigwindowchanged(int i)
 {
-    (void) i;
+    (void)i;
     signal_delayed = 1;
 }
 #endif
@@ -213,18 +210,18 @@ static void select_loop(ssh_session session,ssh_channel channel)
     /* stdin */
     connector_in = ssh_connector_new(session);
     ssh_connector_set_out_channel(connector_in, channel, SSH_CONNECTOR_STDINOUT);
-    ssh_connector_set_in_fd(connector_in, 0);
+    ssh_connector_set_in_fd(connector_in, STDIN_FILENO);
     ssh_event_add_connector(event, connector_in);
 
     /* stdout */
     connector_out = ssh_connector_new(session);
-    ssh_connector_set_out_fd(connector_out, 1);
+    ssh_connector_set_out_fd(connector_out, STDOUT_FILENO);
     ssh_connector_set_in_channel(connector_out, channel, SSH_CONNECTOR_STDINOUT);
     ssh_event_add_connector(event, connector_out);
 
     /* stderr */
     connector_err = ssh_connector_new(session);
-    ssh_connector_set_out_fd(connector_err, 2);
+    ssh_connector_set_out_fd(connector_err, STDERR_FILENO);
     ssh_connector_set_in_channel(connector_err, channel, SSH_CONNECTOR_STDERR);
     ssh_event_add_connector(event, connector_err);
 
@@ -253,7 +250,7 @@ static void shell(ssh_session session)
 {
     ssh_channel channel;
     struct termios terminal_local;
-    int interactive=isatty(0);
+    int interactive = isatty(0);
 
     channel = ssh_channel_new(session);
     if (channel == NULL) {
