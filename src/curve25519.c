@@ -41,6 +41,10 @@
 
 #ifdef HAVE_LIBCRYPTO
 #include <openssl/err.h>
+#elif defined(HAVE_MBEDTLS_CURVE25519)
+#include "mbedcrypto-compat.h"
+#include <mbedtls/ecdh.h>
+#include <mbedtls/error.h>
 #endif
 
 static SSH_PACKET_CALLBACK(ssh_packet_client_curve25519_reply);
@@ -59,12 +63,27 @@ static struct ssh_packet_callbacks_struct ssh_curve25519_client_callbacks = {
 int ssh_curve25519_init(ssh_session session)
 {
     int rc;
+    ssh_curve25519_pubkey *pubkey_loc = NULL;
+
 #ifdef HAVE_LIBCRYPTO
     EVP_PKEY_CTX *pctx = NULL;
     EVP_PKEY *pkey = NULL;
-    ssh_curve25519_pubkey *pubkey_loc = NULL;
     size_t pubkey_len = CURVE25519_PUBKEY_SIZE;
 
+#elif defined(HAVE_MBEDTLS_CURVE25519)
+    mbedtls_ecdh_context ecdh_ctx;
+    mbedtls_ctr_drbg_context *ctr_drbg = NULL;
+    char error_buf[128];
+    int ret = SSH_ERROR;
+
+#endif
+    if (session->server) {
+        pubkey_loc = &session->next_crypto->curve25519_server_pubkey;
+    } else {
+        pubkey_loc = &session->next_crypto->curve25519_client_pubkey;
+    }
+
+#ifdef HAVE_LIBCRYPTO
     pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, NULL);
     if (pctx == NULL) {
         SSH_LOG(SSH_LOG_TRACE,
@@ -91,12 +110,6 @@ int ssh_curve25519_init(ssh_session session)
         return SSH_ERROR;
     }
 
-    if (session->server) {
-        pubkey_loc = &session->next_crypto->curve25519_server_pubkey;
-    } else {
-        pubkey_loc = &session->next_crypto->curve25519_client_pubkey;
-    }
-
     rc = EVP_PKEY_get_raw_public_key(pkey, *pubkey_loc, &pubkey_len);
     if (rc != 1) {
         SSH_LOG(SSH_LOG_TRACE,
@@ -108,6 +121,90 @@ int ssh_curve25519_init(ssh_session session)
 
     session->next_crypto->curve25519_privkey = pkey;
     pkey = NULL;
+
+#elif defined(HAVE_MBEDTLS_CURVE25519)
+    ctr_drbg = ssh_get_mbedtls_ctr_drbg_context();
+
+    mbedtls_ecdh_init(&ecdh_ctx);
+    rc = mbedtls_ecdh_setup(&ecdh_ctx, MBEDTLS_ECP_DP_CURVE25519);
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE, "Failed to setup X25519 context: %s", error_buf);
+        goto out;
+    }
+
+#if MBEDTLS_VERSION_MAJOR > 2
+    rc = mbedtls_ecdh_gen_public(&ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                      .MBEDTLS_PRIVATE(mbed_ecdh)
+                                      .MBEDTLS_PRIVATE(grp),
+                                 &ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                      .MBEDTLS_PRIVATE(mbed_ecdh)
+                                      .MBEDTLS_PRIVATE(d),
+                                 &ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                      .MBEDTLS_PRIVATE(mbed_ecdh)
+                                      .MBEDTLS_PRIVATE(Q),
+                                 mbedtls_ctr_drbg_random,
+                                 ctr_drbg);
+#else
+    rc = mbedtls_ecdh_gen_public(&ecdh_ctx.grp,
+                                 &ecdh_ctx.d,
+                                 &ecdh_ctx.Q,
+                                 mbedtls_ctr_drbg_random,
+                                 ctr_drbg);
+#endif
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE,
+                "Failed to generate X25519 keypair: %s",
+                error_buf);
+        goto out;
+    }
+
+#if MBEDTLS_VERSION_MAJOR > 2
+    rc = mbedtls_mpi_write_binary_le(&ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                          .MBEDTLS_PRIVATE(mbed_ecdh)
+                                          .MBEDTLS_PRIVATE(d),
+                                     session->next_crypto->curve25519_privkey,
+                                     CURVE25519_PRIVKEY_SIZE);
+#else
+    rc = mbedtls_mpi_write_binary_le(&ecdh_ctx.d,
+                                     session->next_crypto->curve25519_privkey,
+                                     CURVE25519_PRIVKEY_SIZE);
+#endif
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE,
+                "Failed to write X25519 private key: %s",
+                error_buf);
+        goto out;
+    }
+
+#if MBEDTLS_VERSION_MAJOR > 2
+    rc = mbedtls_mpi_write_binary_le(&ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                          .MBEDTLS_PRIVATE(mbed_ecdh)
+                                          .MBEDTLS_PRIVATE(Q)
+                                          .MBEDTLS_PRIVATE(X),
+                                     *pubkey_loc,
+                                     CURVE25519_PUBKEY_SIZE);
+#else
+    rc = mbedtls_mpi_write_binary_le(&ecdh_ctx.Q.X,
+                                     *pubkey_loc,
+                                     CURVE25519_PUBKEY_SIZE);
+#endif
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE,
+                "Failed to write X25519 public key: %s",
+                error_buf);
+        goto out;
+    }
+
+    ret = SSH_OK;
+
+out:
+    mbedtls_ecdh_free(&ecdh_ctx);
+    return ret;
+
 #else
     rc = ssh_get_random(session->next_crypto->curve25519_privkey,
                         CURVE25519_PRIVKEY_SIZE, 1);
@@ -116,13 +213,9 @@ int ssh_curve25519_init(ssh_session session)
         return SSH_ERROR;
     }
 
-    if (session->server) {
-        crypto_scalarmult_base(session->next_crypto->curve25519_server_pubkey,
-                               session->next_crypto->curve25519_privkey);
-    } else {
-        crypto_scalarmult_base(session->next_crypto->curve25519_client_pubkey,
-                               session->next_crypto->curve25519_privkey);
-    }
+    crypto_scalarmult_base(*pubkey_loc,
+                           session->next_crypto->curve25519_privkey);
+
 #endif /* HAVE_LIBCRYPTO */
 
     return SSH_OK;
@@ -166,12 +259,28 @@ void ssh_client_curve25519_remove_callbacks(ssh_session session)
 
 int ssh_curve25519_create_k(ssh_session session, ssh_curve25519_pubkey k)
 {
+    ssh_curve25519_pubkey *peer_pubkey_loc = NULL;
+
 #ifdef HAVE_LIBCRYPTO
+    int rc, ret = SSH_ERROR;
     EVP_PKEY_CTX *pctx = NULL;
     EVP_PKEY *pkey = NULL, *pubkey = NULL;
     size_t shared_key_len = CURVE25519_PUBKEY_SIZE;
-    int rc, ret = SSH_ERROR;
 
+#elif defined(HAVE_MBEDTLS_CURVE25519)
+    int rc, ret = SSH_ERROR;
+    mbedtls_ecdh_context ecdh_ctx;
+    mbedtls_ctr_drbg_context *ctr_drbg = NULL;
+    char error_buf[128];
+
+#endif
+    if (session->server) {
+        peer_pubkey_loc = &session->next_crypto->curve25519_client_pubkey;
+    } else {
+        peer_pubkey_loc = &session->next_crypto->curve25519_server_pubkey;
+    }
+
+#ifdef HAVE_LIBCRYPTO
     pkey = session->next_crypto->curve25519_privkey;
     if (pkey == NULL) {
         SSH_LOG(SSH_LOG_TRACE,
@@ -196,15 +305,10 @@ int ssh_curve25519_create_k(ssh_session session, ssh_curve25519_pubkey k)
         goto out;
     }
 
-    if (session->server) {
-        pubkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, NULL,
-                                             session->next_crypto->curve25519_client_pubkey,
-                                             CURVE25519_PUBKEY_SIZE);
-    } else {
-        pubkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, NULL,
-                                             session->next_crypto->curve25519_server_pubkey,
-                                             CURVE25519_PUBKEY_SIZE);
-    }
+    pubkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519,
+                                         NULL,
+                                         *peer_pubkey_loc,
+                                         CURVE25519_PUBKEY_SIZE);
     if (pubkey == NULL) {
         SSH_LOG(SSH_LOG_TRACE,
                 "Failed to create X25519 public key EVP_PKEY: %s",
@@ -234,14 +338,126 @@ out:
     if (ret == SSH_ERROR) {
         return ret;
     }
-#else
-    if (session->server) {
-        crypto_scalarmult(k, session->next_crypto->curve25519_privkey,
-                          session->next_crypto->curve25519_client_pubkey);
-    } else {
-        crypto_scalarmult(k, session->next_crypto->curve25519_privkey,
-                          session->next_crypto->curve25519_server_pubkey);
+
+#elif defined(HAVE_MBEDTLS_CURVE25519)
+    ctr_drbg = ssh_get_mbedtls_ctr_drbg_context();
+
+    mbedtls_ecdh_init(&ecdh_ctx);
+    rc = mbedtls_ecdh_setup(&ecdh_ctx, MBEDTLS_ECP_DP_CURVE25519);
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE, "Failed to setup X25519 context: %s", error_buf);
+        goto out;
     }
+
+#if MBEDTLS_VERSION_MAJOR > 2
+    rc = mbedtls_mpi_read_binary_le(&ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                         .MBEDTLS_PRIVATE(mbed_ecdh)
+                                         .MBEDTLS_PRIVATE(d),
+                                    session->next_crypto->curve25519_privkey,
+                                    CURVE25519_PRIVKEY_SIZE);
+#else
+    rc = mbedtls_mpi_read_binary_le(&ecdh_ctx.d,
+                                    session->next_crypto->curve25519_privkey,
+                                    CURVE25519_PRIVKEY_SIZE);
+#endif
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE, "Failed to read private key: %s", error_buf);
+        goto out;
+    }
+
+#if MBEDTLS_VERSION_MAJOR > 2
+    rc = mbedtls_mpi_read_binary_le(&ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                         .MBEDTLS_PRIVATE(mbed_ecdh)
+                                         .MBEDTLS_PRIVATE(Qp)
+                                         .MBEDTLS_PRIVATE(X),
+                                    *peer_pubkey_loc,
+                                    CURVE25519_PUBKEY_SIZE);
+#else
+    rc = mbedtls_mpi_read_binary_le(&ecdh_ctx.Qp.X,
+                                    *peer_pubkey_loc,
+                                    CURVE25519_PUBKEY_SIZE);
+#endif
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE, "Failed to read peer public key: %s", error_buf);
+        goto out;
+    }
+
+#if MBEDTLS_VERSION_MAJOR > 2
+    rc = mbedtls_mpi_lset(&ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                               .MBEDTLS_PRIVATE(mbed_ecdh)
+                               .MBEDTLS_PRIVATE(Qp)
+                               .MBEDTLS_PRIVATE(Z),
+                          1);
+#else
+    rc = mbedtls_mpi_lset(&ecdh_ctx.Qp.Z, 1);
+#endif
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE, "Failed to set Z coordinate: %s", error_buf);
+        goto out;
+    }
+
+#if MBEDTLS_VERSION_MAJOR > 2
+    rc = mbedtls_ecdh_compute_shared(&ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                          .MBEDTLS_PRIVATE(mbed_ecdh)
+                                          .MBEDTLS_PRIVATE(grp),
+                                     &ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                          .MBEDTLS_PRIVATE(mbed_ecdh)
+                                          .MBEDTLS_PRIVATE(z),
+                                     &ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                          .MBEDTLS_PRIVATE(mbed_ecdh)
+                                          .MBEDTLS_PRIVATE(Qp),
+                                     &ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                          .MBEDTLS_PRIVATE(mbed_ecdh)
+                                          .MBEDTLS_PRIVATE(d),
+                                     mbedtls_ctr_drbg_random,
+                                     ctr_drbg);
+#else
+    rc = mbedtls_ecdh_compute_shared(&ecdh_ctx.grp,
+                                     &ecdh_ctx.z,
+                                     &ecdh_ctx.Qp,
+                                     &ecdh_ctx.d,
+                                     mbedtls_ctr_drbg_random,
+                                     ctr_drbg);
+#endif
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE,
+                "Failed to compute shared secret: %s",
+                error_buf);
+        goto out;
+    }
+
+#if MBEDTLS_VERSION_MAJOR > 2
+    rc = mbedtls_mpi_write_binary_le(&ecdh_ctx.MBEDTLS_PRIVATE(ctx)
+                                          .MBEDTLS_PRIVATE(mbed_ecdh)
+                                          .MBEDTLS_PRIVATE(z),
+                                     k,
+                                     CURVE25519_PUBKEY_SIZE);
+#else
+    rc = mbedtls_mpi_write_binary_le(&ecdh_ctx.z, k, CURVE25519_PUBKEY_SIZE);
+#endif
+    if (rc != 0) {
+        mbedtls_strerror(rc, error_buf, sizeof(error_buf));
+        SSH_LOG(SSH_LOG_TRACE, "Failed to write shared secret: %s", error_buf);
+        goto out;
+    }
+
+    ret = SSH_OK;
+
+out:
+    mbedtls_ecdh_free(&ecdh_ctx);
+    if (ret == SSH_ERROR) {
+        return ret;
+    }
+
+#else
+    crypto_scalarmult(k,
+                      session->next_crypto->curve25519_privkey,
+                      *peer_pubkey_loc);
 #endif /* HAVE_LIBCRYPTO */
 
 #ifdef DEBUG_CRYPTO
