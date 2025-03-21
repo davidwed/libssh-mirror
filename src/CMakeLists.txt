@@ -230,6 +230,7 @@ if (WITH_SFTP)
     sftp.c
     sftp_common.c
     sftp_aio.c
+    sftp_ft.c
   )
 
   if (WITH_SERVER)

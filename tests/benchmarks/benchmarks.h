@@ -39,6 +39,9 @@ enum libssh_benchmarks {
     BENCHMARK_ASYNC_SFTP_DOWNLOAD,
     BENCHMARK_ASYNC_SFTP_AIO_DOWNLOAD,
     BENCHMARK_ASYNC_SFTP_AIO_UPLOAD,
+    BENCHMARK_SFTP_FT_UPLOAD,
+    BENCHMARK_SFTP_FT_DOWNLOAD,
+    BENCHMARK_SFTP_FT_REMOTE_COPY,
     BENCHMARK_NUMBER
 };
 
@@ -102,4 +105,10 @@ int benchmarks_async_sftp_aio_down(ssh_session session, struct argument_s *args,
     float *bps);
 int benchmarks_async_sftp_aio_up(ssh_session session, struct argument_s *args,
     float *bps);
+int benchmarks_sftp_ft_up(ssh_session session, struct argument_s *args,
+    float *bps);
+int benchmarks_sftp_ft_down(ssh_session session, struct argument_s *args,
+    float *bps);
+int benchmarks_sftp_ft_remote_copy(ssh_session session, struct argument_s *args,
+    float *);
 #endif /* BENCHMARKS_H_ */

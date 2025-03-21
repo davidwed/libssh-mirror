@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <string.h>
 
 #define SFTPDIR "/tmp/"
 #define SFTPFILE "scpbenchmark"
@@ -633,4 +635,205 @@ error:
     sftp_limits_free(li);
     sftp_free(sftp);
     return -1;
+}
+
+static int benchmarks_sftp_ft_common(ssh_session session,
+                                     struct argument_s *args,
+                                     float *bps,
+                                     enum sftp_ft_type_e type)
+{
+    sftp_session sftp = NULL;
+    sftp_ft ft = NULL;
+
+    size_t total_bytes = args->datasize * 1024 * 1024;
+    size_t total_bytes_written = 0, to_write;
+    ssize_t bytes_written;
+
+    struct timestamp_struct ts = {0};
+    char operation_name[32] = {0}, func_name[64] = {0};
+    const char *prefix = "sftp_ft_";
+
+    const char *source = SFTPDIR "bench_sftp_ft_source";
+    const char *target = SFTPDIR SFTPFILE;
+    mode_t target_mode = 0666;
+    size_t chunk_size = args->chunksize, req_count = args->concurrent_requests;
+    float ms;
+    int fd, rc;
+
+    switch (type) {
+    case SFTP_FT_TYPE_LOCAL_COPY:
+        snprintf(operation_name, sizeof(operation_name), "%s", "local-copy");
+        snprintf(func_name, sizeof(func_name), "%s%s", prefix, "local_copy");
+        break;
+
+    case SFTP_FT_TYPE_UPLOAD:
+        snprintf(operation_name, sizeof(operation_name), "%s", "upload");
+        snprintf(func_name, sizeof(func_name), "%s%s", prefix, "upload");
+        break;
+
+    case SFTP_FT_TYPE_DOWNLOAD:
+        snprintf(operation_name, sizeof(operation_name), "%s", "download");
+        snprintf(func_name, sizeof(func_name), "%s%s", prefix, "download");
+        break;
+
+    case SFTP_FT_TYPE_REMOTE_COPY:
+        snprintf(operation_name, sizeof(operation_name), "%s", "remote-copy");
+        snprintf(func_name, sizeof(func_name), "%s%s", prefix, "remote_copy");
+        break;
+
+    default :
+        fprintf(stderr, "Invalid transfer type %d\n", type);
+        return -1;
+    }
+
+    fd = open(source, O_WRONLY | O_CREAT, 0666);
+    if (fd == -1) {
+        return -1;
+    }
+
+    while (total_bytes_written < total_bytes) {
+        to_write = total_bytes - total_bytes_written;
+        if (to_write > args->chunksize) {
+            to_write = args->chunksize;
+        }
+
+        bytes_written = write(fd, buffer, to_write);
+        if (bytes_written == -1) {
+            fprintf(stderr,
+                    "%s : Unable to create the source file as "
+                    "writing to it failed, reason : %s",
+                    func_name, strerror(errno));
+            close(fd);
+            return -1;
+        }
+
+        total_bytes_written += (size_t)bytes_written;
+    }
+
+    rc = close(fd);
+    if (rc == -1) {
+        fprintf(stderr,
+                "%s : Error encountered while closing the source file, "
+                "error : %s\n",
+                func_name, strerror(errno));
+        return -1;
+    }
+
+    sftp = sftp_new(session);
+    if (sftp == NULL) {
+        goto error;
+    }
+
+    rc = sftp_init(sftp);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    ft = sftp_ft_new(sftp);
+    if (ft == NULL) {
+        goto error;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_TYPE, &type);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_SOURCE_PATH, source);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_TARGET_PATH, target);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_TARGET_MODE, &target_mode);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_CHUNK_SIZE, &chunk_size);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    rc = sftp_ft_options_set(ft, SFTP_FT_OPTIONS_REQUESTS, &req_count);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    if (args->verbose > 0) {
+        fprintf(stdout,
+                "Starting %s of %zu bytes now, using %d concurrent requests.\n",
+                operation_name, total_bytes, args->concurrent_requests);
+    }
+
+    timestamp_init(&ts);
+
+    rc = sftp_ft_transfer(ft);
+    if (rc == SSH_ERROR) {
+        goto error;
+    }
+
+    ms = elapsed_time(&ts);
+    *bps = (float)(8000 * total_bytes) / ms;
+    if (args->verbose > 0) {
+        fprintf(stdout, "%s took %f ms for %zu bytes at %f bps.\n",
+                operation_name, ms, total_bytes, *bps);
+    }
+
+    sftp_ft_free(ft);
+    sftp_free(sftp);
+
+    rc = unlink(source);
+    if (rc == -1) {
+        fprintf(stderr, "%s : Failed to unlink the source file, reason : %s",
+                func_name, strerror(errno));
+        return -1;
+    }
+
+    return 0;
+
+error :
+    fprintf(stderr, "Error during sftp ft %s : %s\n",
+            operation_name, ssh_get_error(session));
+    sftp_ft_free(ft);
+    sftp_free(sftp);
+    unlink(source);
+    return -1;
+}
+
+int benchmarks_sftp_ft_up(ssh_session session,
+                          struct argument_s *args,
+                          float *bps)
+{
+    enum sftp_ft_type_e type = SFTP_FT_TYPE_UPLOAD;
+    int rc;
+
+    rc = benchmarks_sftp_ft_common(session, args, bps, type);
+    return rc;
+}
+
+int benchmarks_sftp_ft_down(ssh_session session,
+                            struct argument_s *args,
+                            float *bps)
+{
+    enum sftp_ft_type_e type = SFTP_FT_TYPE_DOWNLOAD;
+    int rc;
+
+    rc = benchmarks_sftp_ft_common(session, args, bps, type);
+    return rc;
+}
+
+int benchmarks_sftp_ft_remote_copy(ssh_session session,
+                                   struct argument_s *args,
+                                   float *bps)
+{
+    enum sftp_ft_type_e type = SFTP_FT_TYPE_REMOTE_COPY;
+    int rc;
+
+    rc = benchmarks_sftp_ft_common(session, args, bps, type);
+    return rc;
 }

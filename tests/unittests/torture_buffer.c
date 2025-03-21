@@ -5,6 +5,8 @@
 #include "torture.h"
 #define DEBUG_BUFFER
 #include "buffer.c"
+#include <fcntl.h>
+#include <errno.h>
 
 #define LIMIT (8*1024*1024)
 
@@ -300,6 +302,212 @@ static void torture_ssh_buffer_bignum(void **state)
     SSH_BUFFER_FREE(buffer);
 }
 
+static void torture_buffer_file_read(void **state)
+{
+    ssh_buffer buffer = *state;
+    uint32_t buffer_len;
+
+    const char *template = "libssh_torture_buffer_file_read_XXXXXX";
+    char *file_path = NULL;
+    const char *data = "This is a unit test to test the "
+                       "ssh_buffer_file_read() function "
+                       "of the ssh buffer api";
+    void *ptr = NULL;
+
+    size_t data_len = strlen(data);
+    ssize_t bytes_written, bytes_read;
+    off_t offset;
+
+    struct {
+        char *buf;
+        ssize_t bytes_read;
+    } a = {0};
+
+    int fd, rc;
+
+    /*
+     * Create a temporary file, open it for reading
+     * as well as writing.
+     */
+    file_path = torture_create_temp_file(template);
+    assert_non_null(file_path);
+
+    fd = open(file_path, O_RDWR, 0);
+    assert_int_not_equal(fd, -1);
+
+    /* Write data to the file */
+    bytes_written = write(fd, data, data_len);
+    assert_int_equal(bytes_written, data_len);
+
+    /*
+     * Read data from the file into the ssh buffer
+     * using ssh_buffer_file_read()
+     */
+    offset = lseek(fd, 0, SEEK_SET); /* Seek to the start of file */
+    assert_int_equal(offset, 0);
+
+    bytes_read = ssh_buffer_file_read(buffer, fd, data_len);
+    assert_int_equal(bytes_read, data_len);
+
+    /*
+     * Check whether the number of bytes ssh_buffer_file_read() claims to read
+     * were actually read into the ssh buffer or not.
+     */
+    buffer_len = ssh_buffer_get_len(buffer);
+    assert_int_equal(buffer_len, bytes_read);
+
+    /*
+     * Check whether ssh_buffer_file_read() correctly updated local file offset
+     * by the number of bytes it claims to read or not.
+     */
+    offset = lseek(fd, 0, SEEK_CUR); /* Get the current file offset */
+    assert_int_equal(offset, bytes_read);
+
+    /*
+     * Check whether the bytes read into the ssh buffer were same as the bytes
+     * present in the file or some garbage was stored in the ssh buffer.
+     */
+    offset = lseek(fd, 0, SEEK_SET); /* Seek to the start of the file */
+    assert_int_equal(offset, 0);
+
+    a.buf = malloc(sizeof(char) * bytes_read);
+    assert_non_null(a.buf);
+
+    a.bytes_read = read(fd, a.buf, bytes_read);
+    assert_int_equal(a.bytes_read, bytes_read);
+
+    ptr = ssh_buffer_get(buffer);
+    rc = memcmp(a.buf, ptr, bytes_read);
+    assert_int_equal(rc, 0);
+
+    /* Negative tests start */
+
+    /* Passing NULL instead of an ssh buffer's address */
+    bytes_read = ssh_buffer_file_read(NULL, fd, data_len);
+    assert_int_equal(bytes_read, -1);
+
+    /* Passing an invalid file descriptor */
+    bytes_read = ssh_buffer_file_read(buffer, -2, data_len);
+    assert_int_equal(bytes_read, -1);
+
+    /* Passing 0 as the number of bytes to read */
+    bytes_read = ssh_buffer_file_read(buffer, fd, 0);
+    assert_int_equal(bytes_read, -1);
+
+    /* Cleanup */
+    free(a.buf);
+
+    rc = close(fd);
+    assert_int_equal(rc, 0);
+
+    rc = unlink(file_path);
+    assert_int_equal(rc, 0);
+
+    free(file_path);
+}
+
+static void torture_buffer_file_write(void **state)
+{
+    ssh_buffer buffer = *state;
+    uint32_t buffer_len;
+
+    const char *template = "libssh_torture_buffer_file_write_test_XXXXXX";
+    char *file_path = NULL;
+    const char *data = "This is a unit test for testing "
+                       "ssh_buffer_file_write() function "
+                       "of the ssh buffer api";
+    size_t data_len = strlen(data);
+    char *buf = NULL;
+
+    off_t offset;
+    ssize_t bytes_written, bytes_read;
+    int fd, rc;
+
+    /* Store the data to write in the ssh buffer */
+    rc = ssh_buffer_add_data(buffer, data, data_len);
+    assert_int_equal(rc, SSH_OK);
+
+    /*
+     * Create a temporary file, open it for reading
+     * as well as writing.
+     */
+    file_path = torture_create_temp_file(template);
+    assert_non_null(file_path);
+
+    fd = open(file_path, O_RDWR, 0);
+    assert_int_not_equal(fd, -1);
+
+    /*
+     * Write data present in the buffer to the file using
+     * ssh_buffer_file_write()
+     */
+    bytes_written = ssh_buffer_file_write(buffer, fd, data_len);
+    assert_int_equal(bytes_written, data_len);
+
+    /*
+     * Check whether the number of bytes ssh_buffer_file_write() claims to
+     * write were written to the file or not.
+     */
+    offset = lseek(fd, 0, SEEK_CUR); /* Get the current file offset */
+    assert_int_equal(offset, bytes_written);
+
+    /*
+     * Check whether the number of bytes ssh_buffer_file_write() claims to
+     * write were taken out of the ssh buffer or not.
+     */
+    buffer_len = ssh_buffer_get_len(buffer);
+    assert_int_equal(buffer_len, 0);
+
+    /*
+     * Check whether the data written to the file is the data that was present
+     * in the ssh buffer or some garbage was written to the file.
+     */
+    buf = malloc(sizeof(char) * bytes_written);
+    assert_non_null(buf);
+
+    offset = lseek(fd, 0, SEEK_SET); /* Seek to the start of the file */
+    assert_int_equal(offset, 0);
+
+    bytes_read = read(fd, buf, bytes_written);
+    assert_int_equal(bytes_read, bytes_written);
+
+    rc = memcmp(buf, data, bytes_read);
+    assert_int_equal(rc, 0);
+
+    /* Negative tests start */
+
+    /* Pass NULL instead of an ssh buffer's address */
+    bytes_written = ssh_buffer_file_write(NULL, fd, data_len);
+    assert_int_equal(bytes_written, -1);
+
+    /* Pass an invalid file descriptor */
+    bytes_written = ssh_buffer_file_write(buffer, -2, data_len);
+    assert_int_equal(bytes_written, -1);
+
+    /* Pass 0 as bytes to write */
+    bytes_written = ssh_buffer_file_write(buffer, fd, 0);
+    assert_int_equal(bytes_written, -1);
+
+    /*
+     * Check whether ssh_buffer_file_write() fails or not if we request to
+     * write more bytes than the number of bytes present in the ssh buffer.
+     */
+    buffer_len = ssh_buffer_get_len(buffer);
+    bytes_written = ssh_buffer_file_write(buffer, fd, buffer_len + 1);
+    assert_int_equal(bytes_written, -1);
+
+    /* Cleanup */
+    free(buf);
+
+    rc = close(fd);
+    assert_int_equal(rc, 0);
+
+    rc = unlink(file_path);
+    assert_int_equal(rc, 0);
+
+    free(file_path);
+}
+
 int torture_run_tests(void) {
     int rc;
     struct CMUnitTest tests[] = {
@@ -326,6 +534,12 @@ int torture_run_tests(void) {
                                         setup,
                                         teardown),
         cmocka_unit_test(torture_ssh_buffer_bignum),
+        cmocka_unit_test_setup_teardown(torture_buffer_file_read,
+                                        setup,
+                                        teardown),
+        cmocka_unit_test_setup_teardown(torture_buffer_file_write,
+                                        setup,
+                                        teardown),
     };
 
     ssh_init();

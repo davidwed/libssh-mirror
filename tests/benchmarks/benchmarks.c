@@ -75,6 +75,21 @@ struct benchmark benchmarks[] = {
         .name = "benchmark_async_sftp_aio_upload",
         .fct = benchmarks_async_sftp_aio_up,
         .enabled = 0
+    },
+    {
+        .name = "benchmark_sftp_ft_upload",
+        .fct  = benchmarks_sftp_ft_up,
+        .enabled = 0
+    },
+    {
+        .name = "benchmark_sftp_ft_download",
+        .fct  = benchmarks_sftp_ft_down,
+        .enabled = 0
+    },
+    {
+        .name = "benchmark_sftp_ft_remote_copy",
+        .fct  = benchmarks_sftp_ft_remote_copy,
+        .enabled = 0
     }
 #endif /* WITH_SFTP */
 };
@@ -174,6 +189,30 @@ static struct argp_option options[] = {
         .group = 0
     },
     {
+        .name  = "sftp-ft-upload",
+        .key   = 'D',
+        .arg   = NULL,
+        .flags = 0,
+        .doc   = "Upload data using SFTP FT API",
+        .group = 0
+    },
+    {
+        .name  = "sftp-ft-download",
+        .key   = 'E',
+        .arg   = NULL,
+        .flags = 0,
+        .doc   = "Download data using SFTP FT API",
+        .group = 0
+    },
+    {
+        .name  = "sftp-ft-remote-copy",
+        .key   = 'F',
+        .arg   = NULL,
+        .flags = 0,
+        .doc   = "Remote copy data using SFTP FT API",
+        .group = 0
+    },
+    {
         .name  = "host",
         .key   = 'h',
         .arg   = "HOST",
@@ -239,6 +278,12 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
     case '8':
     case '9':
         benchmarks[key - '1'].enabled = 1;
+        arguments->ntests++;
+        break;
+    case 'D':
+    case 'E':
+    case 'F':
+        benchmarks[key - 'D' + 9].enabled = 1;
         arguments->ntests++;
         break;
     case 'v':
