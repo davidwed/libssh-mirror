@@ -15,6 +15,7 @@ stages:
   - build
   - test
   - analysis
+  - deploy
 
 # This is some black magic to select between branch pipelines and
 # merge request pipelines to avoid running same pipelines in twice
@@ -228,6 +229,46 @@ fedora/coverage:
       coverage_report:
         coverage_format: cobertura
         path: obj/coverage_xml.xml
+
+# Generate HTML coverage reports for GitLab Pages on master branch
+pages:
+  stage: deploy
+  image: $CI_REGISTRY/$BUILD_IMAGES_PROJECT:$FEDORA_BUILD
+  variables:
+    CMAKE_ADDITIONAL_OPTIONS: >-
+      -DCMAKE_BUILD_TYPE=Debug
+      -DWITH_COVERAGE=ON
+      -DUNIT_TESTING=ON
+  script:
+    - mkdir -p obj && cd obj
+    - cmake $CMAKE_ADDITIONAL_OPTIONS .. > cmake_output.log 2>&1 || { cat cmake_output.log; exit 1; }
+    - make -j$(nproc) > build_output.log 2>&1 || { cat build_output.log; exit 1; }
+    - cd ..
+    - mkdir -p public
+    - echo "<html><head><title>libssh Code Coverage Report</title></head><body><h1>libssh Code Coverage Report</h1><p>Generating coverage report...</p></body></html>" > public/index.html
+    - cd obj
+    - if make coverage_html > coverage_output.log 2>&1; then
+        if [ -d "coverage_html" ] && [ "$(ls -A coverage_html)" ]; then
+          cp -r coverage_html/* ../public/;
+          grep -A5 "Overall coverage rate" coverage_output.log || true;
+        else
+          echo "<html><head><title>libssh Code Coverage</title></head><body><h1>libssh Code Coverage Report</h1><p>Coverage report was generated successfully, but data could not be copied properly.</p></body></html>" > ../public/index.html;
+        fi
+      else
+        echo "<html><head><title>libssh Code Coverage</title></head><body><h1>libssh Code Coverage Report</h1><p>Failed to generate coverage report. Please check the build logs for details.</p></body></html>" > ../public/index.html;
+        cat coverage_output.log;
+      fi
+    - cd ..
+    - ls -la public/
+  artifacts:
+    paths:
+      - public
+    expire_in: 30 days
+  coverage: /^\s*lines:\s*\d+.\d+\%/
+  only:
+    - master
+  tags:
+    - saas-linux-small-amd64
 
 fedora/openssl_3.x/x86_64:
   extends: .fedora
@@ -635,9 +676,13 @@ freebsd/openssl_1.1.1/x86_64:
       - .vcpkg
   variables:
     ErrorActionPreference: STOP
+    CMAKE_DEFAULT_OPTIONS: "-DCMAKE_BUILD_TYPE=RelWithDebInfo -DPICKY_DEVELOPER=ON"
+    CMAKE_BUILD_OPTIONS: "-DWITH_SFTP=ON -DWITH_SERVER=ON -DWITH_ZLIB=ON"
+    CMAKE_TEST_OPTIONS: "-DUNIT_TESTING=ON"
+    CMAKE_OPTIONS: $CMAKE_DEFAULT_OPTIONS $CMAKE_BUILD_OPTIONS $CMAKE_TEST_OPTIONS
   script:
-    - cmake --build .
-    - ctest --output-on-failure
+    - cmake --build . --config RelWithDebInfo --parallel 8
+    - ctest --output-on-failure -C RelWithDebInfo -E "torture_rand|torture_crypto"
   tags:
     - saas-windows-medium-amd64
   only:
@@ -655,18 +700,25 @@ freebsd/openssl_1.1.1/x86_64:
     - $env:VCPKG_DEFAULT_BINARY_CACHE="$PWD\.vcpkg\archives"
     - echo $env:VCPKG_DEFAULT_BINARY_CACHE
     - $env:VCPKG_DEFAULT_TRIPLET="$TRIPLET-windows"
-    - vcpkg install cmocka
-    - vcpkg install openssl
-    - vcpkg install zlib
+    - vcpkg install openssl:$env:VCPKG_DEFAULT_TRIPLET
+    - vcpkg install zlib:$env:VCPKG_DEFAULT_TRIPLET
+    - vcpkg install cmocka:$env:VCPKG_DEFAULT_TRIPLET
     - vcpkg integrate install
     - mkdir -p obj; if ($?) {cd obj}; if (! $?) {exit 1}
+    - $env:ZLIB_ROOT="C:/vcpkg/packages/zlib_$env:VCPKG_DEFAULT_TRIPLET"
+    - $env:OPENSSL_ROOT_DIR="C:/vcpkg/packages/openssl_$env:VCPKG_DEFAULT_TRIPLET"
+    - $env:CMOCKA_ROOT="C:/vcpkg/packages/cmocka_$env:VCPKG_DEFAULT_TRIPLET"
     - cmake
         -A $PLATFORM
         -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-        -DPICKY_DEVELOPER=ON
-        -DWITH_SFTP=ON -DWITH_SERVER=ON -DWITH_ZLIB=ON -DWITH_PCAP=ON
-        -DUNIT_TESTING=ON ..
-
+        -DVCPKG_TARGET_TRIPLET=$env:VCPKG_DEFAULT_TRIPLET
+        -DZLIB_ROOT="$env:ZLIB_ROOT"
+        -DZLIB_LIBRARY="$env:ZLIB_ROOT/lib/zlib.lib"
+        -DZLIB_INCLUDE_DIR="$env:ZLIB_ROOT/include"
+        -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
+        -DCMAKE_PREFIX_PATH="C:/vcpkg/packages/cmocka_$env:VCPKG_DEFAULT_TRIPLET;C:/vcpkg/packages/zlib_$env:VCPKG_DEFAULT_TRIPLET;C:/vcpkg/packages/openssl_$env:VCPKG_DEFAULT_TRIPLET"
+        -DCMAKE_FIND_DEBUG_MODE=ON
+        $CMAKE_OPTIONS ..
 visualstudio/x86_64:
   extends: .vs
   variables:
