@@ -12,6 +12,12 @@ if (ARGP_INCLUDE_DIR)
     include_directories(${ARGP_INCLUDE_DIR})
 endif()
 
+if (WITH_NO_TEST_DEPRECATION)
+    set_source_files_properties(${example_SRCS}
+                                PROPERTIES
+                                    COMPILE_FLAGS ${DEFAULT_C_NO_DEPRECATION_FLAGS})
+endif (WITH_NO_TEST_DEPRECATION)
+
 if (UNIX AND NOT WIN32)
     add_executable(libssh_scp libssh_scp.c ${examples_SRCS})
     target_compile_options(libssh_scp PRIVATE ${DEFAULT_C_COMPILE_FLAGS})

@@ -13,5 +13,8 @@ endif (WITH_SFTP)
 include_directories(${libssh_BINARY_DIR})
 
 add_executable(benchmarks ${benchmarks_SRCS})
+if (WITH_NO_TEST_DEPRECATION)
+    target_compile_options(benchmarks PUBLIC ${DEFAULT_C_NO_DEPRECATION_FLAGS})
+endif (WITH_NO_TEST_DEPRECATION)
 
 target_link_libraries(benchmarks ssh::static pthread)

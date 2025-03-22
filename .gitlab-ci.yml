@@ -414,7 +414,7 @@ fedora/csbuild/openssl_3.x:
   script:
     - csbuild
       --build-dir=obj-csbuild
-      --build-cmd "rm -rf CMakeFiles CMakeCache.txt && cmake -DCMAKE_BUILD_TYPE=Debug -DPICKY_DEVELOPER=ON -DUNIT_TESTING=ON -DCLIENT_TESTING=ON -DSERVER_TESTING=ON -DFUZZ_TESTING=ON @SRCDIR@ && make clean && make -j$(nproc)"
+      --build-cmd "rm -rf CMakeFiles CMakeCache.txt && cmake -DCMAKE_BUILD_TYPE=Debug -DPICKY_DEVELOPER=ON -DUNIT_TESTING=ON -DCLIENT_TESTING=ON -DSERVER_TESTING=ON -DFUZZ_TESTING=ON -DWITH_NO_TEST_DEPRECATION=ON @SRCDIR@ && make clean && make -j$(nproc)"
       --git-commit-range $CI_COMMIT_RANGE
       --color
       --print-current --print-fixed
@@ -424,7 +424,7 @@ fedora/csbuild/libgcrypt:
   script:
     - csbuild
       --build-dir=obj-csbuild
-      --build-cmd "rm -rf CMakeFiles CMakeCache.txt && cmake -DCMAKE_BUILD_TYPE=Debug -DPICKY_DEVELOPER=ON -DUNIT_TESTING=ON -DCLIENT_TESTING=ON -DSERVER_TESTING=ON -DFUZZ_TESTING=ON -DWITH_GCRYPT=ON @SRCDIR@ && make clean && make -j$(nproc)"
+      --build-cmd "rm -rf CMakeFiles CMakeCache.txt && cmake -DCMAKE_BUILD_TYPE=Debug -DPICKY_DEVELOPER=ON -DUNIT_TESTING=ON -DCLIENT_TESTING=ON -DSERVER_TESTING=ON -DFUZZ_TESTING=ON -DWITH_GCRYPT=ON -DWITH_NO_TEST_DEPRECATION=ON @SRCDIR@ && make clean && make -j$(nproc)"
       --git-commit-range $CI_COMMIT_RANGE
       --color
       --print-current --print-fixed
@@ -434,7 +434,7 @@ fedora/csbuild/mbedtls:
   script:
     - csbuild
       --build-dir=obj-csbuild
-      --build-cmd "rm -rf CMakeFiles CMakeCache.txt && cmake -DCMAKE_BUILD_TYPE=Debug -DPICKY_DEVELOPER=ON -DUNIT_TESTING=ON -DCLIENT_TESTING=ON -DSERVER_TESTING=ON -DFUZZ_TESTING=ON -DWITH_MBEDTLS=ON @SRCDIR@ && make clean && make -j$(nproc)"
+      --build-cmd "rm -rf CMakeFiles CMakeCache.txt && cmake -DCMAKE_BUILD_TYPE=Debug -DPICKY_DEVELOPER=ON -DUNIT_TESTING=ON -DCLIENT_TESTING=ON -DSERVER_TESTING=ON -DFUZZ_TESTING=ON -DWITH_MBEDTLS=ON -DWITH_NO_TEST_DEPRECATION=ON @SRCDIR@ && make clean && make -j$(nproc)"
       --git-commit-range $CI_COMMIT_RANGE
       --color
       --print-current --print-fixed

@@ -398,7 +398,6 @@ static void torture_server_establish_sftp(void **state)
 
     /* init sftp session */
     tsftp = s->ssh.tsftp;
-    sftp = tsftp->sftp;
 
     printf("in establish before sftp_new\n");
     sftp = sftp_new(session);
@@ -454,7 +453,7 @@ static void torture_server_test_sftp_function(void **state)
     rc = ssh_userauth_password(session, NULL, SSHD_DEFAULT_PASSWORD);
     assert_int_equal(rc, SSH_AUTH_SUCCESS);
 
-    rv_str = ssh_get_issue_banner(session);
+    ssh_get_issue_banner(session);
 
     /* init sftp session */
     tsftp = s->ssh.tsftp;
