@@ -478,7 +478,14 @@ int sftp_init(sftp_session sftp)
         return -1;
     }
 
-    /* TODO: are we sure there are 4 bytes ready? */
+    if (ssh_buffer_get_len(packet->payload) < 4) {
+        ssh_set_error(sftp->session,
+                      SSH_FATAL,
+                      "Invalid SSH_FXP_VERSION packet size");
+        sftp_set_error(sftp, SSH_FX_FAILURE);
+        return -1;
+    }
+
     rc = ssh_buffer_unpack(packet->payload, "d", &version);
     if (rc != SSH_OK) {
         ssh_set_error(sftp->session,
