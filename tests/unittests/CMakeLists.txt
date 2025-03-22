@@ -5,6 +5,7 @@ set(LIBSSH_UNIT_TESTS
     torture_buffer
     torture_bytearray
     torture_callbacks
+    torture_callbacks_auth_agent
     torture_crypto
     torture_init
     torture_list
@@ -129,4 +130,8 @@ if (CMAKE_USE_PTHREADS_INIT)
                     ENVIRONMENT ${TORTURE_UNIT_ENVIRONMENT})
     endforeach()
 endif ()
+
+# add_cmocka_test(torture_callbacks_auth_agent
+#                 SOURCES torture_callbacks_auth_agent.c
+#                 LINK_LIBRARIES ssh::ssh ${CMOCKA_LIBRARIES})
 
