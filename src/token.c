@@ -52,8 +52,15 @@ void ssh_tokens_free(struct ssh_tokens_st *tokens)
         }
     }
 
+    if (tokens->n_tokens != NULL) {
+        for (i = 0; tokens->n_tokens[i] != NULL; i++) {
+            explicit_bzero(tokens->n_tokens[i], strlen(tokens->n_tokens[i]));
+        }
+    }
+
     SAFE_FREE(tokens->buffer);
     SAFE_FREE(tokens->tokens);
+    SAFE_FREE(tokens->n_tokens);
     SAFE_FREE(tokens);
 }
 
@@ -75,6 +82,10 @@ struct ssh_tokens_st *ssh_tokenize(const char *chain, char separator)
 
     struct ssh_tokens_st *tokens = NULL;
     size_t num_tokens = 1, i = 1;
+        
+    /* First token starts in the beginning of the chain */
+    int tok_count = 0;
+    int n_tok_count = 0;
 
     char *found, *c;
 
@@ -103,12 +114,18 @@ struct ssh_tokens_st *ssh_tokenize(const char *chain, char separator)
 
     /* Allocate tokens list */
     tokens->tokens = calloc(num_tokens + 1, sizeof(char *));
-    if (tokens->tokens == NULL) {
+    tokens->n_tokens = calloc(num_tokens + 1, sizeof(char *));
+
+    if (tokens->tokens == NULL || tokens->n_tokens == NULL) {
         goto error;
     }
 
-    /* First token starts in the beginning of the chain */
-    tokens->tokens[0] = tokens->buffer;
+
+    if(tokens->buffer[0] == '!'){
+        tokens->n_tokens[n_tok_count++] = tokens->buffer;
+    } else{
+        tokens->tokens[tok_count++] = tokens->buffer;
+    }
     c = tokens->buffer;
 
     for (i = 1; i < num_tokens; i++) {
@@ -126,7 +143,12 @@ struct ssh_tokens_st *ssh_tokenize(const char *chain, char separator)
 
         /* If we did not reach the end of the chain yet, set the next token */
         if (*c != '\0') {
-            tokens->tokens[i] = c;
+            if(*c == '!'){
+                tokens->n_tokens[n_tok_count++] = c + 1;
+            }
+            else{
+                tokens->tokens[tok_count++] = c;
+            }
         } else {
             break;
         }
@@ -142,6 +164,71 @@ error:
 /**
  * @internal
  *
+ * @brief given a string text and a pattern, checks if they match
+ *  pattern recognises the following characters :
+ *  ? => matches exactly one character
+ *  * => matches zero or more characters in a row 
+ *  
+ *  Example : aes* would match with all the aes algorithms 
+ *                                  such as aes128-ctr, aes192-ctr etc.,
+ *            aes1??-ctr would match with aes128-ctr and aes192-ctr
+ *      
+ *
+ * @param[in] text      string to be matched           example : aes128-ctr
+ * @param[in] pattern   string to be matched against   example : aes*
+ *
+ * @return  1 if text matches pattern
+ *          0 if text does NOT match the pattern
+ *         -1 if some error occurs 
+ */
+int wildcard_matching(const char *text, const char *pattern)
+{
+    int match;
+    size_t str_len = strlen(text);
+    size_t pat_len = strlen(pattern);
+    bool *dp = calloc(str_len + 1, sizeof(bool));
+    if (dp == NULL) {
+        return -1;
+    }
+    // prev stores if the strings until pat_it and str_it - 1 have matched
+    bool prev = true, temp;
+    dp[0] = true;
+    for (int pat_it = 0; pat_it < pat_len; pat_it++) {
+        if (pattern[pat_it] != '*') {
+            dp[0] = false;
+        }
+        for (int str_it = 1; str_it < str_len + 1; str_it++) {
+            temp = dp[str_it];
+            if (pattern[pat_it] == '*') {
+                dp[str_it] = dp[str_it - 1] || dp[str_it];
+            }
+            else if (pattern[pat_it] == '?' 
+                  || pattern[pat_it] == text[str_it - 1]) {
+                dp[str_it] = prev;
+            }
+            else {
+                dp[str_it] = false;
+            }
+            prev = temp;
+        }
+        prev = dp[0];
+    }
+
+    if (dp[str_len] != 0) {
+        match = 1;
+    }
+    else {
+        match = 0;
+    }
+
+    SAFE_FREE(dp);
+    
+    return match;
+}
+
+/**
+ * @internal
+ *
  * @brief Given two strings, the first containing a list of available tokens and
  * the second containing a list of tokens to be searched ordered by preference,
  * returns a copy of the first preferred token present in the available list.
@@ -150,7 +237,8 @@ error:
  * @param[in] preferred_list    The list of tokens to search, ordered by
  * preference
  *
- * @return  A newly allocated copy of the token if found; NULL otherwise
+ * @return  A newly allocated copy of the token if found; 
+ *          NULL otherwise (no token found or error occurred)    
  */
 char *ssh_find_matching(const char *available_list,
                         const char *preferred_list)
@@ -197,20 +285,27 @@ out:
  * returns a list of all matching tokens ordered by preference.
  *
  * @param[in] available_list    The list of available tokens
- * @param[in] preferred_list    The list of tokens to search, ordered by
- * preference
+ * @param[in] preferred_list    The list of patterns to search and ignore.
+ *                              Tokens to search for are ordered by preference.
  *
+ * patterns to ignore should start with '!'
+ * 
+ * Example: 1.
+ *            !aes* => ignores all tokens which start with aes
+ *            !aes  => ignores only the token "aes" 
+ * 
+ * 
  * @return  A newly allocated string containing the list of all matching tokens;
  * NULL otherwise
  */
 char *ssh_find_all_matching(const char *available_list,
                             const char *preferred_list)
 {
-    struct ssh_tokens_st *a_tok = NULL, *p_tok = NULL;
-    int i, j;
+    struct ssh_tokens_st *a_tok = NULL, *p_tok = NULL, *n_tok = NULL;
+    int i, j, k;
     char *ret = NULL;
     size_t max, len, pos = 0;
-    int match;
+    bool match;
 
     if ((available_list == NULL) || (preferred_list == NULL)) {
         return NULL;
@@ -237,7 +332,37 @@ char *ssh_find_all_matching(const char *available_list,
 
     for (i = 0; p_tok->tokens[i] ; i++) {
         for (j = 0; a_tok->tokens[j]; j++) {
-            match = !strcmp(a_tok->tokens[j], p_tok->tokens[i]);
+            /*
+                wildcard_matching(char *text, char *pattern) performs
+                wildcard matching on the text against the given pattern.
+
+                The following are the special characters recoginsied
+
+                '*' => matches with any number of characters in the text
+                '?' => matches with a single character in the text
+             */
+            match = wildcard_matching(a_tok->tokens[j], p_tok->tokens[i]);
+            if (match == -1) {
+                // signifies error in wildcard_matching function
+                SAFE_FREE(ret)
+                goto out;
+            } 
+            else if (match) {
+                for (k = 0; p_tok->n_tokens[k]; k++) {
+                    /* 
+                        Tokens starting with ! are considered n_tokens
+                        patterns matching n_tokens are to be rejected
+
+                        We iterate over all the n_tokens and 
+                        reject the token if it matches with the n_token 
+                     */
+                    bool n_match = wildcard_matching(a_tok->tokens[j],
+                                                     p_tok->n_tokens[k]);
+                    if (n_match) {
+                        match = false;
+                    }
+                }
+            }
             if (match) {
                 if (pos != 0) {
                     ret[pos] = ',';
