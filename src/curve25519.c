@@ -235,12 +235,24 @@ out:
         return ret;
     }
 #else
-    if (session->server) {
-        crypto_scalarmult(k, session->next_crypto->curve25519_privkey,
-                          session->next_crypto->curve25519_client_pubkey);
-    } else {
-        crypto_scalarmult(k, session->next_crypto->curve25519_privkey,
-                          session->next_crypto->curve25519_server_pubkey);
+    {
+      u_char zero[CURVE25519_PUBKEY_SIZE];
+
+      if (session->server) {
+	crypto_scalarmult(k, session->next_crypto->curve25519_privkey,
+			  session->next_crypto->curve25519_client_pubkey);
+      } else {
+	crypto_scalarmult(k, session->next_crypto->curve25519_privkey,
+			  session->next_crypto->curve25519_server_pubkey);
+      }
+
+      /* Check for all-zero shared secret */
+      explicit_bzero(zero, CURVE25519_PUBKEY_SIZE);
+      if (secure_memcmp(zero, k, CURVE25519_PUBKEY_SIZE) == 0)
+	{
+	  SSH_LOG(SSH_LOG_TRACE, "Shared curve25519 secret is all zero");
+	  return SSH_ERROR;
+	}
     }
 #endif /* HAVE_LIBCRYPTO */
 
