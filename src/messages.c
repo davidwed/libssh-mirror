@@ -395,6 +395,21 @@ static int ssh_execute_client_request(ssh_session session, ssh_message msg)
                 session->common.callbacks->userdata);
 
         return ssh_reply_channel_open_request(msg, channel);
+    } else if (msg->type == SSH_REQUEST_CHANNEL_OPEN &&
+               msg->channel_request_open.type == SSH_CHANNEL_DIRECT_TCPIP &&
+               ssh_callbacks_exists(
+                   session->common.callbacks,
+                   channel_open_request_direct_tcpip_function)) {
+        channel = session->common.callbacks
+                      ->channel_open_request_direct_tcpip_function(
+                          session,
+                          msg->channel_request_open.destination,
+                          msg->channel_request_open.destination_port,
+                          msg->channel_request_open.originator,
+                          msg->channel_request_open.originator_port,
+                          session->common.callbacks->userdata);
+
+        return ssh_reply_channel_open_request(msg, channel);
     }
 
     return rc;
